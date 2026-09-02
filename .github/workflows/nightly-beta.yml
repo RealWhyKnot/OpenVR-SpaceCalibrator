@@ -6,13 +6,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   tag:
     name: Tag a beta when main moved
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -21,11 +23,11 @@ jobs:
           persist-credentials: false
 
       - name: Plan and push beta tag
+        id: plan
         shell: pwsh
         env:
-          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if (-not $env:RELEASE_TOKEN) { throw "RELEASE_TOKEN secret is not set; a tag pushed with the default token would not trigger the release workflow." }
           ./.github/scripts/Test-WorkflowSyntax.ps1
           $head = (git rev-parse HEAD).Trim()
           $latest = (git tag --list 'v*' --sort=-creatordate | Select-Object -First 1)
@@ -33,8 +35,9 @@ jobs:
             $latestSha = (git rev-list -n 1 $latest).Trim()
             if ($latestSha -eq $head) { Write-Host "No commits since $latest; nothing to tag."; exit 0 }
           }
-          $today = (Get-Date).ToUniversalTime().ToString('yyyy.M.d')
-          $pattern = "^v$([regex]::Escape($today))\.(\d+)(-[A-Za-z0-9]{4})?$"
+          $zone = [TimeZoneInfo]::FindSystemTimeZoneById('America/Chicago')
+          $today = [TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $zone).ToString('yyyy.M.d')
+          $pattern = "^v$([regex]::Escape($today))\.(\d+)(-beta)?$"
           $highest = -1
           foreach ($t in @(git tag --list "v$today.*")) {
             if ($t -match $pattern -and [int]$Matches[1] -gt $highest) { $highest = [int]$Matches[1] }
@@ -43,7 +46,18 @@ jobs:
           ./.github/scripts/Assert-ReleaseVersionSequence.ps1 -Tag $tag
           git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' tag -a $tag -m $tag $head
           if ($LASTEXITCODE -ne 0) { throw "git tag failed ($LASTEXITCODE)" }
-          $remote = "https://x-access-token:$($env:RELEASE_TOKEN)@github.com/${{ github.repository }}.git"
+          $remote = "https://x-access-token:$($env:GH_TOKEN)@github.com/${{ github.repository }}.git"
           git push $remote $tag
           if ($LASTEXITCODE -ne 0) { throw "git push failed ($LASTEXITCODE)" }
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "tag=$tag"
           Write-Host "Pushed $tag at $head"
+
+  release:
+    name: Release the beta
+    needs: tag
+    if: needs.tag.outputs.tag != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}

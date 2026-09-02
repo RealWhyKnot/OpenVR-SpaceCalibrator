@@ -77,6 +77,8 @@ try {
   $tempRoots.Add($repo) | Out-Null
   Assert-Passes -RepoRoot $repo -Tag "v2026.6.15.0-beta" -Message "First same-day prerelease should be .0."
   Assert-Fails -RepoRoot $repo -Tag "v2026.6.15.1-beta" -Message ".1 should fail when no same-day release exists."
+  Assert-Fails -RepoRoot $repo -Tag "v2026.6.15.0-ABCD" -Message "A local build stamp suffix is not a release tag."
+  Assert-Fails -RepoRoot $repo -Tag "v1.5.1" -Message "Legacy three-part tags are not release tags."
 
   $repo = New-TestRepo
   $tempRoots.Add($repo) | Out-Null

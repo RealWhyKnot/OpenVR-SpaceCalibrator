@@ -25,7 +25,7 @@ function Get-ExpectedReleaseRevision {
   )
 
   $escapedDate = [regex]::Escape($DateStamp)
-  $pattern = "^v$escapedDate\.(\d+)(-[A-Za-z0-9]{4})?$"
+  $pattern = "^v$escapedDate\.(\d+)(-beta)?$"
   $existingTags = @(Invoke-Git -Arguments @("tag", "--list", "v$DateStamp.*"))
   $highest = -1
 
@@ -47,8 +47,8 @@ function Get-ExpectedReleaseRevision {
 $repoRootPath = (Resolve-Path -LiteralPath $RepoRoot).Path
 Push-Location $repoRootPath
 try {
-  if ($Tag -notmatch "^v(\d{4})\.(\d+)\.(\d+)\.(\d+)(-[A-Za-z0-9]{4})?$") {
-    throw "Release tag must be vYYYY.M.D.N or vYYYY.M.D.N-XXXX, got '$Tag'."
+  if ($Tag -notmatch "^v(\d{4})\.(\d+)\.(\d+)\.(\d+)(-beta)?$") {
+    throw "Release tag must be vYYYY.M.D.N or vYYYY.M.D.N-beta, got '$Tag'."
   }
 
   $dateStamp = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
