@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Install LLVM 22.1.0
+        shell: pwsh
+        run: |
+          $want = '22.1.0'
+          $have = ''
+          $cf = Get-Command clang-format -ErrorAction SilentlyContinue
+          if ($cf) { $have = ((& $cf.Source --version) -replace '^clang-format version ([\d.]+).*$', '$1').Trim() }
+          if ($have -ne $want) {
+            choco install llvm --version $want --force -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw "choco install llvm failed ($LASTEXITCODE)" }
+          }
+          choco install ninja -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "choco install ninja failed ($LASTEXITCODE)" }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value 'C:\Program Files\LLVM\bin'
+
+      - name: Enable MSVC for the clang-tidy compile database
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Lint
+        shell: pwsh
+        run: |
+          $base = if ('${{ github.event_name }}' -eq 'pull_request') { '${{ github.event.pull_request.base.sha }}' } elseif ('${{ github.event.before }}' -match '^0+$' -or -not '${{ github.event.before }}') { 'origin/main' } else { '${{ github.event.before }}' }
+          ./lint.ps1 -Check -ChangedOnly -ChangedBase $base
+
+  build:
+    name: Build ${{ matrix.channel }}
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [dev, release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Script self-tests
+        shell: pwsh
+        run: |
+          ./.github/scripts/Test-WorkflowSyntax.ps1
+          ./.github/scripts/Test-ReleaseVersionSequence.ps1
+          ./.github/scripts/Test-GenerateReleaseNotes.ps1
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -G "Visual Studio 17 2022" -A x64 -B build -S . -Wno-dev -DCMAKE_POLICY_VERSION_MINIMUM=3.5 "-DSPACECAL_VERSION=0.0.0.0-CI" "-DSPACECAL_CHANNEL=${{ matrix.channel }}"
+          if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build --config Release
+          if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)" }
+
+      - name: Test
+        shell: pwsh
+        run: |
+          ctest --test-dir build -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw "tests failed ($LASTEXITCODE)" }
+
+      - name: Stage package
+        shell: pwsh
+        run: |
+          ./.github/scripts/Stage-Package.ps1 -OutDir build/package
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: spacecalibrator-${{ matrix.channel }}-${{ github.sha }}
+          path: build/package
+          retention-days: 14

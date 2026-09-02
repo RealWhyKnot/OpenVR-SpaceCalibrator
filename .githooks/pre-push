@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+[ -f "$repo_root/lint.ps1" ] || exit 0
+
+pwsh_bin=""
+for c in pwsh pwsh.exe powershell.exe powershell; do
+  if command -v "$c" >/dev/null 2>&1; then pwsh_bin="$c"; break; fi
+done
+if [ -z "$pwsh_bin" ]; then
+  echo "pre-push: PowerShell not found; skipping lint check." >&2
+  exit 0
+fi
+
+if ! command -v clang-format >/dev/null 2>&1; then
+  echo "pre-push: clang-format not found; skipping lint check (install LLVM to enable)." >&2
+  exit 0
+fi
+
+lint_args=(-Check -ChangedOnly)
+lint_label="formatting and changed-source clang-tidy"
+for c in clang-tidy cmake ninja python; do
+  if ! command -v "$c" >/dev/null 2>&1; then
+    echo "pre-push: $c not found; falling back to format-only check." >&2
+    lint_args=(-FormatOnly -Check -ChangedOnly)
+    lint_label="formatting"
+    break
+  fi
+done
+
+echo "pre-push: checking $lint_label (lint.ps1 ${lint_args[*]})..." >&2
+"$pwsh_bin" -NoProfile -ExecutionPolicy Bypass -File "$repo_root/lint.ps1" "${lint_args[@]}"
+if [ "$?" -ne 0 ]; then
+  {
+    echo ""
+    echo "pre-push BLOCKED: changed files would fail CI's lint job."
+    echo "  Fix format:  pwsh ./lint.ps1 -FormatOnly -ChangedOnly"
+    echo "  Check again: pwsh ./lint.ps1 -Check -ChangedOnly"
+    echo "  Bypass:      git push --no-verify"
+  } >&2
+  exit 1
+fi
+
+echo "pre-push: lint check passed." >&2
+exit 0

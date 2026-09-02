@@ -1,0 +1,50 @@
+#Requires -Version 5.1
+[CmdletBinding()]
+param(
+	[ValidateSet("dev", "beta", "release")]
+	[string]$Channel = "dev",
+	[string]$Version = "",
+	[switch]$SkipConfigure,
+	[switch]$SkipTests
+)
+
+$ErrorActionPreference = "Stop"
+Set-Location $PSScriptRoot
+
+$hooksPath = & git config --get core.hooksPath 2>$null
+$global:LASTEXITCODE = 0
+if ([string]::IsNullOrWhiteSpace($hooksPath) -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot ".githooks"))) {
+	& git config core.hooksPath .githooks
+	Write-Host "git hooks enabled (.githooks)"
+}
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+	$stateDir = Join-Path $PSScriptRoot "build"
+	New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+	$statePath = Join-Path $stateDir "local_build_state.json"
+	$today = (Get-Date).ToString("yyyy.M.d")
+	$counter = 0
+	if (Test-Path -LiteralPath $statePath) {
+		$state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+		if ($state.date -eq $today) { $counter = [int]$state.counter + 1 }
+	}
+	$suffix = ([guid]::NewGuid().ToString("N").Substring(0, 4)).ToUpperInvariant()
+	$Version = "$today.$counter-$suffix"
+	$stateJson = @{ date = $today; counter = $counter } | ConvertTo-Json -Compress
+	[System.IO.File]::WriteAllText($statePath, $stateJson, (New-Object System.Text.UTF8Encoding($false)))
+}
+[System.IO.File]::WriteAllText((Join-Path $PSScriptRoot "version.txt"), $Version, (New-Object System.Text.UTF8Encoding($false)))
+Write-Host "build $Version ($Channel)"
+
+if (-not $SkipConfigure) {
+	& cmake -G "Visual Studio 17 2022" -A x64 -B build -S . -Wno-dev -DCMAKE_POLICY_VERSION_MINIMUM=3.5 "-DSPACECAL_VERSION=$Version" "-DSPACECAL_CHANNEL=$Channel"
+	if ($LASTEXITCODE -ne 0) { throw "cmake configure failed (exit $LASTEXITCODE)" }
+}
+
+& cmake --build build --config Release
+if ($LASTEXITCODE -ne 0) { throw "build failed (exit $LASTEXITCODE)" }
+
+if (-not $SkipTests) {
+	& ctest --test-dir build -C Release --output-on-failure
+	if ($LASTEXITCODE -ne 0) { throw "tests failed (exit $LASTEXITCODE)" }
+}

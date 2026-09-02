@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish ${{ github.ref_name }}
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Resolve tag
+        id: tag
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $isBeta = $tag -match '^v\d{4}\.\d+\.\d+\.\d+-beta$'
+          if (-not $isBeta -and $tag -notmatch '^v\d{4}\.\d+\.\d+\.\d+$') {
+            throw "Tag '$tag' must be vYYYY.M.D.N or vYYYY.M.D.N-beta."
+          }
+          ./.github/scripts/Assert-ReleaseVersionSequence.ps1 -Tag $tag
+          $version = $tag.Substring(1)
+          $channel = if ($isBeta) { 'beta' } else { 'release' }
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "version=$version"
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "channel=$channel"
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "prerelease=$($isBeta.ToString().ToLowerInvariant())"
+          Write-Host "tag=$tag version=$version channel=$channel prerelease=$isBeta"
+
+      - name: Script self-tests
+        shell: pwsh
+        run: |
+          ./.github/scripts/Test-WorkflowSyntax.ps1
+          ./.github/scripts/Test-ReleaseVersionSequence.ps1
+          ./.github/scripts/Test-GenerateReleaseNotes.ps1
+
+      - name: Build and test
+        shell: pwsh
+        run: |
+          cmake -G "Visual Studio 17 2022" -A x64 -B build -S . -Wno-dev -DCMAKE_POLICY_VERSION_MINIMUM=3.5 "-DSPACECAL_VERSION=${{ steps.tag.outputs.version }}" "-DSPACECAL_CHANNEL=${{ steps.tag.outputs.channel }}"
+          if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
+          cmake --build build --config Release
+          if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)" }
+          ctest --test-dir build -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw "tests failed ($LASTEXITCODE)" }
+
+      - name: Package
+        id: package
+        shell: pwsh
+        run: |
+          $name = "OpenVR-SpaceCalibrator-${{ steps.tag.outputs.version }}"
+          ./.github/scripts/Stage-Package.ps1 -OutDir "build/$name"
+          $zip = "build/$name.zip"
+          Compress-Archive -Path "build/$name/*" -DestinationPath $zip -Force
+          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          [System.IO.File]::WriteAllText("$zip.sha256", "$hash  $name.zip`n", (New-Object System.Text.UTF8Encoding($false)))
+          ./.github/scripts/Generate-ReleaseNotes.ps1 -Tag '${{ github.ref_name }}' -ZipPath $zip -OutFile build/notes.md | Out-Null
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "zip=$zip"
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "sha256=$hash"
+          Get-Content build/notes.md
+
+      - name: Publish release
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $extra = @()
+          if ('${{ steps.tag.outputs.prerelease }}' -eq 'true') { $extra = @('--prerelease', '--latest=false') }
+          gh release create $tag '${{ steps.package.outputs.zip }}' '${{ steps.package.outputs.zip }}.sha256' --repo '${{ github.repository }}' --target '${{ github.sha }}' --title $tag --notes-file build/notes.md @extra
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
+
+      - name: Verify uploaded asset
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $expected = 'sha256:${{ steps.package.outputs.sha256 }}'
+          $zipName = Split-Path -Leaf '${{ steps.package.outputs.zip }}'
+          $ok = $false
+          for ($i = 0; $i -lt 6 -and -not $ok; $i++) {
+            Start-Sleep -Seconds 2
+            $json = gh api "repos/${{ github.repository }}/releases/tags/$tag" 2>$null
+            $fetched = $LASTEXITCODE -eq 0
+            $global:LASTEXITCODE = 0
+            if (-not $fetched) { continue }
+            $release = $json | ConvertFrom-Json
+            $asset = $release.assets | Where-Object { $_.name -eq $zipName }
+            if ($asset -and $asset.digest -eq $expected) { $ok = $true }
+          }
+          if (-not $ok) { throw "Uploaded $zipName digest does not match $expected." }
+          Write-Host "Verified $zipName digest $expected"
+
+      - name: Remove partial release on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          gh release delete '${{ github.ref_name }}' --repo '${{ github.repository }}' --yes 2>$null
+          $global:LASTEXITCODE = 0

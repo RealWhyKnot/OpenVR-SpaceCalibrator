@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+msg_file="$1"
+[ -f "$msg_file" ] || exit 0
+
+if grep -qiE '(^|[^A-Za-z0-9_])#[0-9]+|hyblocker|pushrax|github\.com/[A-Za-z0-9_-]+/OpenVR-SpaceCalibrator' "$msg_file"; then
+  echo "" >&2
+  echo "commit-msg: message references an issue number or an upstream repository." >&2
+  echo "" >&2
+  echo "In a fork, #123 resolves against the parent repository and creates a cross-reference there." >&2
+  echo "Describe the change in words instead." >&2
+  echo "" >&2
+  exit 1
+fi
+
+subject="$(grep -m1 -vE '^(#|$)' "$msg_file" || true)"
+[ -n "$subject" ] || exit 0
+
+count=$( ( printf '%s\n' "$subject" | grep -oE '\([0-9]{4}\.[0-9]+\.[0-9]+\.[0-9]+(-[A-Fa-f0-9]{4})?\)' || true ) \
+  | grep -c . \
+  || true )
+count=${count//[^0-9]/}
+[ -n "$count" ] || count=0
+
+if [ "${count:-0}" -gt 1 ]; then
+  echo "" >&2
+  echo "commit-msg: subject contains $count build-version stamps; expected at most one." >&2
+  echo "" >&2
+  echo "  subject: $subject" >&2
+  echo "" >&2
+  echo "Drop the stale (YYYY.M.D.N-XXXX) tag from the subject and commit again." >&2
+  echo "" >&2
+  exit 1
+fi
+
+case "$subject" in
+  Merge\ *|Revert\ *|fixup!\ *|squash!\ *) exit 0 ;;
+esac
+
+if ! printf '%s\n' "$subject" | grep -qE '^(feat|fix|chore|ci|docs|refactor|test|perf|diag|style)(\([a-z0-9-]+\))?!?: .+'; then
+  echo "" >&2
+  echo "commit-msg: subject is not a conventional commit." >&2
+  echo "" >&2
+  echo "  subject: $subject" >&2
+  echo "" >&2
+  echo "Use <type>(<scope>): <summary> with type feat, fix, chore, ci, docs, refactor, test, perf, diag or style." >&2
+  echo "Release notes are built from these subjects." >&2
+  echo "" >&2
+  exit 1
+fi
+
+exit 0

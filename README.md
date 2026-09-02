@@ -1,55 +1,66 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/hyblocker/OpenVR-SpaceCalibrator/blob/develop/.github/logo_light.png?raw=true">
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/hyblocker/OpenVR-SpaceCalibrator/blob/develop/.github/logo_dark.png?raw=true">
-  <img alt="Space Calibrator" src="https://github.com/hyblocker/OpenVR-SpaceCalibrator/blob/develop/.github/logo.png?raw=true">
-</picture>
+# Space Calibrator with tracker smoothing
 
-This program is designed to allow you to synchronise multiple playspaces with one another in SteamVR. This fork of Space Calibrator (spacecal) also supports [continuous calibration](#continuous-calibration).
+A fork of the 1.5.1 line of Space Calibrator, the SteamVR tool that lines up devices from one
+tracking system with another, with continuous calibration. This fork adds an optional one euro
+filter that smooths the calibrated trackers in place. No virtual devices, no second driver: games
+see the same trackers they always did, just steadier at rest.
 
-Continuous calibration is a tracking mode which automatically aligns playspaces together, using a tracker on the headset.
+## What smoothing does
 
-## Installing
+The driver already rewrites every target-space pose on its way into SteamVR to apply the
+calibration. With smoothing on, it first runs a one euro filter on the tracker's position and
+rotation, in the tracker's own space, before the calibration transform is applied. Velocities are
+recomputed from the filtered motion so SteamVR's prediction stays consistent. Continuous
+calibration corrections never enter the filter, so they behave exactly as before.
 
-### Steam
+Controls live in the overlay under "Tracker smoothing":
 
-> [!NOTE]  
-> **Space Calibrator is also available to Steam.**
+- Smooth trackers: master switch. Takes effect immediately and is saved with the profile.
+- Also smooth controllers: off by default; controllers are latency sensitive.
+- Jitter cutoff (Hz): lower is calmer at rest, but lags slow movement more.
+- Responsiveness: higher opens the filter sooner on fast moves so quick motion lags less.
+- A live table shows raw versus smoothed frame-to-frame movement per device, and how often the
+  filter restarted after a gap or a jump.
 
-You may find [Space Calibrator on Steam here](https://s.team/a/3368750).
+Smoothing applies to devices in the calibrated target space, so a profile has to be active.
 
-### From GitHub
+## Install from a release
 
-To install Space Calibrator, please get the latest installer from the downloads page, and install it. Make sure that you have:
-- Installed [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe).
-- Installed SteamVR and run it at least once with a VR headset connected.
-- SteamVR is not running before you run the installer. If SteamVR is running the installer will not be able to install Space Calibrator correctly.
+1. Close SteamVR.
+2. Unzip the release anywhere permanent.
+3. Run `install.ps1` from the unzipped folder. It registers the driver folder with SteamVR,
+   unregisters any other copy of the `01spacecalibrator` driver (including the Steam build), turns
+   on `activateMultipleDrivers`, and registers the overlay so it autolaunches with SteamVR.
+4. Start SteamVR. The overlay appears in the dashboard as usual.
 
-## Calibration
+Do not launch the Steam copy of Space Calibrator while this one is registered; two copies of the
+driver would both rewrite poses. `uninstall.ps1` reverses the registration.
 
-If you do not wish to use continuous calibration, you will have to use regular calibration. This means that every so often you will have to sync your headset's playspace with your tracker's playspace.
+## Build from source
 
-To calibrate:
-1. Copy the chaperone/guardian bounds from your HMD's play space
-   > You will only have to do this once. Connect your VR headset and start SteamVR. Then go to space calibrator's window (it will be minimised), and click the "Copy Chaperone" button.
+Requirements: Visual Studio 2022 with the C++ workload, CMake 3.24 or newer, git.
 
-2. Open the SteamVR dashboard. At the bottom, click on the Space Calibrator icon.
-3. In the Space Calibrator overlay, you'll see two lists at the top. On the left `Reference Space` column, select the controller you'll be calibrating along (e.g. Quest controller, Pico controller). On the right `Target Space`, select your SteamVR tracker (e.g. Vive Ultimate Tracker, Vive Tracker 3.0, Vive Ultimate Tracker). You can use the Identify button to make the controllers blink and tracker LEDs flash to see if you've selected the correct ones.
-4. Click the "Start calibration" button, and start calibrating.
+```
+git clone --recurse-submodules https://github.com/RealWhyKnot/OpenVR-SpaceCalibrator.git
+cd OpenVR-SpaceCalibrator
+./build.ps1
+```
 
-## Continuous Calibration
+`build.ps1` stamps `version.txt`, enables the repo git hooks, configures into `build/`, builds
+Release, and runs the tests. `build.ps1 -Channel beta` or `-Channel release` sets the channel baked
+into the version line. Outputs: `build/01spacecalibrator` (driver) and `build/artifacts/Release`
+(overlay). `scripts/install.ps1` with no arguments registers those build outputs directly.
 
-> [!IMPORTANT]  
-> **A tracker attached on your headset is required for this.**
+`lint.ps1 -Check` runs clang-format and clang-tidy over `src/` and `tests/`; `lint.ps1` without
+`-Check` applies the fixes.
 
-To enable continuous calibration mode, first select your headset on the left column, then the tracker on your headset on the right column. Once you've done so, click `Start Calibration`, and click cancel. Then click `Continuous Calibration` to enable continuous calibration.
+## Releases
 
-1. Start SteamVR with the VR headset you wish to use.
-2. Turn on **ONLY** the tracker which is attached on the VR headset.
-3. Select the VR headset and tracker and calibrate.
-4. Turn on your other devices.
-5. You should see them line up with you as you after moving around your playspace for a bit for an initial calibration.
+Tags of the form `vYYYY.M.D.N` publish a release; `vYYYY.M.D.N-beta` publishes a prerelease. The
+release workflow builds, tests, zips the driver and overlay with the install scripts, attaches a
+SHA-256 file, and writes the notes from the conventional commit subjects since the previous tag.
+A nightly job tags a beta whenever `main` moved since the last tag.
 
+## License
 
-## Help
-
-If you need help with setting up this program, please check the [wiki](https://github.com/pushrax/OpenVR-SpaceCalibrator/wiki), or join the [Discord server](https://discord.gg/ja3WgNjC3z).
+MIT. See LICENSE and NOTICE.
