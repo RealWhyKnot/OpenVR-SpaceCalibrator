@@ -75,6 +75,22 @@ try {
   Assert-Contains -Text $first -Expected "### Maintenance`n- scaffold" -Message "First tag should include all history."
   Assert-NotContains -Text $first -Expected "Changes since" -Message "First tag has no previous tag."
 
+  $baseSha = "$(Invoke-TestGit -RepoRoot $root -Arguments @("rev-parse", "v2026.9.1.0"))".Trim()
+  New-Item -ItemType Directory -Path (Join-Path $root ".github") | Out-Null
+  Set-Content -LiteralPath (Join-Path $root ".github/release-base") -Value $baseSha -Encoding ASCII
+  Invoke-TestGit -RepoRoot $root -Arguments @("tag", "-d", "v2026.9.1.0") | Out-Null
+  Invoke-TestGit -RepoRoot $root -Arguments @("tag", "v1.5.1", $baseSha) | Out-Null
+  $based = (& $generate -Tag "v2026.9.2.0-beta" -RepoRoot $root) -join "`n"
+  Assert-Contains -Text $based -Expected "Changes since the fork point ($($baseSha.Substring(0, 7)))." -Message "Release base should beat an older tag."
+  Assert-NotContains -Text $based -Expected "scaffold" -Message "Commits before the release base leaked in."
+  Assert-Contains -Text $based -Expected "- filter: one euro pose filter" -Message "Commits after the base missing."
+
+  Add-Commit -RepoRoot $root -Subject "fix: use unique id when building devices list, #23"
+  Invoke-TestGit -RepoRoot $root -Arguments @("tag", "v2026.9.3.0-beta") | Out-Null
+  $failed = $false
+  try { & $generate -Tag "v2026.9.3.0-beta" -RepoRoot $root | Out-Null } catch { $failed = $true }
+  if (-not $failed) { throw "An issue reference in the body should fail the generator." }
+
   Write-Host "Release notes tests passed."
 }
 finally {

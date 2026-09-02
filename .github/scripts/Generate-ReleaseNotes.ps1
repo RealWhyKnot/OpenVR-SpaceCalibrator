@@ -30,7 +30,15 @@ function Get-PreviousTag {
 Push-Location (Resolve-Path -LiteralPath $RepoRoot).Path
 try {
   $previous = Get-PreviousTag -Tag $Tag
-  $range = if ($previous) { "$previous..$Tag" } else { $Tag }
+  $baseFile = Join-Path (Get-Location).Path ".github/release-base"
+  $base = if (Test-Path -LiteralPath $baseFile) { (Get-Content -LiteralPath $baseFile -Raw).Trim() } else { "" }
+  if ($base -and $previous) {
+    & git merge-base --is-ancestor $previous $base 2>$null
+    if ($LASTEXITCODE -eq 0) { $previous = "" }
+    $global:LASTEXITCODE = 0
+  }
+  $since = if ($previous) { $previous } elseif ($base) { $base } else { "" }
+  $range = if ($since) { "$since..$Tag" } else { $Tag }
   $subjects = @(Invoke-Git -Arguments @("log", "--format=%s", "--no-merges", $range))
 
   $sections = [ordered]@{
@@ -61,6 +69,7 @@ try {
   $lines = [System.Collections.Generic.List[string]]::new()
   $lines.Add("## $Tag") | Out-Null
   if ($previous) { $lines.Add("Changes since $previous.") | Out-Null }
+  elseif ($base) { $lines.Add("Changes since the fork point ($($base.Substring(0, 7))).") | Out-Null }
   $lines.Add("") | Out-Null
   $any = $false
   foreach ($name in $sections.Keys) {
@@ -87,6 +96,8 @@ try {
   }
 
   $text = ($lines -join "`n")
+  $upstream = [regex]::Matches($text, '(?i)#[0-9]+\b|hyblocker|pushrax|github\.com/[^/\s]+/OpenVR-SpaceCalibrator') | ForEach-Object { $_.Value } | Select-Object -Unique
+  if ($upstream) { throw "Release body references upstream: $($upstream -join ', '). Check .github/release-base and the commit subjects." }
   if ($OutFile) {
     [System.IO.File]::WriteAllText($OutFile, $text, (New-Object System.Text.UTF8Encoding($false)))
   }
