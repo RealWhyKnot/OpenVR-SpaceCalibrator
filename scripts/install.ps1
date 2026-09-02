@@ -50,15 +50,10 @@ if ($found) {
     Write-Host "registered: $resolvedDriver"
 }
 
-Push-Location $overlayDir
-try {
-    & $overlay -activatemultipledrivers
-    Write-Host "activateMultipleDrivers: exit $LASTEXITCODE"
-    & $overlay -installmanifest
-    Write-Host "overlay manifest: exit $LASTEXITCODE (expected -2)"
-    $global:LASTEXITCODE = 0
-} finally {
-    Pop-Location
-}
+$activate = Start-Process -FilePath $overlay -ArgumentList '-activatemultipledrivers' -WorkingDirectory $overlayDir -Wait -PassThru
+if ($activate.ExitCode -ne 0) { throw "activatemultipledrivers failed with exit code $($activate.ExitCode)" }
+Write-Host 'activateMultipleDrivers enabled'
+$manifest = Start-Process -FilePath $overlay -ArgumentList '-installmanifest' -WorkingDirectory $overlayDir -Wait -PassThru
+Write-Host "overlay manifest registered (exit $($manifest.ExitCode))"
 
 Write-Host 'Done. Start SteamVR; the overlay autolaunches from this folder. Do not launch the Steam copy of Space Calibrator while this one is registered.'

@@ -37,7 +37,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 Write-Host "build $Version ($Channel)"
 
 if (-not $SkipConfigure) {
-	& cmake -G "Visual Studio 17 2022" -A x64 -B build -S . -Wno-dev -DCMAKE_POLICY_VERSION_MINIMUM=3.5 "-DSPACECAL_VERSION=$Version" "-DSPACECAL_CHANNEL=$Channel"
+	& cmake -A x64 -B build -S . -Wno-dev "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DSPACECAL_VERSION=$Version" "-DSPACECAL_CHANNEL=$Channel"
 	if ($LASTEXITCODE -ne 0) { throw "cmake configure failed (exit $LASTEXITCODE)" }
 }
 

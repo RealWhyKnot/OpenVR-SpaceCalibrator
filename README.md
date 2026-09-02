@@ -38,7 +38,7 @@ driver would both rewrite poses. `uninstall.ps1` reverses the registration.
 
 ## Build from source
 
-Requirements: Visual Studio 2022 with the C++ workload, CMake 3.24 or newer, git.
+Requirements: Visual Studio 2022 or newer with the C++ workload, CMake 3.24 or newer, git.
 
 ```
 git clone --recurse-submodules https://github.com/RealWhyKnot/OpenVR-SpaceCalibrator.git

@@ -9,14 +9,8 @@ if (-not (Test-Path $vrpathreg)) { throw "vrpathreg not found: $vrpathreg" }
 $overlayDir = if (Test-Path (Join-Path $PSScriptRoot 'SpaceCalibrator.exe')) { $PSScriptRoot } else { Join-Path (Split-Path -Parent $PSScriptRoot) 'build\artifacts\Release' }
 $overlay = Join-Path $overlayDir 'SpaceCalibrator.exe'
 if (Test-Path $overlay) {
-    Push-Location $overlayDir
-    try {
-        & $overlay -removemanifest
-        $global:LASTEXITCODE = 0
-        Write-Host 'overlay manifest removed'
-    } finally {
-        Pop-Location
-    }
+    Start-Process -FilePath $overlay -ArgumentList '-removemanifest' -WorkingDirectory $overlayDir -Wait | Out-Null
+    Write-Host 'overlay manifest removed'
 }
 
 $existing = & $vrpathreg finddriver 01spacecalibrator 2>$null

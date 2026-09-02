@@ -1,4 +1,4 @@
-﻿#include "stdafx.h"
+#include "stdafx.h"
 #include "Calibration.h"
 #include "Configuration.h"
 #include "EmbeddedFiles.h"
@@ -30,7 +30,8 @@ name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
 processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 #define LEGACY_OPENVR_APPLICATION_KEY "pushrax.SpaceCalibrator"
-#define OPENVR_APPLICATION_KEY "steam.overlay.3368750"
+#define OPENVR_APPLICATION_KEY "whyknot.SpaceCalibratorSmoothing"
+#define STEAM_OPENVR_APPLICATION_KEY "steam.overlay.3368750"
 std::string c_SPACE_CALIBRATOR_STEAM_APP_ID = "3368750";
 std::string c_STEAMVR_STEAM_APP_ID = "250820";
 constexpr const char* STEAM_MUTEX_KEY = "Global\\MUTEX__SpaceCalibrator_Steam";
@@ -531,6 +532,12 @@ void RunLoop()
 
 void VerifySetupCorrect()
 {
+	if (vr::VRApplications()->IsApplicationInstalled(STEAM_OPENVR_APPLICATION_KEY) &&
+	    vr::VRApplications()->GetApplicationAutoLaunch(STEAM_OPENVR_APPLICATION_KEY)) {
+		std::cout << "Disabling autolaunch of the Steam copy of Space Calibrator\n";
+		vr::VRApplications()->SetApplicationAutoLaunch(STEAM_OPENVR_APPLICATION_KEY, false);
+	}
+
 	// register the manifest so that it shows up in the overlays menu
 	if (!vr::VRApplications()->IsApplicationInstalled(OPENVR_APPLICATION_KEY)) {
 		std::string manifestPath = std::format("{}\\{}", cwd, "manifest.vrmanifest");
@@ -749,6 +756,9 @@ static void HandleCommandLine(LPWSTR lpCmdLine)
 					std::cout << "Removing old manifest path: " << manifestPath << '\n';
 					vr::VRApplications()->RemoveApplicationManifest(manifestPath.c_str());
 				}
+			}
+			if (vr::VRApplications()->IsApplicationInstalled(STEAM_OPENVR_APPLICATION_KEY)) {
+				vr::VRApplications()->SetApplicationAutoLaunch(STEAM_OPENVR_APPLICATION_KEY, false);
 			}
 			std::string manifestPath = cwd;
 			manifestPath += "\\manifest.vrmanifest";

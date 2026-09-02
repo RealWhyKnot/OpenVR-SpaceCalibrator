@@ -1,7 +1,7 @@
 {
 	"source" : "builtin",
 	"applications": [{
-		"app_key": "steam.overlay.3368750",
+		"app_key": "whyknot.SpaceCalibratorSmoothing",
 		"launch_type": "binary",
 		"binary_path_windows": "SpaceCalibrator.exe",
 		"is_dashboard_overlay": true,

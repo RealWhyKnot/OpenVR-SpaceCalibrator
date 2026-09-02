@@ -76,7 +76,7 @@ jobs:
       - name: Configure
         shell: pwsh
         run: |
-          cmake -G "Visual Studio 17 2022" -A x64 -B build -S . -Wno-dev -DCMAKE_POLICY_VERSION_MINIMUM=3.5 "-DSPACECAL_VERSION=0.0.0.0-CI" "-DSPACECAL_CHANNEL=${{ matrix.channel }}"
+          cmake -A x64 -B build -S . -Wno-dev "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DSPACECAL_VERSION=0.0.0.0-CI" "-DSPACECAL_CHANNEL=${{ matrix.channel }}"
           if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
 
       - name: Build
