@@ -361,10 +361,10 @@ static void LogRegistryResult(LSTATUS result)
 
 static const char* RegistryKey = "Software\\OpenVR-SpaceCalibrator";
 
-static std::string ReadRegistryKey()
+static std::string ReadRegistryKey(const char* valueName)
 {
 	DWORD size = 0;
-	auto result = RegGetValueA(HKEY_CURRENT_USER_LOCAL_SETTINGS, RegistryKey, "Config", RRF_RT_REG_SZ, 0, 0, &size);
+	auto result = RegGetValueA(HKEY_CURRENT_USER_LOCAL_SETTINGS, RegistryKey, valueName, RRF_RT_REG_SZ, 0, 0, &size);
 	if (result != ERROR_SUCCESS) {
 		LogRegistryResult(result);
 		return "";
@@ -373,7 +373,7 @@ static std::string ReadRegistryKey()
 	std::string str;
 	str.resize(size);
 
-	result = RegGetValueA(HKEY_CURRENT_USER_LOCAL_SETTINGS, RegistryKey, "Config", RRF_RT_REG_SZ, 0, &str[0], &size);
+	result = RegGetValueA(HKEY_CURRENT_USER_LOCAL_SETTINGS, RegistryKey, valueName, RRF_RT_REG_SZ, 0, &str[0], &size);
 	if (result != ERROR_SUCCESS) {
 		LogRegistryResult(result);
 		return "";
@@ -383,7 +383,7 @@ static std::string ReadRegistryKey()
 	return str;
 }
 
-static void WriteRegistryKey(std::string str)
+static void WriteRegistryKey(const char* valueName, const std::string& str)
 {
 	HKEY hkey;
 	auto result = RegCreateKeyExA(HKEY_CURRENT_USER_LOCAL_SETTINGS, RegistryKey, 0, REG_NONE, 0, KEY_ALL_ACCESS, 0, &hkey, 0);
@@ -394,7 +394,7 @@ static void WriteRegistryKey(std::string str)
 
 	DWORD size = static_cast<DWORD>(str.size() + 1);
 
-	result = RegSetValueExA(hkey, "Config", 0, REG_SZ, reinterpret_cast<const BYTE*>(str.c_str()), size);
+	result = RegSetValueExA(hkey, valueName, 0, REG_SZ, reinterpret_cast<const BYTE*>(str.c_str()), size);
 	if (result != ERROR_SUCCESS) {
 		LogRegistryResult(result);
 	}
@@ -411,7 +411,7 @@ void LoadProfile(CalibrationContext& ctx)
 
 	ctx.validProfile = false;
 
-	auto str = ReadRegistryKey();
+	auto str = ReadRegistryKey("Config");
 	if (str == "") {
 		std::cout << "Profile is empty" << '\n';
 		ctx.Clear();
@@ -434,5 +434,35 @@ void SaveProfile(CalibrationContext& ctx)
 
 	std::stringstream io;
 	WriteProfile(ctx, io);
-	WriteRegistryKey(io.str());
+	WriteRegistryKey("Config", io.str());
+}
+
+void LoadUpdateSettings(UpdateSettings& settings)
+{
+	settings = UpdateSettings();
+	auto str = ReadRegistryKey("Updates");
+	if (str.empty()) {
+		return;
+	}
+	picojson::value v;
+	auto err = picojson::parse(v, str);
+	if (!err.empty() || !v.is<picojson::object>()) {
+		std::cerr << "Error loading update settings: " << err << '\n';
+		return;
+	}
+	auto obj = v.get<picojson::object>();
+	if (obj["check_on_startup"].is<bool>()) {
+		settings.checkOnStartup = obj["check_on_startup"].get<bool>();
+	}
+	if (obj["skipped_tag"].is<std::string>()) {
+		settings.skippedTag = obj["skipped_tag"].get<std::string>();
+	}
+}
+
+void SaveUpdateSettings(const UpdateSettings& settings)
+{
+	picojson::object obj;
+	obj["check_on_startup"].set<bool>(settings.checkOnStartup);
+	obj["skipped_tag"].set<std::string>(settings.skippedTag);
+	WriteRegistryKey("Updates", picojson::value(obj).serialize());
 }

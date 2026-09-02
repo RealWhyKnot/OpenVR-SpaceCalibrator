@@ -2,6 +2,7 @@
 #include "Calibration.h"
 #include "Configuration.h"
 #include "EmbeddedFiles.h"
+#include "Updater.h"
 #include "UserInterface.h"
 
 #include <imgui/imgui.h>
@@ -688,6 +689,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 		CreateGLFWWindow();
 		InitCalibrator();
 		LoadProfile(CalCtx);
+		LoadUpdateSettings(UpdaterCtx.settings);
+		if (UpdaterCtx.settings.checkOnStartup) {
+			UpdaterCtx.StartCheck(false);
+		}
 		RunLoop();
 
 		vr::VR_Shutdown();

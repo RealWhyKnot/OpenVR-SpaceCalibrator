@@ -6,6 +6,7 @@
 #include "CalibrationMetrics.h"
 #include "PoseFilter.h"
 #include "Version.h"
+#include "Updater.h"
 
 #include <thread>
 #include <string>
@@ -29,12 +30,15 @@ static const ImGuiWindowFlags bareWindowFlags = ImGuiWindowFlags_NoTitleBar | Im
 
 void BuildContinuousCalDisplay();
 void ShowVersionLine();
+void DrawUpdatePrompt();
+void DrawUpdatesPanel(ImVec2 panel_size);
 
 static bool runningInOverlay;
 
 void BuildMainWindow(bool runningInOverlay_)
 {
 	runningInOverlay = runningInOverlay_;
+	UpdaterCtx.Poll();
 	bool continuousCalibration = CalCtx.state == CalibrationState::Continuous || CalCtx.state == CalibrationState::ContinuousStandby;
 
 	auto& io = ImGui::GetIO();
@@ -62,6 +66,7 @@ void BuildMainWindow(bool runningInOverlay_)
 		BuildMenu(runningInOverlay);
 	}
 
+	DrawUpdatePrompt();
 	ShowVersionLine();
 
 	ImGui::PopStyleColor();
@@ -76,16 +81,92 @@ void ShowVersionLine()
 		ImGui::EndChild();
 		return;
 	}
-	ImGui::Text("Space Calibrator v" SPACECAL_VERSION_STRING);
+	ImGui::Text("Space Calibrator v" SPACECAL_VERSION_STRING " (" SPACECAL_CHANNEL ")");
 	if (runningInOverlay) {
 		ImGui::SameLine();
 		ImGui::Text("- close VR overlay to use mouse");
+	}
+	std::string updateStatus = UpdaterCtx.StatusText();
+	if (!updateStatus.empty()) {
+		ImGui::SameLine();
+		ImGui::TextDisabled("- %s", updateStatus.c_str());
 	}
 	ImGui::EndChild();
 }
 
 void CCal_BasicInfo();
 void CCal_DrawSettings();
+
+void DrawUpdatePrompt()
+{
+	static bool shown = false;
+	if (UpdaterCtx.state != UpdateState::Available) {
+		shown = false;
+	}
+	else if (!shown) {
+		ImGui::OpenPopup("Update Available");
+		shown = true;
+	}
+
+	auto& io = ImGui::GetIO();
+	ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x - 40.0f, io.DisplaySize.y - 40.0f), ImGuiCond_Always);
+	if (!ImGui::BeginPopupModal("Update Available", nullptr, bareWindowFlags)) {
+		return;
+	}
+	ImGui::TextWrapped("Space Calibrator %s is available. Installed: v%s (%s).", UpdaterCtx.available.tag.c_str(), SPACECAL_VERSION_STRING,
+	                   SPACECAL_CHANNEL);
+	ImGui::TextWrapped("Update downloads the release now and installs it after SteamVR closes. SteamVR keeps running.");
+	ImGui::NewLine();
+	float width = ImGui::GetWindowContentRegionWidth() / 3.0f - ImGui::GetStyle().FramePadding.x * 2.0f;
+	ImVec2 size(width, ImGui::GetTextLineHeight() * 2);
+	if (ImGui::Button("Update", size)) {
+		UpdaterCtx.Update();
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Skip this version", size)) {
+		UpdaterCtx.Skip();
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Later", size)) {
+		UpdaterCtx.Later();
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::EndPopup();
+}
+
+void DrawUpdatesPanel(ImVec2 panel_size)
+{
+	ImGui::BeginGroupPanel("Updates", panel_size);
+	bool dev = UpdaterCtx.Channel() == spacecal::UpdateChannel::Dev;
+	if (dev) {
+		ImGui::TextDisabled("dev build: update checks are off");
+	}
+	else {
+		if (ImGui::Checkbox("Check for updates when the overlay starts", &UpdaterCtx.settings.checkOnStartup)) {
+			SaveUpdateSettings(UpdaterCtx.settings);
+		}
+		ImGui::BeginDisabled(UpdaterCtx.state == UpdateState::Checking);
+		if (ImGui::Button("Check now")) {
+			UpdaterCtx.StartCheck(true);
+		}
+		ImGui::EndDisabled();
+		if (UpdaterCtx.state == UpdateState::Available) {
+			ImGui::SameLine();
+			if (ImGui::Button("Update")) {
+				UpdaterCtx.Update();
+			}
+		}
+		std::string status = UpdaterCtx.StatusText();
+		if (!status.empty()) {
+			ImGui::TextDisabled("%s", status.c_str());
+		}
+	}
+	ImGui::EndGroupPanel();
+}
+
 
 void BuildContinuousCalDisplay()
 {
@@ -450,6 +531,8 @@ void CCal_DrawSettings()
 		ImGui::EndGroupPanel();
 	}
 
+	DrawUpdatesPanel(panel_size);
+
 	ImGui::NewLine();
 	ImGui::Indent();
 	if (ImGui::Button("Reset settings")) {
@@ -696,6 +779,7 @@ void BuildMenu(bool runningInOverlay)
 
 		ImGui::Text("");
 		DrawSmoothingPanel(ImVec2(ImGui::GetWindowContentRegionWidth(), 0));
+		DrawUpdatesPanel(ImVec2(ImGui::GetWindowContentRegionWidth(), 0));
 	}
 	else if (CalCtx.state == CalibrationState::Editing) {
 		BuildProfileEditor();

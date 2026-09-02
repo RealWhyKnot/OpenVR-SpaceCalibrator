@@ -33,6 +33,11 @@ Smoothing applies to devices in the calibrated target space, so a profile has to
    on `activateMultipleDrivers`, and registers the overlay so it autolaunches with SteamVR.
 4. Start SteamVR. The overlay appears in the dashboard as usual.
 
+Installed copies check GitHub for a newer release when the overlay starts (beta builds see betas,
+stable builds only stable releases) and ask before updating. Accepting downloads the zip, checks its
+SHA-256, and swaps the files after SteamVR closes. Skip remembers that version; the Settings tab has
+the startup toggle and a "Check now" button. Dev builds never check.
+
 Do not launch the Steam copy of Space Calibrator while this one is registered; two copies of the
 driver would both rewrite poses. `uninstall.ps1` reverses the registration.
 
@@ -59,7 +64,8 @@ into the version line. Outputs: `build/01spacecalibrator` (driver) and `build/ar
 Tags of the form `vYYYY.M.D.N` publish a release; `vYYYY.M.D.N-beta` publishes a prerelease. The
 release workflow builds, tests, zips the driver and overlay with the install scripts, attaches a
 SHA-256 file, and writes the notes from the conventional commit subjects since the previous tag.
-A nightly job tags a beta whenever `main` moved since the last tag.
+A nightly job tags a beta whenever `main` moved since the last tag and publishes it with the same
+release workflow.
 
 ## License
 
