@@ -34,7 +34,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
     enable_language("RC")
-    set (WIN32_RESOURCES ${CMAKE_SOURCE_DIR}/src/overlay/SpaceCalibrator.rc)
+    set (WIN32_RESOURCES ${CMAKE_SOURCE_DIR}/src/overlay/SpaceCalibrator.rc ${CMAKE_BINARY_DIR}/generated/Version.rc)
 endif()
 
 # Add source files
@@ -75,6 +75,7 @@ target_include_directories(SpaceCalibratorOverlay
 target_link_libraries(SpaceCalibratorOverlay
     PRIVATE opengl32.lib
     PRIVATE dwmapi.lib
+    PRIVATE winhttp.lib
     PRIVATE glfw
     PRIVATE gl3w
     PRIVATE imgui
