@@ -25,7 +25,7 @@
 
 #include <stb_image.h>
 
-#pragma comment(linker,"\"/manifestdependency:type='win32' \
+#pragma comment(linker, "\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
 processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
@@ -43,10 +43,9 @@ extern "C" __declspec(dllexport) DWORD AmdPowerXpressRequestHighPerformance = 0x
 void CreateConsole()
 {
 	static bool created = false;
-	if (!created)
-	{
+	if (!created) {
 		AllocConsole();
-		FILE *file = nullptr;
+		FILE* file = nullptr;
 		freopen_s(&file, "CONIN$", "r", stdin);
 		freopen_s(&file, "CONOUT$", "w", stdout);
 		freopen_s(&file, "CONOUT$", "w", stderr);
@@ -54,7 +53,8 @@ void CreateConsole()
 	}
 }
 
-std::string GetRegistryString(const HKEY hKeyGroup, const char* szRegistryKey, const char* szRegistryPropKey) noexcept {
+std::string GetRegistryString(const HKEY hKeyGroup, const char* szRegistryKey, const char* szRegistryPropKey) noexcept
+{
 	DWORD dwType = REG_SZ;
 	HKEY hKey = 0;
 	// 4 KiB string buffer
@@ -70,21 +70,22 @@ std::string GetRegistryString(const HKEY hKeyGroup, const char* szRegistryKey, c
 	return "";
 }
 
-//#define DEBUG_LOGS
+// #define DEBUG_LOGS
 
 void GLFWErrorCallback(int error, const char* description)
 {
 	fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
 
-void openGLDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam)
+void openGLDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message,
+                         const void* userParam)
 {
 	fprintf(stderr, "OpenGL Debug %u: %.*s\n", id, length, message);
 }
 
 static void HandleCommandLine(LPWSTR lpCmdLine);
 
-static GLFWwindow *glfwWindow = nullptr;
+static GLFWwindow* glfwWindow = nullptr;
 static vr::VROverlayHandle_t overlayMainHandle = 0, overlayThumbnailHandle = 0;
 static GLuint fboHandle = 0, fboTextureHandle = 0;
 static int fboTextureWidth = 0, fboTextureHeight = 0;
@@ -92,16 +93,17 @@ static int fboTextureWidth = 0, fboTextureHeight = 0;
 static char cwd[MAX_PATH];
 const float MINIMIZED_MAX_FPS = 60.0f;
 
-enum DWMA_USE_IMMSERSIVE_DARK_MODE_ENUM {
+enum DWMA_USE_IMMSERSIVE_DARK_MODE_ENUM
+{
 	DWMA_USE_IMMERSIVE_DARK_MODE = 20,
 	DWMA_USE_IMMERSIVE_DARK_MODE_PRE_20H1 = 19,
 };
 
-const bool EnableDarkModeTopBar(const HWND windowHwmd) {
+const bool EnableDarkModeTopBar(const HWND windowHwmd)
+{
 	const BOOL darkBorder = TRUE;
-	const bool ok =
-		SUCCEEDED(DwmSetWindowAttribute(windowHwmd, DWMA_USE_IMMERSIVE_DARK_MODE, &darkBorder, sizeof(darkBorder)))
-		|| SUCCEEDED(DwmSetWindowAttribute(windowHwmd, DWMA_USE_IMMERSIVE_DARK_MODE_PRE_20H1, &darkBorder, sizeof(darkBorder)));
+	const bool ok = SUCCEEDED(DwmSetWindowAttribute(windowHwmd, DWMA_USE_IMMERSIVE_DARK_MODE, &darkBorder, sizeof(darkBorder))) ||
+	                SUCCEEDED(DwmSetWindowAttribute(windowHwmd, DWMA_USE_IMMERSIVE_DARK_MODE_PRE_20H1, &darkBorder, sizeof(darkBorder)));
 	return ok;
 }
 
@@ -120,8 +122,7 @@ void CreateGLFWWindow()
 	fboTextureHeight = 800;
 
 	glfwWindow = glfwCreateWindow(fboTextureWidth, fboTextureHeight, "Space Calibrator", nullptr, nullptr);
-	if (!glfwWindow)
-		throw std::runtime_error("Failed to create window");
+	if (!glfwWindow) throw std::runtime_error("Failed to create window");
 
 	glfwMakeContextCurrent(glfwWindow);
 	glfwSwapInterval(1);
@@ -147,7 +148,7 @@ void CreateGLFWWindow()
 
 	ImGui::CreateContext();
 	ImPlot::CreateContext();
-	ImGuiIO &io = ImGui::GetIO();
+	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 	io.IniFilename = nullptr;
@@ -168,27 +169,25 @@ void CreateGLFWWindow()
 	glBindFramebuffer(GL_FRAMEBUFFER, fboHandle);
 	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, fboTextureHandle, 0);
 
-	GLenum drawBuffers[1] = { GL_COLOR_ATTACHMENT0 };
+	GLenum drawBuffers[1] = {GL_COLOR_ATTACHMENT0};
 	glDrawBuffers(1, drawBuffers);
 
-	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-	{
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 		throw std::runtime_error("OpenGL framebuffer incomplete");
 	}
 }
 
-void TryCreateVROverlay() {
-	if (overlayMainHandle || !vr::VROverlay())
-		return;
+void TryCreateVROverlay()
+{
+	if (overlayMainHandle || !vr::VROverlay()) return;
 
-	vr::VROverlayError error = vr::VROverlay()->CreateDashboardOverlay(
-		OPENVR_APPLICATION_KEY, "Space Calibrator",
-		&overlayMainHandle, &overlayThumbnailHandle
-	);
+	vr::VROverlayError error =
+	    vr::VROverlay()->CreateDashboardOverlay(OPENVR_APPLICATION_KEY, "Space Calibrator", &overlayMainHandle, &overlayThumbnailHandle);
 
 	if (error == vr::VROverlayError_KeyInUse) {
 		throw std::runtime_error("Another instance of Space Calibrator is already running");
-	} else if (error != vr::VROverlayError_None) {
+	}
+	else if (error != vr::VROverlayError_None) {
 		throw std::runtime_error("Error creating VR overlay: " + std::string(vr::VROverlay()->GetOverlayErrorNameFromEnum(error)));
 	}
 
@@ -206,30 +205,26 @@ void ActivateMultipleDrivers()
 	vr::EVRSettingsError vrSettingsError;
 	bool enabled = vr::VRSettings()->GetBool(vr::k_pch_SteamVR_Section, vr::k_pch_SteamVR_ActivateMultipleDrivers_Bool, &vrSettingsError);
 
-	if (vrSettingsError != vr::VRSettingsError_None)
-	{
-		std::string err = "Could not read \"" + std::string(vr::k_pch_SteamVR_ActivateMultipleDrivers_Bool) + "\" setting: "
-			+ vr::VRSettings()->GetSettingsErrorNameFromEnum(vrSettingsError);
+	if (vrSettingsError != vr::VRSettingsError_None) {
+		std::string err = "Could not read \"" + std::string(vr::k_pch_SteamVR_ActivateMultipleDrivers_Bool) +
+		                  "\" setting: " + vr::VRSettings()->GetSettingsErrorNameFromEnum(vrSettingsError);
 
 		throw std::runtime_error(err);
 	}
 
-	if (!enabled)
-	{
+	if (!enabled) {
 		vr::VRSettings()->SetBool(vr::k_pch_SteamVR_Section, vr::k_pch_SteamVR_ActivateMultipleDrivers_Bool, true, &vrSettingsError);
-		if (vrSettingsError != vr::VRSettingsError_None)
-		{
-			std::string err = "Could not set \"" + std::string(vr::k_pch_SteamVR_ActivateMultipleDrivers_Bool) + "\" setting: "
-				+ vr::VRSettings()->GetSettingsErrorNameFromEnum(vrSettingsError);
+		if (vrSettingsError != vr::VRSettingsError_None) {
+			std::string err = "Could not set \"" + std::string(vr::k_pch_SteamVR_ActivateMultipleDrivers_Bool) +
+			                  "\" setting: " + vr::VRSettings()->GetSettingsErrorNameFromEnum(vrSettingsError);
 
 			throw std::runtime_error(err);
 		}
 
-		std::cerr << "Enabled \"" << vr::k_pch_SteamVR_ActivateMultipleDrivers_Bool << "\" setting" << std::endl;
+		std::cerr << "Enabled \"" << vr::k_pch_SteamVR_ActivateMultipleDrivers_Bool << "\" setting" << '\n';
 	}
-	else
-	{
-		std::cerr << "\"" << vr::k_pch_SteamVR_ActivateMultipleDrivers_Bool << "\" setting previously enabled" << std::endl;
+	else {
+		std::cerr << "\"" << vr::k_pch_SteamVR_ActivateMultipleDrivers_Bool << "\" setting previously enabled" << '\n';
 	}
 }
 
@@ -244,9 +239,11 @@ void InitVR()
 
 	if (!vr::VR_IsInterfaceVersionValid(vr::IVRSystem_Version)) {
 		throw std::runtime_error("OpenVR error: Outdated IVRSystem_Version");
-	} else if (!vr::VR_IsInterfaceVersionValid(vr::IVRSettings_Version)) {
+	}
+	else if (!vr::VR_IsInterfaceVersionValid(vr::IVRSettings_Version)) {
 		throw std::runtime_error("OpenVR error: Outdated IVRSettings_Version");
-	} else if (!vr::VR_IsInterfaceVersionValid(vr::IVROverlay_Version)) {
+	}
+	else if (!vr::VR_IsInterfaceVersionValid(vr::IVROverlay_Version)) {
 		throw std::runtime_error("OpenVR error: Outdated IVROverlay_Version");
 	}
 
@@ -256,29 +253,33 @@ void InitVR()
 static char textBuf[0x400] = {};
 
 static bool immediateRedraw;
-void RequestImmediateRedraw() {
+void RequestImmediateRedraw()
+{
 	immediateRedraw = true;
 }
 
-bool UninstallGithubSpaceCalibrator() {
-
+bool UninstallGithubSpaceCalibrator()
+{
 	// find the uninstall key
 
 	// HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenVRSpaceCalibrator
-	std::string uninstallKeyValue = GetRegistryString(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator", "UninstallString");
+	std::string uninstallKeyValue = GetRegistryString(
+	    HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator", "UninstallString");
 	if (uninstallKeyValue.empty()) {
 		// HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\OpenVRSpaceCalibrator
-		uninstallKeyValue = GetRegistryString(HKEY_LOCAL_MACHINE, "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator", "UninstallString");
+		uninstallKeyValue = GetRegistryString(HKEY_LOCAL_MACHINE,
+		                                      "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator",
+		                                      "UninstallString");
 		if (uninstallKeyValue.empty()) {
 			// HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall
-			uninstallKeyValue = GetRegistryString(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator", "UninstallString");
+			uninstallKeyValue = GetRegistryString(
+			    HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator", "UninstallString");
 		}
 	}
 
 	printf("uninst: %s\n", uninstallKeyValue.c_str());
 
 	if (!uninstallKeyValue.empty()) {
-
 		int size_needed = MultiByteToWideChar(CP_UTF8, 0, &uninstallKeyValue[0], (int)uninstallKeyValue.size(), 0, 0);
 		std::wstring uninstallPathUnicode(size_needed, 0);
 		MultiByteToWideChar(CP_UTF8, 0, &uninstallKeyValue[0], (int)uninstallKeyValue.size(), &uninstallPathUnicode[0], size_needed);
@@ -298,7 +299,8 @@ bool UninstallGithubSpaceCalibrator() {
 				executablePath = uninstallPathUnicode.substr(1, idx - 1);
 				commandLineArgs = uninstallPathUnicode.substr(idx + 1);
 			}
-		} else {
+		}
+		else {
 			// executable name is until the first space, find it and split accordingly
 			auto it = std::find(executablePath.begin(), executablePath.end(), ' ');
 			if (it != executablePath.end()) {
@@ -309,7 +311,7 @@ bool UninstallGithubSpaceCalibrator() {
 			}
 		}
 
-		SHELLEXECUTEINFO shExInfo = { 0 };
+		SHELLEXECUTEINFO shExInfo = {0};
 		shExInfo.cbSize = sizeof(shExInfo);
 		shExInfo.fMask = SEE_MASK_NOCLOSEPROCESS;
 		shExInfo.hwnd = 0;
@@ -320,8 +322,7 @@ bool UninstallGithubSpaceCalibrator() {
 		shExInfo.nShow = SW_SHOW;
 		shExInfo.hInstApp = 0;
 
-		if (ShellExecuteExW(&shExInfo))
-		{
+		if (ShellExecuteExW(&shExInfo)) {
 			// valid
 			return true;
 		}
@@ -331,9 +332,9 @@ bool UninstallGithubSpaceCalibrator() {
 }
 
 double lastFrameStartTime = glfwGetTime();
-void RunLoop() {
-	while (!glfwWindowShouldClose(glfwWindow))
-	{
+void RunLoop()
+{
+	while (!glfwWindowShouldClose(glfwWindow)) {
 		TryCreateVROverlay();
 		double time = glfwGetTime();
 		CalibrationTick(time);
@@ -343,9 +344,8 @@ void RunLoop() {
 		glfwGetFramebufferSize(glfwWindow, &width, &height);
 		const bool windowVisible = (width > 0 && height > 0);
 
-		if (overlayMainHandle && vr::VROverlay())
-		{
-			auto &io = ImGui::GetIO();
+		if (overlayMainHandle && vr::VROverlay()) {
+			auto& io = ImGui::GetIO();
 			dashboardVisible = vr::VROverlay()->IsActiveDashboardOverlay(overlayMainHandle);
 
 			static bool keyboardOpen = false, keyboardJustClosed = false;
@@ -353,84 +353,77 @@ void RunLoop() {
 			// After closing the keyboard, this code waits one frame for ImGui to pick up the new text from SetActiveText
 			// before clearing the active widget. Then it waits another frame before allowing the keyboard to open again,
 			// otherwise it will do so instantly since WantTextInput is still true on the second frame.
-			if (keyboardJustClosed && keyboardOpen)
-			{
+			if (keyboardJustClosed && keyboardOpen) {
 				ImGui::ClearActiveID();
 				keyboardOpen = false;
 			}
-			else if (keyboardJustClosed)
-			{
+			else if (keyboardJustClosed) {
 				keyboardJustClosed = false;
 			}
-			else if (!io.WantTextInput)
-			{
+			else if (!io.WantTextInput) {
 				// User might close the keyboard without hitting Done, so we unset the flag to allow it to open again.
 				keyboardOpen = false;
 			}
-			else if (io.WantTextInput && !keyboardOpen && !keyboardJustClosed)
-			{
+			else if (io.WantTextInput && !keyboardOpen && !keyboardJustClosed) {
 				int id = ImGui::GetActiveID();
 				auto textInfo = ImGui::GetInputTextState(id);
 
 				if (textInfo != nullptr) {
 					textBuf[0] = 0;
-					int len = WideCharToMultiByte(CP_UTF8, 0, (LPCWCH)textInfo->TextA.Data, textInfo->TextA.Size, textBuf, sizeof(textBuf), nullptr, nullptr);
+					int len = WideCharToMultiByte(CP_UTF8, 0, (LPCWCH)textInfo->TextA.Data, textInfo->TextA.Size, textBuf, sizeof(textBuf),
+					                              nullptr, nullptr);
 					textBuf[std::min(static_cast<size_t>(len), sizeof(textBuf) - 1)] = 0;
 
-					uint32_t unFlags = 0; // EKeyboardFlags 
+					uint32_t unFlags = 0; // EKeyboardFlags
 
-					vr::VROverlay()->ShowKeyboardForOverlay(
-						overlayMainHandle, vr::k_EGamepadTextInputModeNormal, vr::k_EGamepadTextInputLineModeSingleLine,
-						unFlags, "Space Calibrator Overlay", sizeof textBuf, textBuf, 0
-					);
+					vr::VROverlay()->ShowKeyboardForOverlay(overlayMainHandle, vr::k_EGamepadTextInputModeNormal,
+					                                        vr::k_EGamepadTextInputLineModeSingleLine, unFlags, "Space Calibrator Overlay",
+					                                        sizeof textBuf, textBuf, 0);
 					keyboardOpen = true;
 				}
 			}
 
 			vr::VREvent_t vrEvent;
-			while (vr::VROverlay()->PollNextOverlayEvent(overlayMainHandle, &vrEvent, sizeof(vrEvent)))
-			{
+			while (vr::VROverlay()->PollNextOverlayEvent(overlayMainHandle, &vrEvent, sizeof(vrEvent))) {
 				switch (vrEvent.eventType) {
-				case vr::VREvent_MouseMove:
-					io.AddMousePosEvent(vrEvent.data.mouse.x, vrEvent.data.mouse.y);
-					break;
-				case vr::VREvent_MouseButtonDown:
-					io.AddMouseButtonEvent((vrEvent.data.mouse.button & vr::VRMouseButton_Left) == vr::VRMouseButton_Left ? 0 : 1, true);
-					break;
-				case vr::VREvent_MouseButtonUp:
-					io.AddMouseButtonEvent((vrEvent.data.mouse.button & vr::VRMouseButton_Left) == vr::VRMouseButton_Left ? 0 : 1, false);
-					break;
-				case vr::VREvent_ScrollDiscrete:
-				{
-					float x = vrEvent.data.scroll.xdelta * 360.0f * 8.0f;
-					float y = vrEvent.data.scroll.ydelta * 360.0f * 8.0f;
-					io.AddMouseWheelEvent(x, y);
-					break;
-				}
-				case vr::VREvent_KeyboardDone: {
-					vr::VROverlay()->GetKeyboardText(textBuf, sizeof textBuf);
+					case vr::VREvent_MouseMove: io.AddMousePosEvent(vrEvent.data.mouse.x, vrEvent.data.mouse.y); break;
+					case vr::VREvent_MouseButtonDown:
+						io.AddMouseButtonEvent((vrEvent.data.mouse.button & vr::VRMouseButton_Left) == vr::VRMouseButton_Left ? 0 : 1,
+						                       true);
+						break;
+					case vr::VREvent_MouseButtonUp:
+						io.AddMouseButtonEvent((vrEvent.data.mouse.button & vr::VRMouseButton_Left) == vr::VRMouseButton_Left ? 0 : 1,
+						                       false);
+						break;
+					case vr::VREvent_ScrollDiscrete: {
+						float x = vrEvent.data.scroll.xdelta * 360.0f * 8.0f;
+						float y = vrEvent.data.scroll.ydelta * 360.0f * 8.0f;
+						io.AddMouseWheelEvent(x, y);
+						break;
+					}
+					case vr::VREvent_KeyboardDone: {
+						vr::VROverlay()->GetKeyboardText(textBuf, sizeof textBuf);
 
-					int id = ImGui::GetActiveID();
-					auto textInfo = ImGui::GetInputTextState(id);
-					int bufSize = MultiByteToWideChar(CP_UTF8, 0, textBuf, -1, nullptr, 0);
-					textInfo->TextA.resize(bufSize);
-					MultiByteToWideChar(CP_UTF8, 0, textBuf, -1, (LPWSTR)textInfo->TextA.Data, bufSize);
-					textInfo->CurLenA = bufSize;
-					textInfo->CurLenA = WideCharToMultiByte(CP_UTF8, 0, (LPCWCH)textInfo->TextA.Data, textInfo->TextA.Size, nullptr, 0, nullptr, nullptr);
-					
-					keyboardJustClosed = true;
-					break;
-				}
-				case vr::VREvent_Quit:
-					return;
+						int id = ImGui::GetActiveID();
+						auto textInfo = ImGui::GetInputTextState(id);
+						int bufSize = MultiByteToWideChar(CP_UTF8, 0, textBuf, -1, nullptr, 0);
+						textInfo->TextA.resize(bufSize);
+						MultiByteToWideChar(CP_UTF8, 0, textBuf, -1, (LPWSTR)textInfo->TextA.Data, bufSize);
+						textInfo->CurLenA = bufSize;
+						textInfo->CurLenA = WideCharToMultiByte(CP_UTF8, 0, (LPCWCH)textInfo->TextA.Data, textInfo->TextA.Size, nullptr, 0,
+						                                        nullptr, nullptr);
+
+						keyboardJustClosed = true;
+						break;
+					}
+					case vr::VREvent_Quit: return;
 				}
 			}
 		}
-		
-		if (windowVisible || dashboardVisible)
-		{
-			auto &io = ImGui::GetIO();
-			
+
+		if (windowVisible || dashboardVisible) {
+			auto& io = ImGui::GetIO();
+
 			// These change state now, so we must execute these before doing our own modifications to the io state for VR
 			ImGui_ImplOpenGL3_NewFrame();
 			ImGui_ImplGlfw_NewFrame();
@@ -452,8 +445,11 @@ void RunLoop() {
 
 			if (s_isGitHubVersionInstalled && !githubPopupDismissed) {
 				ImGui::OpenPopup("Conflicting Space Calibrator install");
-				if (ImGui::BeginPopupModal("Conflicting Space Calibrator install", 0, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize)) {
-					ImGui::Text("You have multiple versions of Space Calibrator installed!\n\nPlease uninstall the GitHub version to use the Steam version of Space Calibrator.\n\nDo you wish to open the settings app to uninstall the GitHub version of Space Calibrator? (SteamVR will have to be closed)");
+				if (ImGui::BeginPopupModal("Conflicting Space Calibrator install", 0,
+				                           ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize)) {
+					ImGui::Text("You have multiple versions of Space Calibrator installed!\n\nPlease uninstall the GitHub version to use "
+					            "the Steam version of Space Calibrator.\n\nDo you wish to open the settings app to uninstall the GitHub "
+					            "version of Space Calibrator? (SteamVR will have to be closed)");
 
 					ImGui::NewLine();
 
@@ -484,26 +480,24 @@ void RunLoop() {
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-			if (width && height)
-			{
+			if (width && height) {
 				glBindFramebuffer(GL_READ_FRAMEBUFFER, fboHandle);
 				glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 				glfwSwapBuffers(glfwWindow);
 			}
 
-			if (dashboardVisible)
-			{
+			if (dashboardVisible) {
 				vr::Texture_t vrTex = {
-					.handle = (void*)
+				    .handle = (void*)
 #if defined _WIN64 || defined _LP64
-				(uint64_t)
+				        (uint64_t)
 #endif
-						fboTextureHandle,
-					.eType = vr::TextureType_OpenGL,
-					.eColorSpace = vr::ColorSpace_Auto,
+				            fboTextureHandle,
+				    .eType = vr::TextureType_OpenGL,
+				    .eColorSpace = vr::ColorSpace_Auto,
 				};
 
-				vr::HmdVector2_t mouseScale = { (float) fboTextureWidth, (float) fboTextureHeight };
+				vr::HmdVector2_t mouseScale = {(float)fboTextureWidth, (float)fboTextureHeight};
 
 				vr::VROverlay()->SetOverlayTexture(overlayMainHandle, &vrTex);
 				vr::VROverlay()->SetOverlayMouseScale(overlayMainHandle, &mouseScale);
@@ -513,8 +507,7 @@ void RunLoop() {
 		const double dashboardInterval = 1.0 / 90.0; // fps
 		double waitEventsTimeout = std::max(CalCtx.wantedUpdateInterval, dashboardInterval);
 
-		if (dashboardVisible && waitEventsTimeout > dashboardInterval)
-			waitEventsTimeout = dashboardInterval;
+		if (dashboardVisible && waitEventsTimeout > dashboardInterval) waitEventsTimeout = dashboardInterval;
 
 		if (immediateRedraw) {
 			waitEventsTimeout = 0;
@@ -524,71 +517,76 @@ void RunLoop() {
 		glfwWaitEventsTimeout(waitEventsTimeout);
 
 		// If we're minimized rendering won't limit our frame rate so we need to do it ourselves.
-		if (glfwGetWindowAttrib(glfwWindow, GLFW_ICONIFIED))
-		{
+		if (glfwGetWindowAttrib(glfwWindow, GLFW_ICONIFIED)) {
 			double targetFrameTime = 1 / MINIMIZED_MAX_FPS;
 			double waitTime = targetFrameTime - (glfwGetTime() - lastFrameStartTime);
-			if (waitTime > 0)
-			{
+			if (waitTime > 0) {
 				std::this_thread::sleep_for(std::chrono::duration<double>(waitTime));
 			}
-		
+
 			lastFrameStartTime += targetFrameTime;
 		}
 	}
 }
 
-void VerifySetupCorrect() {
+void VerifySetupCorrect()
+{
 	// register the manifest so that it shows up in the overlays menu
 	if (!vr::VRApplications()->IsApplicationInstalled(OPENVR_APPLICATION_KEY)) {
 		std::string manifestPath = std::format("{}\\{}", cwd, "manifest.vrmanifest");
-		std::cout << "Adding manifest path: " << manifestPath << std::endl;
+		std::cout << "Adding manifest path: " << manifestPath << '\n';
 		// If manifest is not installed, try installing it, and set it to auto-start with SteamVR
 		auto vrAppErr = vr::VRApplications()->AddApplicationManifest(manifestPath.c_str());
 		if (vrAppErr != vr::VRApplicationError_None) {
 			fprintf(stderr, "Failed to add manifest: %s\n", vr::VRApplications()->GetApplicationsErrorNameFromEnum(vrAppErr));
-		} else {
+		}
+		else {
 			vr::VRApplications()->SetApplicationAutoLaunch(OPENVR_APPLICATION_KEY, true);
 		}
-	} else {
+	}
+	else {
 		// Application is already registered, do not alter settings
-		std::cout << "Space Calibrator already registered with SteamVR. Skipping..." << std::endl;
+		std::cout << "Space Calibrator already registered with SteamVR. Skipping..." << '\n';
 	}
 
 	// try removing the legacy app manifest from Steam, otherwise people will have multiple entries in the overlays menu
 	if (vr::VRApplications()->IsApplicationInstalled(LEGACY_OPENVR_APPLICATION_KEY)) {
-		std::cout << "Found a legacy version of Space Calibrator..." << std::endl;
+		std::cout << "Found a legacy version of Space Calibrator..." << '\n';
 		// GitHub key is installed, uninstall it
 		vr::EVRApplicationError appErr = vr::EVRApplicationError::VRApplicationError_None;
 		char manifestPathBuffer[MAX_PATH + 32 /* for good measure */] = {};
-		uint32_t szBufferSize = vr::VRApplications()->GetApplicationPropertyString(LEGACY_OPENVR_APPLICATION_KEY, vr::VRApplicationProperty_BinaryPath_String, manifestPathBuffer, sizeof(manifestPathBuffer), &appErr);
+		uint32_t szBufferSize =
+		    vr::VRApplications()->GetApplicationPropertyString(LEGACY_OPENVR_APPLICATION_KEY, vr::VRApplicationProperty_BinaryPath_String,
+		                                                       manifestPathBuffer, sizeof(manifestPathBuffer), &appErr);
 		if (appErr != vr::VRApplicationError_None) {
-			std::cout << "Failed to get binary path of " << LEGACY_OPENVR_APPLICATION_KEY << std::endl;
+			std::cout << "Failed to get binary path of " << LEGACY_OPENVR_APPLICATION_KEY << '\n';
 			return;
 		}
-		
+
 		// replace XXX.exe with manifest.vrmanifest
 		const char* newFileName = "manifest.vrmanifest";
 		char* lastSlash = strrchr(manifestPathBuffer, '\\');
 		if (lastSlash) {
 			*(lastSlash + 1) = '\0';
-			strcat(manifestPathBuffer, newFileName);
+			strcat_s(manifestPathBuffer, sizeof(manifestPathBuffer), newFileName);
 		}
 
 		appErr = vr::VRApplications()->RemoveApplicationManifest(manifestPathBuffer);
 		if (appErr != vr::VRApplicationError_None) {
-			std::cout << "Failed to remove legacy application manifest. You may have duplicate entries in the overlays list." << std::endl;
+			std::cout << "Failed to remove legacy application manifest. You may have duplicate entries in the overlays list." << '\n';
 		}
 	}
 }
 
 // Checks if a GitHub install of Space Calibrator is available when running via Steam.
 // If the GitHub version is found, we yell at the user telling them to uninstall it first as it conflicts with the Steam version
-void CheckGithubVersionInstalledOnSteam() {
+void CheckGithubVersionInstalledOnSteam()
+{
 	// there are 3 locations for the uninstall string, test each one of them
-	
+
 	// HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenVRSpaceCalibrator
-	std::string uninstallKeyValue = GetRegistryString(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator", "UninstallString");
+	std::string uninstallKeyValue = GetRegistryString(
+	    HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator", "UninstallString");
 	if (!uninstallKeyValue.empty()) {
 		// Space Calibrator was installed via GitHub, but we're running via Steam! Uh oh!
 		s_isGitHubVersionInstalled = true;
@@ -596,7 +594,9 @@ void CheckGithubVersionInstalledOnSteam() {
 	}
 
 	// HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\OpenVRSpaceCalibrator
-	uninstallKeyValue = GetRegistryString(HKEY_LOCAL_MACHINE, "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator", "UninstallString");
+	uninstallKeyValue =
+	    GetRegistryString(HKEY_LOCAL_MACHINE, "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator",
+	                      "UninstallString");
 	if (!uninstallKeyValue.empty()) {
 		// Space Calibrator was installed via GitHub, but we're running via Steam! Uh oh!
 		s_isGitHubVersionInstalled = true;
@@ -604,15 +604,17 @@ void CheckGithubVersionInstalledOnSteam() {
 	}
 
 	// HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall
-	uninstallKeyValue = GetRegistryString(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator", "UninstallString");
+	uninstallKeyValue = GetRegistryString(
+	    HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator", "UninstallString");
 	if (!uninstallKeyValue.empty()) {
 		// Space Calibrator was installed via GitHub, but we're running via Steam! Uh oh!
 		s_isGitHubVersionInstalled = true;
 		return;
 	}
 
-	// Also check for the presence of a driver in the SteamVR runtime's drivers directory (I should really make the installer not install the driver there...)
-	char cVrRuntimePath[MAX_PATH] = { 0 };
+	// Also check for the presence of a driver in the SteamVR runtime's drivers directory (I should really make the installer not install
+	// the driver there...)
+	char cVrRuntimePath[MAX_PATH] = {0};
 	unsigned int szPathLen = 0;
 	vr::VR_GetRuntimePath(cVrRuntimePath, MAX_PATH, &szPathLen);
 	if (szPathLen > 0 && std::filesystem::is_directory(cVrRuntimePath)) {
@@ -630,7 +632,7 @@ void CheckGithubVersionInstalledOnSteam() {
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 {
 	if (_getcwd(cwd, MAX_PATH) == nullptr) {
-		// @TODO: Handle Invalid working dir case. Should never happen but you never know 
+		// @TODO: Handle Invalid working dir case. Should never happen but you never know
 	}
 	HandleCommandLine(lpCmdLine);
 
@@ -638,8 +640,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	CreateConsole();
 #endif
 
-	if (!glfwInit())
-	{
+	if (!glfwInit()) {
 		MessageBox(nullptr, L"Failed to initialize GLFW", L"", 0);
 		return 0;
 	}
@@ -650,14 +651,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	char steamAppId[256] = {};
 	DWORD result = GetEnvironmentVariableA("SteamAppId", steamAppId, sizeof(steamAppId));
 	if (result > 0 && steamAppId != nullptr) {
-		if (c_SPACE_CALIBRATOR_STEAM_APP_ID == steamAppId ||
-			c_STEAMVR_STEAM_APP_ID == steamAppId) {
+		if (c_SPACE_CALIBRATOR_STEAM_APP_ID == steamAppId || c_STEAMVR_STEAM_APP_ID == steamAppId) {
 			// We got launched via the Steam client UI.
 			hSteamMutex = CreateMutexA(NULL, FALSE, STEAM_MUTEX_KEY);
 			isRunningViaSteam = true;
 			if (hSteamMutex == nullptr) {
 				hSteamMutex = INVALID_HANDLE_VALUE;
-			} else {
+			}
+			else {
 				// mutex opened, check if we opened one, if so exit
 				if (GetLastError() == ERROR_ALREADY_EXISTS) {
 					CloseHandle(hSteamMutex);
@@ -674,9 +675,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 		if (isRunningViaSteam) {
 			CheckGithubVersionInstalledOnSteam();
 			printf("foundGithub: %d\n", s_isGitHubVersionInstalled);
-			if (s_isGitHubVersionInstalled) {
-
-			}
+			if (s_isGitHubVersionInstalled) {}
 		}
 		VerifySetupCorrect();
 		CreateGLFWWindow();
@@ -686,20 +685,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
 		vr::VR_Shutdown();
 
-		if (fboHandle)
-			glDeleteFramebuffers(1, &fboHandle);
+		if (fboHandle) glDeleteFramebuffers(1, &fboHandle);
 
-		if (fboTextureHandle)
-			glDeleteTextures(1, &fboTextureHandle);
+		if (fboTextureHandle) glDeleteTextures(1, &fboTextureHandle);
 
 		ImGui_ImplOpenGL3_Shutdown();
 		ImGui_ImplGlfw_Shutdown();
 		ImPlot::DestroyContext();
 		ImGui::DestroyContext();
 	}
-	catch (std::runtime_error &e)
-	{
-		std::cerr << "Runtime error: " << e.what() << std::endl;
+	catch (std::runtime_error& e) {
+		std::cerr << "Runtime error: " << e.what() << '\n';
 		wchar_t message[1024];
 		swprintf(message, 1024, L"%hs", e.what());
 		MessageBox(nullptr, message, L"Runtime Error", 0);
@@ -710,8 +706,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 		hSteamMutex = nullptr;
 	}
 
-	if (glfwWindow)
-		glfwDestroyWindow(glfwWindow);
+	if (glfwWindow) glfwDestroyWindow(glfwWindow);
 
 	glfwTerminate();
 	return 0;
@@ -719,13 +714,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
 static void HandleCommandLine(LPWSTR lpCmdLine)
 {
-	if (lstrcmp(lpCmdLine, L"-openvrpath") == 0)
-	{
+	if (lstrcmp(lpCmdLine, L"-openvrpath") == 0) {
 		auto vrErr = vr::VRInitError_None;
 		vr::VR_Init(&vrErr, vr::VRApplication_Utility);
-		if (vrErr == vr::VRInitError_None)
-		{
-			char cruntimePath[MAX_PATH] = { 0 };
+		if (vrErr == vr::VRInitError_None) {
+			char cruntimePath[MAX_PATH] = {0};
 			unsigned int pathLen;
 			vr::VR_GetRuntimePath(cruntimePath, MAX_PATH, &pathLen);
 
@@ -737,39 +730,34 @@ static void HandleCommandLine(LPWSTR lpCmdLine)
 		vr::VR_Shutdown();
 		exit(-2);
 	}
-	else if (lstrcmp(lpCmdLine, L"-installmanifest") == 0)
-	{
+	else if (lstrcmp(lpCmdLine, L"-installmanifest") == 0) {
 		auto vrErr = vr::VRInitError_None;
 		vr::VR_Init(&vrErr, vr::VRApplication_Utility);
-		if (vrErr == vr::VRInitError_None)
-		{
-			if (vr::VRApplications()->IsApplicationInstalled(OPENVR_APPLICATION_KEY))
-			{
-				char oldWd[MAX_PATH] = { 0 };
+		if (vrErr == vr::VRInitError_None) {
+			if (vr::VRApplications()->IsApplicationInstalled(OPENVR_APPLICATION_KEY)) {
+				char oldWd[MAX_PATH] = {0};
 				auto vrAppErr = vr::VRApplicationError_None;
-				vr::VRApplications()->GetApplicationPropertyString(OPENVR_APPLICATION_KEY, vr::VRApplicationProperty_WorkingDirectory_String, oldWd, MAX_PATH, &vrAppErr);
-				if (vrAppErr != vr::VRApplicationError_None)
-				{
-					fprintf(stderr, "Failed to get old working dir, skipping removal: %s\n", vr::VRApplications()->GetApplicationsErrorNameFromEnum(vrAppErr));
+				vr::VRApplications()->GetApplicationPropertyString(
+				    OPENVR_APPLICATION_KEY, vr::VRApplicationProperty_WorkingDirectory_String, oldWd, MAX_PATH, &vrAppErr);
+				if (vrAppErr != vr::VRApplicationError_None) {
+					fprintf(stderr, "Failed to get old working dir, skipping removal: %s\n",
+					        vr::VRApplications()->GetApplicationsErrorNameFromEnum(vrAppErr));
 				}
-				else
-				{
+				else {
 					std::string manifestPath = oldWd;
 					manifestPath += "\\manifest.vrmanifest";
-					std::cout << "Removing old manifest path: " << manifestPath << std::endl;
+					std::cout << "Removing old manifest path: " << manifestPath << '\n';
 					vr::VRApplications()->RemoveApplicationManifest(manifestPath.c_str());
 				}
 			}
 			std::string manifestPath = cwd;
 			manifestPath += "\\manifest.vrmanifest";
-			std::cout << "Adding manifest path: " << manifestPath << std::endl;
+			std::cout << "Adding manifest path: " << manifestPath << '\n';
 			auto vrAppErr = vr::VRApplications()->AddApplicationManifest(manifestPath.c_str());
-			if (vrAppErr != vr::VRApplicationError_None)
-			{
+			if (vrAppErr != vr::VRApplicationError_None) {
 				fprintf(stderr, "Failed to add manifest: %s\n", vr::VRApplications()->GetApplicationsErrorNameFromEnum(vrAppErr));
 			}
-			else
-			{
+			else {
 				vr::VRApplications()->SetApplicationAutoLaunch(OPENVR_APPLICATION_KEY, true);
 			}
 			vr::VR_Shutdown();
@@ -779,17 +767,14 @@ static void HandleCommandLine(LPWSTR lpCmdLine)
 		vr::VR_Shutdown();
 		exit(-2);
 	}
-	else if (lstrcmp(lpCmdLine, L"-removemanifest") == 0)
-	{
+	else if (lstrcmp(lpCmdLine, L"-removemanifest") == 0) {
 		auto vrErr = vr::VRInitError_None;
 		vr::VR_Init(&vrErr, vr::VRApplication_Utility);
-		if (vrErr == vr::VRInitError_None)
-		{
-			if (vr::VRApplications()->IsApplicationInstalled(OPENVR_APPLICATION_KEY))
-			{
+		if (vrErr == vr::VRInitError_None) {
+			if (vr::VRApplications()->IsApplicationInstalled(OPENVR_APPLICATION_KEY)) {
 				std::string manifestPath = cwd;
 				manifestPath += "\\manifest.vrmanifest";
-				std::cout << "Removing manifest path: " << manifestPath << std::endl;
+				std::cout << "Removing manifest path: " << manifestPath << '\n';
 				vr::VRApplications()->RemoveApplicationManifest(manifestPath.c_str());
 			}
 			vr::VR_Shutdown();
@@ -799,25 +784,20 @@ static void HandleCommandLine(LPWSTR lpCmdLine)
 		vr::VR_Shutdown();
 		exit(-2);
 	}
-	else if (lstrcmp(lpCmdLine, L"-activatemultipledrivers") == 0)
-	{
+	else if (lstrcmp(lpCmdLine, L"-activatemultipledrivers") == 0) {
 		int ret = -2;
 		auto vrErr = vr::VRInitError_None;
 		vr::VR_Init(&vrErr, vr::VRApplication_Utility);
-		if (vrErr == vr::VRInitError_None)
-		{
-			try
-			{
+		if (vrErr == vr::VRInitError_None) {
+			try {
 				ActivateMultipleDrivers();
 				ret = 0;
 			}
-			catch (std::runtime_error &e)
-			{
-				std::cerr << e.what() << std::endl;
+			catch (std::runtime_error& e) {
+				std::cerr << e.what() << '\n';
 			}
 		}
-		else
-		{
+		else {
 			fprintf(stderr, "Failed to initialize OpenVR: %s\n", vr::VR_GetVRInitErrorAsEnglishDescription(vrErr));
 		}
 		vr::VR_Shutdown();

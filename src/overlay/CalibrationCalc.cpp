@@ -3,25 +3,26 @@
 #include "CalibrationMetrics.h"
 #include "Protocol.h"
 
-inline vr::HmdQuaternion_t operator*(const vr::HmdQuaternion_t& lhs, const vr::HmdQuaternion_t& rhs) {
-	return {
-		(lhs.w * rhs.w) - (lhs.x * rhs.x) - (lhs.y * rhs.y) - (lhs.z * rhs.z),
-		(lhs.w * rhs.x) + (lhs.x * rhs.w) + (lhs.y * rhs.z) - (lhs.z * rhs.y),
-		(lhs.w * rhs.y) + (lhs.y * rhs.w) + (lhs.z * rhs.x) - (lhs.x * rhs.z),
-		(lhs.w * rhs.z) + (lhs.z * rhs.w) + (lhs.x * rhs.y) - (lhs.y * rhs.x)
-	};
+inline vr::HmdQuaternion_t operator*(const vr::HmdQuaternion_t& lhs, const vr::HmdQuaternion_t& rhs)
+{
+	return {(lhs.w * rhs.w) - (lhs.x * rhs.x) - (lhs.y * rhs.y) - (lhs.z * rhs.z),
+	        (lhs.w * rhs.x) + (lhs.x * rhs.w) + (lhs.y * rhs.z) - (lhs.z * rhs.y),
+	        (lhs.w * rhs.y) + (lhs.y * rhs.w) + (lhs.z * rhs.x) - (lhs.x * rhs.z),
+	        (lhs.w * rhs.z) + (lhs.z * rhs.w) + (lhs.x * rhs.y) - (lhs.y * rhs.x)};
 }
 
 namespace {
 
-	inline vr::HmdVector3d_t quaternionRotateVector(const vr::HmdQuaternion_t& quat, const double(&vector)[3]) {
-		vr::HmdQuaternion_t vectorQuat = { 0.0, vector[0], vector[1] , vector[2] };
-		vr::HmdQuaternion_t conjugate = { quat.w, -quat.x, -quat.y, -quat.z };
+	inline vr::HmdVector3d_t quaternionRotateVector(const vr::HmdQuaternion_t& quat, const double (&vector)[3])
+	{
+		vr::HmdQuaternion_t vectorQuat = {0.0, vector[0], vector[1], vector[2]};
+		vr::HmdQuaternion_t conjugate = {quat.w, -quat.x, -quat.y, -quat.z};
 		auto rotatedVectorQuat = quat * vectorQuat * conjugate;
-		return { rotatedVectorQuat.x, rotatedVectorQuat.y, rotatedVectorQuat.z };
+		return {rotatedVectorQuat.x, rotatedVectorQuat.y, rotatedVectorQuat.z};
 	}
 
-	inline Eigen::Matrix3d quaternionRotateMatrix(const vr::HmdQuaternion_t& quat) {
+	inline Eigen::Matrix3d quaternionRotateMatrix(const vr::HmdQuaternion_t& quat)
+	{
 		return Eigen::Quaterniond(quat.w, quat.x, quat.y, quat.z).toRotationMatrix();
 	}
 
@@ -33,16 +34,14 @@ namespace {
 
 	bool StartsWith(const std::string& str, const std::string& prefix)
 	{
-		if (str.length() < prefix.length())
-			return false;
+		if (str.length() < prefix.length()) return false;
 
 		return str.compare(0, prefix.length(), prefix) == 0;
 	}
 
 	bool EndsWith(const std::string& str, const std::string& suffix)
 	{
-		if (str.length() < suffix.length())
-			return false;
+		if (str.length() < suffix.length()) return false;
 
 		return str.compare(str.length() - suffix.length(), suffix.length(), suffix) == 0;
 	}
@@ -61,10 +60,9 @@ namespace {
 	{
 		auto euler = eulerdeg * EIGEN_PI / 180.0;
 
-		Eigen::Quaterniond rotQuat =
-			Eigen::AngleAxisd(euler(0), Eigen::Vector3d::UnitZ()) *
-			Eigen::AngleAxisd(euler(1), Eigen::Vector3d::UnitY()) *
-			Eigen::AngleAxisd(euler(2), Eigen::Vector3d::UnitX());
+		Eigen::Quaterniond rotQuat = Eigen::AngleAxisd(euler(0), Eigen::Vector3d::UnitZ()) *
+		                             Eigen::AngleAxisd(euler(1), Eigen::Vector3d::UnitY()) *
+		                             Eigen::AngleAxisd(euler(2), Eigen::Vector3d::UnitX());
 
 		vr::HmdQuaternion_t vrRotQuat;
 		vrRotQuat.x = rotQuat.coeffs()[0];
@@ -108,11 +106,13 @@ namespace {
 }
 
 const double CalibrationCalc::AxisVarianceThreshold = 0.001;
-void CalibrationCalc::PushSample(const Sample& sample) {
+void CalibrationCalc::PushSample(const Sample& sample)
+{
 	m_samples.push_back(sample);
 }
 
-void CalibrationCalc::Clear() {
+void CalibrationCalc::Clear()
+{
 	m_estimatedTransformation.setIdentity();
 	m_isValid = false;
 	m_samples.clear();
@@ -121,13 +121,13 @@ void CalibrationCalc::Clear() {
 	m_relativePosCalibrated = false;
 }
 
-std::vector<bool> CalibrationCalc::DetectOutliers() const {
+std::vector<bool> CalibrationCalc::DetectOutliers() const
+{
 	// Use bigger step to get a rough rotation.
 	std::vector<DSample> deltas;
 	const size_t step = 5;
 	for (size_t i = 0; i < m_samples.size(); i += step) {
-		for (size_t j = 0; j < i; j += step)
-		{
+		for (size_t j = 0; j < i; j += step) {
 			auto delta = DeltaRotationSamples(m_samples[i], m_samples[j]);
 			if (delta.valid) {
 				deltas.push_back(delta);
@@ -168,7 +168,7 @@ std::vector<bool> CalibrationCalc::DetectOutliers() const {
 	rot.transposeInPlace();
 
 	// Optimize an extrinsic from reference to target.
-	// Detect the outliers by comparing the extrinc computed from each pair of rotation to the optimized extrinsic. 
+	// Detect the outliers by comparing the extrinc computed from each pair of rotation to the optimized extrinsic.
 	Eigen::MatrixXd coefficients(m_samples.size() * 4, 4);
 	Eigen::VectorXd constraints(m_samples.size() * 4);
 	std::vector<bool> valids(m_samples.size());
@@ -192,20 +192,22 @@ std::vector<bool> CalibrationCalc::DetectOutliers() const {
 		double cosHalfAngle = quatExtTmp.w() * quatExt.w() + quatExtTmp.vec().dot(quatExt.vec());
 		if (abs(cosHalfAngle) < threshold) {
 			valids[i] = false;
-		} else {
+		}
+		else {
 			valids[i] = true;
 		}
 	}
 	return valids;
 }
 
-Eigen::Vector3d CalibrationCalc::CalibrateRotation(const bool ignoreOutliers) const {
+Eigen::Vector3d CalibrationCalc::CalibrateRotation(const bool ignoreOutliers) const
+{
 	std::vector<DSample> deltas;
 	std::vector<bool> valids = DetectOutliers();
 
 	for (size_t i = 0; i < m_samples.size(); i++) {
 		for (size_t j = 0; j < i; j++) {
-			if ( ignoreOutliers && (!valids[i] || !valids[j])) {
+			if (ignoreOutliers && (!valids[i] || !valids[j])) {
 				continue;
 			}
 			auto delta = DeltaRotationSamples(m_samples[i], m_samples[j]);
@@ -214,9 +216,9 @@ Eigen::Vector3d CalibrationCalc::CalibrateRotation(const bool ignoreOutliers) co
 			}
 		}
 	}
-	//char buf[256];
-	//snprintf(buf, sizeof buf, "Got %zd samples with %zd delta samples\n", m_samples.size(), deltas.size());
-	//CalCtx.Log(buf);
+	// char buf[256];
+	// snprintf(buf, sizeof buf, "Got %zd samples with %zd delta samples\n", m_samples.size(), deltas.size());
+	// CalCtx.Log(buf);
 
 	// Kabsch algorithm
 
@@ -226,10 +228,10 @@ Eigen::Vector3d CalibrationCalc::CalibrateRotation(const bool ignoreOutliers) co
 
 	// Fill matrices and calculate centroids
 	for (size_t i = 0; i < deltas.size(); i++) {
-		refPoints.row(i) << deltas[i].ref[0], deltas[i].ref[2];  // Take only the x and z components
+		refPoints.row(i) << deltas[i].ref[0], deltas[i].ref[2]; // Take only the x and z components
 		refCentroid += refPoints.row(i);
 
-		targetPoints.row(i) << deltas[i].target[0], deltas[i].target[2];  // Take only the x and z components
+		targetPoints.row(i) << deltas[i].target[0], deltas[i].target[2]; // Take only the x and z components
 		targetCentroid += targetPoints.row(i);
 	}
 
@@ -258,27 +260,25 @@ Eigen::Vector3d CalibrationCalc::CalibrateRotation(const bool ignoreOutliers) co
 	// Convert to degrees
 	Eigen::Vector3d euler(0.0, yaw * 180.0 / EIGEN_PI, 0.0);
 
-	//snprintf(buf, sizeof buf, "Calibrated rotation: yaw=%.2f pitch=%.2f roll=%.2f\n", euler[1], euler[2], euler[0]);
-	//CalCtx.Log(buf);
+	// snprintf(buf, sizeof buf, "Calibrated rotation: yaw=%.2f pitch=%.2f roll=%.2f\n", euler[1], euler[2], euler[0]);
+	// CalCtx.Log(buf);
 	return euler;
 }
 
-Eigen::Vector3d CalibrationCalc::CalibrateTranslation(const Eigen::Matrix3d &rotation) const
+Eigen::Vector3d CalibrationCalc::CalibrateTranslation(const Eigen::Matrix3d& rotation) const
 {
 	std::vector<std::pair<Eigen::Vector3d, Eigen::Matrix3d>> deltas;
 
-	for (size_t i = 0; i < m_samples.size(); i++)
-	{
+	for (size_t i = 0; i < m_samples.size(); i++) {
 		Sample s_i = m_samples[i];
 		s_i.target.rot = rotation * s_i.target.rot;
 		s_i.target.trans = rotation * s_i.target.trans;
 
-		for (size_t j = 0; j < i; j++)
-		{
+		for (size_t j = 0; j < i; j++) {
 			Sample s_j = m_samples[j];
 			s_j.target.rot = rotation * s_j.target.rot;
 			s_j.target.trans = rotation * s_j.target.trans;
-			
+
 			auto QAi = s_i.ref.rot.transpose();
 			auto QAj = s_j.ref.rot.transpose();
 			auto dQA = QAj - QAi;
@@ -296,10 +296,8 @@ Eigen::Vector3d CalibrationCalc::CalibrateTranslation(const Eigen::Matrix3d &rot
 	Eigen::VectorXd constants(deltas.size() * 3);
 	Eigen::MatrixXd coefficients(deltas.size() * 3, 3);
 
-	for (size_t i = 0; i < deltas.size(); i++)
-	{
-		for (int axis = 0; axis < 3; axis++)
-		{
+	for (size_t i = 0; i < deltas.size(); i++) {
+		for (int axis = 0; axis < 3; axis++) {
 			constants(i * 3 + axis) = deltas[i].first(axis);
 			coefficients.row(i * 3 + axis) = deltas[i].second.row(axis);
 		}
@@ -308,26 +306,29 @@ Eigen::Vector3d CalibrationCalc::CalibrateTranslation(const Eigen::Matrix3d &rot
 	Eigen::Vector3d trans = coefficients.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(constants);
 	auto transcm = trans * 100.0;
 
-	//char buf[256];
-	//snprintf(buf, sizeof buf, "Calibrated translation x=%.2f y=%.2f z=%.2f\n", transcm[0], transcm[1], transcm[2]);
-	//CalCtx.Log(buf);
+	// char buf[256];
+	// snprintf(buf, sizeof buf, "Calibrated translation x=%.2f y=%.2f z=%.2f\n", transcm[0], transcm[1], transcm[2]);
+	// CalCtx.Log(buf);
 	return trans;
 }
 
-void CalibrationCalc::CalibrateScaleOffset(const Eigen::Matrix3d& rotation, Eigen::Vector3d* out_scaleOffset, float* out_scaleFactor) const {
+void CalibrationCalc::CalibrateScaleOffset(const Eigen::Matrix3d& rotation, Eigen::Vector3d* out_scaleOffset, float* out_scaleFactor) const
+{
 	// @TODO: figure out where the target and ref
 }
 
 
 namespace {
-	Pose ApplyTransform(const Pose& originalPose, const Eigen::AffineCompact3d& transform) {
+	Pose ApplyTransform(const Pose& originalPose, const Eigen::AffineCompact3d& transform)
+	{
 		Pose pose(originalPose);
 		pose.rot = transform.rotation() * pose.rot;
 		pose.trans = transform * pose.trans;
 		return pose;
 	}
 
-	 Pose ApplyTransform(const Pose & originalPose, const Eigen::Vector3d & vrTrans, const Eigen::Matrix3d & rotMat) {
+	Pose ApplyTransform(const Pose& originalPose, const Eigen::Vector3d& vrTrans, const Eigen::Matrix3d& rotMat)
+	{
 		Pose pose(originalPose);
 		pose.rot = rotMat * pose.rot;
 		pose.trans = vrTrans + (rotMat * pose.trans);
@@ -335,11 +336,12 @@ namespace {
 	}
 }
 
-Eigen::AffineCompact3d CalibrationCalc::ComputeCalibration(const bool ignoreOutliers) const {
+Eigen::AffineCompact3d CalibrationCalc::ComputeCalibration(const bool ignoreOutliers) const
+{
 	Eigen::Vector3d rotation = CalibrateRotation(ignoreOutliers);
 	Eigen::Matrix3d rotationMat = quaternionRotateMatrix(VRRotationQuat(rotation));
 	Eigen::Vector3d translation = CalibrateTranslation(rotationMat);
-	
+
 	Eigen::AffineCompact3d rot(rotationMat);
 	Eigen::Translation3d trans(translation);
 
@@ -347,11 +349,8 @@ Eigen::AffineCompact3d CalibrationCalc::ComputeCalibration(const bool ignoreOutl
 }
 
 
-
-double CalibrationCalc::RetargetingErrorRMS(
-	const Eigen::Vector3d& hmdToTargetPos,
-	const Eigen::AffineCompact3d& calibration
-) const {
+double CalibrationCalc::RetargetingErrorRMS(const Eigen::Vector3d& hmdToTargetPos, const Eigen::AffineCompact3d& calibration) const
+{
 	double errorAccum = 0;
 	int sampleCount = 0;
 
@@ -372,7 +371,8 @@ double CalibrationCalc::RetargetingErrorRMS(
 	return sqrt(errorAccum / sampleCount);
 }
 
-double CalibrationCalc::ReferenceJitter() const {
+double CalibrationCalc::ReferenceJitter() const
+{
 	Eigen::Vector3d m_oldM, m_newM, m_oldS, m_newS;
 	int sampleCount = 0;
 
@@ -382,7 +382,8 @@ double CalibrationCalc::ReferenceJitter() const {
 		if (sampleCount == 0) {
 			m_oldM = m_newM = sample.ref.trans;
 			m_oldS = Eigen::Vector3d();
-		} else {
+		}
+		else {
 			m_newM = m_oldM + (sample.ref.trans - m_oldM) / sampleCount;
 			m_newS = m_oldS + (sample.ref.trans - m_oldM).cwiseProduct(sample.ref.trans - m_newM);
 
@@ -402,7 +403,8 @@ double CalibrationCalc::ReferenceJitter() const {
 	return sqrt(var_x * var_x + var_y * var_y + var_z * var_z);
 }
 
-double CalibrationCalc::TargetJitter() const {
+double CalibrationCalc::TargetJitter() const
+{
 	Eigen::Vector3d m_oldM, m_newM, m_oldS, m_newS;
 	int sampleCount = 0;
 
@@ -433,7 +435,8 @@ double CalibrationCalc::TargetJitter() const {
 	return sqrt(var_x * var_x + var_y * var_y + var_z * var_z);
 }
 
-Eigen::Vector3d CalibrationCalc::ComputeRefToTargetOffset(const Eigen::AffineCompact3d& calibration) const {
+Eigen::Vector3d CalibrationCalc::ComputeRefToTargetOffset(const Eigen::AffineCompact3d& calibration) const
+{
 	Eigen::Vector3d accum = Eigen::Vector3d::Zero();
 	int sampleCount = 0;
 
@@ -456,9 +459,8 @@ Eigen::Vector3d CalibrationCalc::ComputeRefToTargetOffset(const Eigen::AffineCom
 	return accum;
 }
 
-Eigen::Vector4d CalibrationCalc::ComputeAxisVariance(
-	const Eigen::AffineCompact3d& calibration
-) const {
+Eigen::Vector4d CalibrationCalc::ComputeAxisVariance(const Eigen::AffineCompact3d& calibration) const
+{
 	// We want to determine if the user rotated in enough axis to find a unique solution.
 	// It's sufficient to rotate in two axis - this is because once we constrain the mapping
 	// of those two orthogonal basis vectors, the third is determined by the cross product of
@@ -485,7 +487,7 @@ Eigen::Vector4d CalibrationCalc::ComputeAxisVariance(
 
 		points.push_back(point);
 	}
-	mean /= (double) points.size();
+	mean /= (double)points.size();
 
 	// Compute covariance matrix
 	Eigen::Matrix4d covMatrix = Eigen::Matrix4d::Zero();
@@ -497,7 +499,7 @@ Eigen::Vector4d CalibrationCalc::ComputeAxisVariance(
 			}
 		}
 	}
-	covMatrix /= (double) points.size();
+	covMatrix /= (double)points.size();
 
 	Eigen::SelfAdjointEigenSolver<Eigen::Matrix4d> solver;
 	solver.compute(covMatrix);
@@ -505,7 +507,9 @@ Eigen::Vector4d CalibrationCalc::ComputeAxisVariance(
 	return solver.eigenvalues();
 }
 
-[[nodiscard]] bool CalibrationCalc::ValidateCalibration(const Eigen::AffineCompact3d &calibration, double *error, Eigen::Vector3d *posOffsetV) {
+[[nodiscard]] bool CalibrationCalc::ValidateCalibration(const Eigen::AffineCompact3d& calibration, double* error,
+                                                        Eigen::Vector3d* posOffsetV)
+{
 	bool ok = true;
 
 	const auto posOffset = ComputeRefToTargetOffset(calibration);
@@ -513,12 +517,12 @@ Eigen::Vector4d CalibrationCalc::ComputeAxisVariance(
 	if (posOffsetV) *posOffsetV = posOffset;
 
 	// char buf[256];
-	//snprintf(buf, sizeof buf, "HMD to target offset: (%.2f, %.2f, %.2f)\n", posOffset(0), posOffset(1), posOffset(2));
-	//CalCtx.Log(buf);
+	// snprintf(buf, sizeof buf, "HMD to target offset: (%.2f, %.2f, %.2f)\n", posOffset(0), posOffset(1), posOffset(2));
+	// CalCtx.Log(buf);
 
 	double rmsError = RetargetingErrorRMS(posOffset, calibration);
-	//snprintf(buf, sizeof buf, "Position error (RMS): %.3f\n", rmsError);
-	//CalCtx.Log(buf);
+	// snprintf(buf, sizeof buf, "Position error (RMS): %.3f\n", rmsError);
+	// CalCtx.Log(buf);
 	if (rmsError > 0.1) ok = false;
 
 	if (error) *error = rmsError;
@@ -539,24 +543,25 @@ Eigen::Vector4d CalibrationCalc::ComputeAxisVariance(
 // R * S * T^-1 = C
 
 namespace {
-	class PoseAverager {
+	class PoseAverager
+	{
 	private:
 		Eigen::Matrix<double, 4, Eigen::Dynamic> quatAvg;
 		Eigen::Vector3d accum = Eigen::Vector3d::Zero();
 		int i = 0;
-	public:
-		PoseAverager(size_t n_samples) {
-			quatAvg.resize(4, n_samples);
-		}
 
-		template<typename P>
-		void Push(const P &pose) {
+	public:
+		PoseAverager(size_t n_samples) { quatAvg.resize(4, n_samples); }
+
+		template <typename P> void Push(const P& pose)
+		{
 			const Eigen::Quaterniond rot(pose.rotation());
 			quatAvg.col(i++) = Eigen::Vector4d(rot.w(), rot.x(), rot.y(), rot.z());
 			accum += pose.translation();
 		}
 
-		Eigen::AffineCompact3d Average() {
+		Eigen::AffineCompact3d Average()
+		{
 			// https://stackoverflow.com/a/27410865/36723
 			auto quatT = quatAvg.transpose();
 			Eigen::Matrix4d quatMul = quatAvg * quatT;
@@ -573,8 +578,8 @@ namespace {
 			return pose;
 		}
 
-		template<typename XS, typename F>
-		static Eigen::AffineCompact3d AverageFor(const XS& samples, const F& poseProvider) {
+		template <typename XS, typename F> static Eigen::AffineCompact3d AverageFor(const XS& samples, const F& poseProvider)
+		{
 			int sampleCount = 0;
 
 			for (auto& sample : samples) {
@@ -597,7 +602,8 @@ namespace {
 }
 
 // S = R^-1 * C * T
-Eigen::AffineCompact3d CalibrationCalc::EstimateRefToTargetPose(const Eigen::AffineCompact3d &calibration) const {
+Eigen::AffineCompact3d CalibrationCalc::EstimateRefToTargetPose(const Eigen::AffineCompact3d& calibration) const
+{
 	auto avg = PoseAverager::AverageFor(m_samples, [&](const auto& sample) {
 		return Eigen::Affine3d(sample.ref.ToAffine().inverse() * calibration * sample.target.ToAffine());
 	});
@@ -625,7 +631,8 @@ Eigen::AffineCompact3d CalibrationCalc::EstimateRefToTargetPose(const Eigen::Aff
  * playspace calibration based on the relative position of reference and target device.
  * This computation can be performed even when the devices are not moving.
  */
-bool CalibrationCalc::CalibrateByRelPose(Eigen::AffineCompact3d &out) const {
+bool CalibrationCalc::CalibrateByRelPose(Eigen::AffineCompact3d& out) const
+{
 	// R * S * T^-1 = C
 	out = PoseAverager::AverageFor(m_samples, [&](const auto& sample) {
 		return Eigen::AffineCompact3d(sample.ref.ToAffine() * m_refToTargetPose * sample.target.ToAffine().inverse());
@@ -635,8 +642,8 @@ bool CalibrationCalc::CalibrateByRelPose(Eigen::AffineCompact3d &out) const {
 }
 
 
-
-bool CalibrationCalc::ComputeOneshot(const bool ignoreOutliers) {
+bool CalibrationCalc::ComputeOneshot(const bool ignoreOutliers)
+{
 	auto calibration = ComputeCalibration(ignoreOutliers);
 
 	bool valid = ValidateCalibration(calibration);
@@ -652,8 +659,9 @@ bool CalibrationCalc::ComputeOneshot(const bool ignoreOutliers) {
 	}
 }
 
-void CalibrationCalc::ComputeInstantOffset() {
-	const auto &latestSample = m_samples.back();
+void CalibrationCalc::ComputeInstantOffset()
+{
+	const auto& latestSample = m_samples.back();
 
 	// Apply transformation
 	const auto updatedPose = ApplyTransform(latestSample.target, m_estimatedTransformation);
@@ -661,20 +669,19 @@ void CalibrationCalc::ComputeInstantOffset() {
 	// Now move the transform from world to HMD space
 	const auto hmdOriginPos = updatedPose.trans - latestSample.ref.trans;
 	const auto hmdSpace = latestSample.ref.rot.inverse() * hmdOriginPos;
-	
+
 	Metrics::posOffset_lastSample.Push(hmdSpace * 1000);
 }
 
-bool CalibrationCalc::ComputeIncremental(bool &lerp, double threshold, double relPoseMaxError, const bool ignoreOutliers) {
+bool CalibrationCalc::ComputeIncremental(bool& lerp, double threshold, double relPoseMaxError, const bool ignoreOutliers)
+{
 	Metrics::RecordTimestamp();
 
 	if (lockRelativePosition) {
 		Eigen::AffineCompact3d byRelPose;
 		double relPoseError = INFINITY;
 		Eigen::Vector3d relPosOffset;
-		if (CalibrateByRelPose(byRelPose) &&
-			ValidateCalibration(byRelPose, &relPoseError, &relPosOffset)) {
-
+		if (CalibrateByRelPose(byRelPose) && ValidateCalibration(byRelPose, &relPoseError, &relPosOffset)) {
 			Metrics::posOffset_byRelPose.Push(relPosOffset * 1000);
 			Metrics::error_byRelPose.Push(relPoseError * 1000);
 
@@ -732,7 +739,8 @@ bool CalibrationCalc::ComputeIncremental(bool &lerp, double threshold, double re
 		if (newVariance < AxisVarianceThreshold && newVariance < m_axisVariance) {
 			newCalibrationValid = false;
 			shouldRapidCorrect = false;
-		} else {
+		}
+		else {
 			newCalibrationValid = ValidateCalibration(calibration, &newError, &m_posOffset);
 			Metrics::posOffset_rawComputed.Push(m_posOffset * 1000);
 		}
@@ -746,12 +754,10 @@ bool CalibrationCalc::ComputeIncremental(bool &lerp, double threshold, double re
 		}
 
 		Metrics::error_rawComputed.Push(newError * 1000);
-		
+
 		ComputeInstantOffset();
 	}
 
-
-	
 
 #if 0
 		char tmp[256];
@@ -759,11 +765,10 @@ bool CalibrationCalc::ComputeIncremental(bool &lerp, double threshold, double re
 			priorCalibrationError, m_isValid ? "yes" : "no", stableCt, newError, !oldCalibrationBetter ? "yes" : "no");
 		CalCtx.Log(tmp);
 #endif
-		
-	
+
+
 	// Now, can we use the relative pose to perform a rapid correction?
 	if (!newCalibrationValid && shouldRapidCorrect) {
-		
 		double existingPoseErrorUsingRelPosition = RetargetingErrorRMS(m_refToTargetPose.translation(), m_estimatedTransformation);
 		Metrics::error_currentCalRelPose.Push(existingPoseErrorUsingRelPosition * 1000);
 		if (relPoseError * threshold < existingPoseErrorUsingRelPosition || newCalibrationValid && relPoseError < newError) {
@@ -782,10 +787,11 @@ bool CalibrationCalc::ComputeIncremental(bool &lerp, double threshold, double re
 		}
 		else if (m_relativePosCalibrated) {
 			CalCtx.Log("Applying updated transformation...");
-		} else {
+		}
+		else {
 			CalCtx.Log("Applying temporary transformation...");
 		}
-		
+
 		m_isValid = true;
 		m_estimatedTransformation = calibration; // @NOTE: Continuous calibration
 		m_axisVariance = newVariance;

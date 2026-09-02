@@ -2,13 +2,12 @@
 #include "Logging.h"
 #include <chrono>
 
-FILE *LogFile;
+FILE* LogFile;
 
 void OpenLogFile()
 {
 	LogFile = fopen("space_calibrator_driver.log", "a");
-	if (LogFile == nullptr)
-	{
+	if (LogFile == nullptr) {
 		LogFile = stderr;
 	}
 }

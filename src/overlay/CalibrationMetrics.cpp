@@ -8,8 +8,8 @@ namespace Metrics {
 	double TimeSpan = 30, CurrentTime = 0;
 
 	TimeSeries<Eigen::Vector3d> posOffset_rawComputed; // , rotOffset_rawComputed;
-	TimeSeries<Eigen::Vector3d> posOffset_currentCal; // , rotOffset_currentCal;
-	TimeSeries<Eigen::Vector3d> posOffset_lastSample; // , rotOffset_lastSample;
+	TimeSeries<Eigen::Vector3d> posOffset_currentCal;  // , rotOffset_currentCal;
+	TimeSeries<Eigen::Vector3d> posOffset_lastSample;  // , rotOffset_lastSample;
 	TimeSeries<Eigen::Vector3d> posOffset_byRelPose;
 
 	TimeSeries<double> error_rawComputed, error_currentCal, error_byRelPose, error_currentCalRelPose;
@@ -32,24 +32,21 @@ namespace Metrics {
 		HANDLE sh = NULL;
 		sh = FindFirstFile((path + L"\\*").c_str(), &data);
 
-		if (sh == INVALID_HANDLE_VALUE)
-		{
+		if (sh == INVALID_HANDLE_VALUE) {
 			// We should probably return an error, but we don't for the sake of minimising memory allocations
 			return size;
 		}
 
-		do
-		{
+		do {
 			// skip current and parent
-			if (!IsBrowsePath(data.cFileName))
-			{
+			if (!IsBrowsePath(data.cFileName)) {
 				// if found object is ...
 				if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY)
 					// directory, then search it recursievly
 					size = CalculateDirSize(path + L"\\" + data.cFileName, size);
 				else
 					// otherwise get object size and add it to directory size
-					size += (uint64_t)(data.nFileSizeHigh * (MAXDWORD)+data.nFileSizeLow);
+					size += (uint64_t)(data.nFileSizeHigh * (MAXDWORD) + data.nFileSizeLow);
 			}
 
 		} while (FindNextFile(sh, &data)); // do
@@ -59,9 +56,10 @@ namespace Metrics {
 		return size;
 	}
 
-	double timestamp() {
+	double timestamp()
+	{
 		static long long ts_start = ~0LL;
-		
+
 		LARGE_INTEGER ts, freq;
 		QueryPerformanceCounter(&ts);
 		QueryPerformanceFrequency(&freq);
@@ -73,7 +71,8 @@ namespace Metrics {
 		return ts.QuadPart / (double)freq.QuadPart;
 	}
 
-	void RecordTimestamp() {
+	void RecordTimestamp()
+	{
 		CurrentTime = timestamp();
 	}
 
@@ -83,56 +82,52 @@ namespace Metrics {
 	static bool logFileIsOpen = false;
 	static bool failedToOpenLogFile = false;
 
-	struct CsvField {
+	struct CsvField
+	{
 		const char* name;
 		void (*writer)(std::ofstream& s);
 	};
 
-#define TS_FIELD(n) \
-	{ #n, [](auto &s) { s << n.last(); } }
-	
-#define TS_VECTOR_FIELD(n) \
-	{ #n ".x", [](auto &s) { s << n.last()(0); } }, \
-	{ #n ".y", [](auto &s) { s << n.last()(1); } }, \
-	{ #n ".z", [](auto &s) { s << n.last()(2); } }
+#define TS_FIELD(n) {#n, [](auto& s) { s << n.last(); }}
 
-	static const CsvField fields[] = {
-		{
-			"Timestamp",
-			[](auto& s) { s << CurrentTime; }
-		},
+#define TS_VECTOR_FIELD(n)                                                                                                                 \
+	{#n ".x", [](auto& s) { s << n.last()(0); }}, {#n ".y", [](auto& s) { s << n.last()(1); }},                                            \
+	{                                                                                                                                      \
+		#n ".z", [](auto& s) {                                                                                                             \
+			s << n.last()(2);                                                                                                              \
+		}                                                                                                                                  \
+	}
 
-		TS_VECTOR_FIELD(posOffset_rawComputed),
-		TS_VECTOR_FIELD(posOffset_currentCal),
-		TS_VECTOR_FIELD(posOffset_lastSample),
-		TS_VECTOR_FIELD(posOffset_byRelPose),
-		
-		TS_FIELD(error_rawComputed),
-		TS_FIELD(error_currentCal),
-		TS_FIELD(error_byRelPose),
-		TS_FIELD(error_currentCalRelPose),
-		TS_FIELD(axisIndependence),
-		TS_FIELD(computationTime),
-		TS_FIELD(jitterRef),
-		TS_FIELD(jitterTarget),
+	static const CsvField fields[] = {{"Timestamp", [](auto& s) { s << CurrentTime; }},
 
-		{
-			"calibrationApplied", 
-			[](auto& s) {
-				if (calibrationApplied.lastTs() == CurrentTime) {
-					if (calibrationApplied.last()) {
-						s << "FULL";
-					}
-					else {
-						s << "STATIC";
-					}
-				}
-			}
-		}
-	};
-	
-	
-	static void ClearOldLogs(const std::wstring& path) {
+	                                  TS_VECTOR_FIELD(posOffset_rawComputed),
+	                                  TS_VECTOR_FIELD(posOffset_currentCal),
+	                                  TS_VECTOR_FIELD(posOffset_lastSample),
+	                                  TS_VECTOR_FIELD(posOffset_byRelPose),
+
+	                                  TS_FIELD(error_rawComputed),
+	                                  TS_FIELD(error_currentCal),
+	                                  TS_FIELD(error_byRelPose),
+	                                  TS_FIELD(error_currentCalRelPose),
+	                                  TS_FIELD(axisIndependence),
+	                                  TS_FIELD(computationTime),
+	                                  TS_FIELD(jitterRef),
+	                                  TS_FIELD(jitterTarget),
+
+	                                  {"calibrationApplied", [](auto& s) {
+		                                   if (calibrationApplied.lastTs() == CurrentTime) {
+			                                   if (calibrationApplied.last()) {
+				                                   s << "FULL";
+			                                   }
+			                                   else {
+				                                   s << "STATIC";
+			                                   }
+		                                   }
+	                                   }}};
+
+
+	static void ClearOldLogs(const std::wstring& path)
+	{
 		std::wstring search_path = path + L"\\spacecal_log.*.txt";
 		WIN32_FIND_DATA find_data;
 
@@ -162,7 +157,8 @@ namespace Metrics {
 	}
 
 	// %userprofile%\LocalLow\SpaceCalibrator\Logs
-	static bool OpenLogFile() {
+	static bool OpenLogFile()
+	{
 		PWSTR RootPath = nullptr;
 		if (S_OK != SHGetKnownFolderPath(FOLDERID_LocalAppDataLow, 0, nullptr, &RootPath)) {
 			CoTaskMemFree(RootPath);
@@ -171,7 +167,7 @@ namespace Metrics {
 
 		std::wstring path(RootPath);
 		CoTaskMemFree(RootPath);
-		
+
 		path += LR"(\SpaceCalibrator)";
 		if (CreateDirectoryW(path.c_str(), 0) == 0 && GetLastError() != ERROR_ALREADY_EXISTS) {
 			return false;
@@ -189,8 +185,9 @@ namespace Metrics {
 
 		size_t dateBufLen = GetDateFormatW(LOCALE_USER_DEFAULT, 0, &now, L"yyyy-MM-dd", nullptr, 0);
 		std::vector<WCHAR> dateBuf(dateBufLen);
-		if (!GetDateFormatEx(LOCALE_NAME_INVARIANT, 0, &now, L"yyyy-MM-dd", &dateBuf[0], static_cast<int>(dateBufLen), nullptr)) return false;
-		
+		if (!GetDateFormatEx(LOCALE_NAME_INVARIANT, 0, &now, L"yyyy-MM-dd", &dateBuf[0], static_cast<int>(dateBufLen), nullptr))
+			return false;
+
 		size_t timeBufLen = GetTimeFormatW(LOCALE_USER_DEFAULT, 0, &now, L"HH-mm-ss", nullptr, 0);
 		std::vector<WCHAR> timeBuf(timeBufLen);
 		if (!GetTimeFormatEx(LOCALE_NAME_INVARIANT, 0, &now, L"HH-mm-ss", &timeBuf[0], static_cast<int>(timeBufLen))) return false;
@@ -216,8 +213,9 @@ namespace Metrics {
 
 		return true;
 	}
-	
-	static bool CheckLogOpen() {
+
+	static bool CheckLogOpen()
+	{
 		if (!enableLogs) {
 			if (logFileIsOpen) {
 				logFile.close();
@@ -236,14 +234,16 @@ namespace Metrics {
 		return true;
 	}
 
-	void WriteLogAnnotation(const char *s) {
+	void WriteLogAnnotation(const char* s)
+	{
 		if (!CheckLogOpen()) return;
 
 		logFile << "# [" << timestamp() << "] " << s << "\n";
 		logFile.flush();
 	}
 
-	void WriteLogEntry() {
+	void WriteLogEntry()
+	{
 		if (!CheckLogOpen()) return;
 
 		if (logFileIsOpen) {

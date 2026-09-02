@@ -2,5 +2,5 @@
 
 #include "Calibration.h"
 
-void LoadProfile(CalibrationContext &ctx);
-void SaveProfile(CalibrationContext &ctx);
+void LoadProfile(CalibrationContext& ctx);
+void SaveProfile(CalibrationContext& ctx);

@@ -10,15 +10,15 @@
 namespace {
 	double refTime;
 
-	template<typename F>
-	ImPlotPoint VPIndexer(int idx, void* ptr) {
+	template <typename F> ImPlotPoint VPIndexer(int idx, void* ptr)
+	{
 		auto point = (*reinterpret_cast<const F*>(ptr))(idx);
 		point.x -= refTime;
 		return point;
 	}
 
-	template<typename F>
-	void PlotLineG(const char* name, const F& f, int points) {
+	template <typename F> void PlotLineG(const char* name, const F& f, int points)
+	{
 		const void* vp_f = &f;
 
 		if (points > 0) {
@@ -30,18 +30,14 @@ namespace {
 			ImPlot::PlotLine(name, &x, &y, 1);
 		}
 	}
-	
-	template<typename F, typename G>
-	void PlotShadedG(const char* name, const F& data, const G& reference, int count) {
+
+	template <typename F, typename G> void PlotShadedG(const char* name, const F& data, const G& reference, int count)
+	{
 		const void* vp_data = &data;
 		const void* vp_reference = &reference;
 
 		if (count > 0) {
-			ImPlot::PlotShadedG(name,
-				VPIndexer<F>, const_cast<void*>(vp_data),
-				VPIndexer<G>, const_cast<void*>(vp_reference),
-				count
-			);
+			ImPlot::PlotShadedG(name, VPIndexer<F>, const_cast<void*>(vp_data), VPIndexer<G>, const_cast<void*>(vp_reference), count);
 		}
 		else {
 			double x = -INFINITY;
@@ -50,36 +46,48 @@ namespace {
 		}
 	}
 
-	void PlotLineG(const char* name, const Metrics::TimeSeries<double>& ts) {
-		PlotLineG(name, [&](int index) {
-				const auto& p = ts[index];
-				return ImPlotPoint(p.first, p.second);
-			},
-			ts.size()
-		);
+	void PlotLineG(const char* name, const Metrics::TimeSeries<double>& ts)
+	{
+		PlotLineG(
+		    name,
+		    [&](int index) {
+			    const auto& p = ts[index];
+			    return ImPlotPoint(p.first, p.second);
+		    },
+		    ts.size());
 	}
 
-	void PlotVector(const char* namePrefix, const Metrics::TimeSeries<Eigen::Vector3d>& ts) {
+	void PlotVector(const char* namePrefix, const Metrics::TimeSeries<Eigen::Vector3d>& ts)
+	{
 		std::string name(namePrefix);
 		name += "X";
-		PlotLineG(name.c_str(), [&](int index) {
-			const auto& p = ts[index];
-			return ImPlotPoint(p.first, p.second(0));
-		}, ts.size());
+		PlotLineG(
+		    name.c_str(),
+		    [&](int index) {
+			    const auto& p = ts[index];
+			    return ImPlotPoint(p.first, p.second(0));
+		    },
+		    ts.size());
 
 		name.pop_back();
 		name += "Y";
-		PlotLineG(name.c_str(), [&](int index) {
-			const auto& p = ts[index];
-			return ImPlotPoint(p.first, p.second(1));
-		}, ts.size());
+		PlotLineG(
+		    name.c_str(),
+		    [&](int index) {
+			    const auto& p = ts[index];
+			    return ImPlotPoint(p.first, p.second(1));
+		    },
+		    ts.size());
 
 		name.pop_back();
 		name += "Z";
-		PlotLineG(name.c_str(), [&](int index) {
-			const auto& p = ts[index];
-			return ImPlotPoint(p.first, p.second(2));
-		}, ts.size());
+		PlotLineG(
+		    name.c_str(),
+		    [&](int index) {
+			    const auto& p = ts[index];
+			    return ImPlotPoint(p.first, p.second(2));
+		    },
+		    ts.size());
 	}
 
 	double lastMouseX = -INFINITY;
@@ -87,7 +95,8 @@ namespace {
 
 	std::vector<double> calAppliedTimeBuffer, calByRelPoseTimeBuffer;
 
-	void PrepApplyTicks() {
+	void PrepApplyTicks()
+	{
 		calAppliedTimeBuffer.clear();
 		calByRelPoseTimeBuffer.clear();
 
@@ -101,11 +110,13 @@ namespace {
 		}
 	}
 
-	void AddApplyTicks() {
+	void AddApplyTicks()
+	{
 		if (calAppliedTimeBuffer.empty()) {
 			double x = -INFINITY;
 			ImPlot::PlotInfLines("##CalibrationAppliedTime", &x, 1);
-		} else {
+		}
+		else {
 			ImPlot::PlotInfLines("##CalibrationAppliedTime", &calAppliedTimeBuffer[0], (int)calAppliedTimeBuffer.size());
 		}
 
@@ -127,16 +138,19 @@ namespace {
 		}
 	}
 
-	struct GraphInfo {
+	struct GraphInfo
+	{
 		const char* name;
 		void (*callback)();
 	};
 
-	void SetupXAxis() {
+	void SetupXAxis()
+	{
 		ImPlot::SetupAxisLimits(ImAxis_X1, -Metrics::TimeSpan, 0, ImGuiCond_Always);
 	}
 
-	void G_PosOffset_RawComputed() {
+	void G_PosOffset_RawComputed()
+	{
 		if (ImPlot::BeginPlot("##posOffsetRawComputed")) {
 			ImPlot::SetupAxes(nullptr, "mm", 0, ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
 			SetupXAxis();
@@ -150,7 +164,8 @@ namespace {
 		}
 	}
 
-	void G_PosOffset_CurrentCal() {
+	void G_PosOffset_CurrentCal()
+	{
 		if (ImPlot::BeginPlot("##posOffsetCurrentCal")) {
 			ImPlot::SetupAxes(nullptr, "mm", 0, ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
 			SetupXAxis();
@@ -164,7 +179,8 @@ namespace {
 		}
 	}
 
-	void G_PosOffset_LastSample() {
+	void G_PosOffset_LastSample()
+	{
 		if (ImPlot::BeginPlot("##posOffsetLastSample")) {
 			ImPlot::SetupAxes(nullptr, "mm", 0, ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
 			SetupXAxis();
@@ -178,7 +194,8 @@ namespace {
 		}
 	}
 
-	void G_PosOffset_ByRelPose() {
+	void G_PosOffset_ByRelPose()
+	{
 		if (ImPlot::BeginPlot("##posOffsetByRelPose")) {
 			ImPlot::SetupAxes(nullptr, "mm", 0, ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
 			SetupXAxis();
@@ -192,7 +209,8 @@ namespace {
 		}
 	}
 
-	void G_PosOffset_PosError() {
+	void G_PosOffset_PosError()
+	{
 		if (ImPlot::BeginPlot("##Position error")) {
 			ImPlot::SetupAxes(nullptr, "mm (RMS)");
 			SetupXAxis();
@@ -208,7 +226,8 @@ namespace {
 		}
 	}
 
-	void G_ComputationTime() {
+	void G_ComputationTime()
+	{
 		if (ImPlot::BeginPlot("##Computation Time", ImVec2(-1, 0), ImPlotFlags_NoLegend)) {
 			ImPlot::SetupAxes(nullptr, "ms", 0, ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
 			SetupXAxis();
@@ -221,7 +240,8 @@ namespace {
 		}
 	}
 
-	void G_JitterReference() {
+	void G_JitterReference()
+	{
 		if (ImPlot::BeginPlot("##JitterReference", ImVec2(-1, 0), ImPlotFlags_NoLegend)) {
 			ImPlot::SetupAxes(nullptr, "", 0, ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
 			SetupXAxis();
@@ -234,7 +254,8 @@ namespace {
 		}
 	}
 
-	void G_JitterTarget() {
+	void G_JitterTarget()
+	{
 		if (ImPlot::BeginPlot("##JitterTarget", ImVec2(-1, 0), ImPlotFlags_NoLegend)) {
 			ImPlot::SetupAxes(nullptr, "", 0, ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
 			SetupXAxis();
@@ -247,7 +268,8 @@ namespace {
 		}
 	}
 
-	void G_AxisVariance() {
+	void G_AxisVariance()
+	{
 		static bool firstrun = true;
 		static ImPlotColormap axisVarianceColormap;
 		if (firstrun) {
@@ -256,11 +278,7 @@ namespace {
 			auto defaultFirst = ImPlot::GetColormapColor(0);
 
 			ImVec4 colors[] = {
-				ImPlot::GetColormapColor(0),
-				ImPlot::GetColormapColor(1),
-				{ 1, 0, 0, 1 },
-				{ 0, 1, 0, 1 },
-				{ 0.5, 0.5, 0.5, 1 },
+			    ImPlot::GetColormapColor(0), ImPlot::GetColormapColor(1), {1, 0, 0, 1}, {0, 1, 0, 1}, {0.5, 0.5, 0.5, 1},
 			};
 
 			axisVarianceColormap = ImPlot::AddColormap("AxisVarianceColormap", colors, sizeof(colors) / sizeof(colors[0]));
@@ -276,33 +294,33 @@ namespace {
 			ImPlot::PushColormap(axisVarianceColormap);
 			ImPlot::PushStyleVar(ImPlotStyleVar_FillAlpha, 0.5f);
 			ImPlot::SetNextLineStyle(ImVec4(1, 0, 0, 1));
-			PlotShadedG("##VarianceLow",
-				[&](int index) {
-					auto p = Metrics::axisIndependence[index];
-					p.second = std::min(p.second, CalibrationCalc::AxisVarianceThreshold);
-					return ImPlotPoint(p.first, p.second);
-				},
-				[&](int index) {
-					auto p = Metrics::axisIndependence[index];
-					return ImPlotPoint(p.first, 0);
-				},
-				Metrics::axisIndependence.size()
-			);
+			PlotShadedG(
+			    "##VarianceLow",
+			    [&](int index) {
+				    auto p = Metrics::axisIndependence[index];
+				    p.second = std::min(p.second, CalibrationCalc::AxisVarianceThreshold);
+				    return ImPlotPoint(p.first, p.second);
+			    },
+			    [&](int index) {
+				    auto p = Metrics::axisIndependence[index];
+				    return ImPlotPoint(p.first, 0);
+			    },
+			    Metrics::axisIndependence.size());
 
 			ImPlot::SetNextLineStyle(ImVec4(0, 1, 0, 1));
 
-			PlotShadedG("##VarianceHigh",
-				[&](int index) {
-					auto p = Metrics::axisIndependence[index];
-					p.second = std::max(p.second, CalibrationCalc::AxisVarianceThreshold);
-					return ImPlotPoint(p.first, p.second);
-				},
-				[&](int index) {
-					auto p = Metrics::axisIndependence[index];
-					return ImPlotPoint(p.first, CalibrationCalc::AxisVarianceThreshold);
-				},
-				Metrics::axisIndependence.size()
-			);
+			PlotShadedG(
+			    "##VarianceHigh",
+			    [&](int index) {
+				    auto p = Metrics::axisIndependence[index];
+				    p.second = std::max(p.second, CalibrationCalc::AxisVarianceThreshold);
+				    return ImPlotPoint(p.first, p.second);
+			    },
+			    [&](int index) {
+				    auto p = Metrics::axisIndependence[index];
+				    return ImPlotPoint(p.first, CalibrationCalc::AxisVarianceThreshold);
+			    },
+			    Metrics::axisIndependence.size());
 
 			PlotLineG("Datapoint", Metrics::axisIndependence);
 
@@ -313,31 +331,31 @@ namespace {
 		}
 	}
 
-	const struct GraphInfo graphs[] = {
-		{ "Position Error", G_PosOffset_PosError },
-		{ "Axis Variance", G_AxisVariance },
-		{ "Offset: Raw Computed", G_PosOffset_RawComputed },
-		{ "Offset: Current Calibration", G_PosOffset_CurrentCal },
-		{ "Offset: Last Sample", G_PosOffset_LastSample },
-		{ "Offset: By Rel Pose", G_PosOffset_ByRelPose },
-		{ "Processing time", G_ComputationTime },
-		{ "Reference Jitter", G_JitterReference },
-		{ "Target Jitter", G_JitterTarget }
-	};
+	const struct GraphInfo graphs[] = {{"Position Error", G_PosOffset_PosError},
+	                                   {"Axis Variance", G_AxisVariance},
+	                                   {"Offset: Raw Computed", G_PosOffset_RawComputed},
+	                                   {"Offset: Current Calibration", G_PosOffset_CurrentCal},
+	                                   {"Offset: Last Sample", G_PosOffset_LastSample},
+	                                   {"Offset: By Rel Pose", G_PosOffset_ByRelPose},
+	                                   {"Processing time", G_ComputationTime},
+	                                   {"Reference Jitter", G_JitterReference},
+	                                   {"Target Jitter", G_JitterTarget}};
 
 	const int N_GRAPHS = sizeof(graphs) / sizeof(graphs[0]);
 }
 
-void PushCalibrationApplyTime() {
+void PushCalibrationApplyTime()
+{
 	Metrics::calibrationApplied.Push(true);
 }
 
 
-void ShowCalibrationDebug(int rows, int cols) {
+void ShowCalibrationDebug(int rows, int cols)
+{
 	static std::vector<int> curIndexes;
 
-	//ImGui::ShowDemoWindow();
-	//ImPlot::ShowDemoWindow();
+	// ImGui::ShowDemoWindow();
+	// ImPlot::ShowDemoWindow();
 
 	double initMouseX = lastMouseX;
 	wasHovered = false;
@@ -352,11 +370,11 @@ void ShowCalibrationDebug(int rows, int cols) {
 
 	ImGui::PushStyleColor(ImGuiCol_TableRowBg, bgCol);
 	ImGui::PushStyleColor(ImGuiCol_TableRowBgAlt, bgCol);
-	ImPlot::PushStyleColor(ImPlotCol_FrameBg, ImVec4(0,0,0,0));
+	ImPlot::PushStyleColor(ImPlotCol_FrameBg, ImVec4(0, 0, 0, 0));
 
 	ImGui::SetNextWindowBgAlpha(1);
 	if (!ImGui::BeginChild("##CalibrationDebug", avail, false,
-		ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoTitleBar)) {
+	                       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoTitleBar)) {
 		ImGui::EndChild();
 		return;
 	}
@@ -394,7 +412,7 @@ void ShowCalibrationDebug(int rows, int cols) {
 			ImGui::PopID();
 		}
 	}
-	
+
 	ImGui::EndTable();
 	ImGui::EndChild();
 

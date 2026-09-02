@@ -10,46 +10,44 @@ class IHook
 public:
 	const std::string name;
 
-	IHook(const std::string &name) : name(name) { }
-	virtual ~IHook() { }
+	IHook(const std::string& name) : name(name) {}
+	virtual ~IHook() {}
 
 	virtual void Destroy() = 0;
 
-	static bool Exists(const std::string &name);
-	static void Register(IHook *hook);
-	static void Unregister(IHook *hook);
+	static bool Exists(const std::string& name);
+	static void Register(IHook* hook);
+	static void Unregister(IHook* hook);
 	static void DestroyAll();
 
 private:
-	static std::map<std::string, IHook *> hooks;
+	static std::map<std::string, IHook*> hooks;
 };
 
-template<class FuncType> class Hook : public IHook
+template <class FuncType> class Hook : public IHook
 {
 public:
 	FuncType originalFunc = nullptr;
-	Hook(const std::string &name) : IHook(name) { }
+	Hook(const std::string& name) : IHook(name) {}
 
-	bool CreateHookInObjectVTable(void *object, int vtableOffset, void *detourFunction)
+	bool CreateHookInObjectVTable(void* object, int vtableOffset, void* detourFunction)
 	{
 		// For virtual objects, VC++ adds a pointer to the vtable as the first member.
 		// To access the vtable, we simply dereference the object.
-		void **vtable = *((void ***)object);
+		void** vtable = *((void***)object);
 
 		// The vtable itself is an array of pointers to member functions,
 		// in the order they were declared in.
 		targetFunc = vtable[vtableOffset];
 
-		auto err = MH_CreateHook(targetFunc, detourFunction, (LPVOID *)&originalFunc);
-		if (err != MH_OK)
-		{
+		auto err = MH_CreateHook(targetFunc, detourFunction, (LPVOID*)&originalFunc);
+		if (err != MH_OK) {
 			LOG("Failed to create hook for %s, error: %s", name.c_str(), MH_StatusToString(err));
 			return false;
 		}
 
 		err = MH_EnableHook(targetFunc);
-		if (err != MH_OK)
-		{
+		if (err != MH_OK) {
 			LOG("Failed to enable hook for %s, error: %s", name.c_str(), MH_StatusToString(err));
 			MH_RemoveHook(targetFunc);
 			return false;
@@ -62,8 +60,7 @@ public:
 
 	void Destroy()
 	{
-		if (enabled)
-		{
+		if (enabled) {
 			MH_RemoveHook(targetFunc);
 			enabled = false;
 		}
