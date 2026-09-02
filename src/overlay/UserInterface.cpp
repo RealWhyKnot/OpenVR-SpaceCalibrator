@@ -104,36 +104,45 @@ void DrawUpdatePrompt()
 		shown = false;
 	}
 	else if (!shown) {
-		ImGui::OpenPopup("Update Available");
+		ImGui::OpenPopup("Update available");
 		shown = true;
 	}
 
 	auto& io = ImGui::GetIO();
-	ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
-	ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x - 40.0f, io.DisplaySize.y - 40.0f), ImGuiCond_Always);
-	if (!ImGui::BeginPopupModal("Update Available", nullptr, bareWindowFlags)) {
+	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+	ImGui::SetNextWindowSize(ImVec2(620.0f, 0.0f), ImGuiCond_Always);
+	const ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+	                               ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize;
+	if (!ImGui::BeginPopupModal("Update available", nullptr, flags)) {
 		return;
 	}
-	ImGui::TextWrapped("Space Calibrator %s is available. Installed: v%s (%s).", UpdaterCtx.available.tag.c_str(), SPACECAL_VERSION_STRING,
-	                   SPACECAL_CHANNEL);
-	ImGui::TextWrapped("Update downloads the release now and installs it after SteamVR closes. SteamVR keeps running.");
-	ImGui::NewLine();
-	float width = ImGui::GetWindowContentRegionWidth() / 3.0f - ImGui::GetStyle().FramePadding.x * 2.0f;
-	ImVec2 size(width, ImGui::GetTextLineHeight() * 2);
-	if (ImGui::Button("Update", size)) {
-		UpdaterCtx.Update();
+	ImGuiStyle& style = ImGui::GetStyle();
+	ImGui::Spacing();
+	ImGui::Text("Space Calibrator %s", UpdaterCtx.available.tag.c_str());
+	ImGui::TextDisabled("Installed: v" SPACECAL_VERSION_STRING " (" SPACECAL_CHANNEL ")");
+	ImGui::Spacing();
+	ImGui::TextWrapped("The update downloads now and installs itself the next time SteamVR closes.");
+	ImGui::Spacing();
+	ImGui::Separator();
+	ImGui::Spacing();
+	const ImVec2 button(175.0f, 0.0f);
+	float total = button.x * 3.0f + style.ItemSpacing.x * 2.0f;
+	ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - total);
+	if (ImGui::Button("Later", button)) {
+		UpdaterCtx.Later();
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("Skip this version", size)) {
+	if (ImGui::Button("Skip this version", button)) {
 		UpdaterCtx.Skip();
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("Later", size)) {
-		UpdaterCtx.Later();
+	if (ImGui::Button("Update", button)) {
+		UpdaterCtx.Update();
 		ImGui::CloseCurrentPopup();
 	}
+	ImGui::Spacing();
 	ImGui::EndPopup();
 }
 
@@ -225,7 +234,8 @@ static void ScaledDragFloat(const char* label, double& f, double scale, double m
 	}
 	else {
 		// Otherwise do funny
-		ImGui::Text(label);
+		size_t visible = labelStr.find("##");
+		ImGui::TextUnformatted(label, visible == std::string::npos ? nullptr : label + visible);
 		ImGui::SameLine();
 		ImGui::PushID((std::string(label) + "_id").c_str());
 		// Line up to a column, multiples of 100
