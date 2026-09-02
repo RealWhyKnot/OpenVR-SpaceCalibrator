@@ -779,7 +779,6 @@ void BuildMenu(bool runningInOverlay)
 
 		ImGui::Text("");
 		DrawSmoothingPanel(ImVec2(ImGui::GetWindowContentRegionWidth(), 0));
-		DrawUpdatesPanel(ImVec2(ImGui::GetWindowContentRegionWidth(), 0));
 	}
 	else if (CalCtx.state == CalibrationState::Editing) {
 		BuildProfileEditor();
