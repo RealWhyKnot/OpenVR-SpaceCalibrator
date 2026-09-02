@@ -5,22 +5,23 @@
 
 #include <random>
 
-vr::EVRInitError ServerTrackedDeviceProvider::Init(vr::IVRDriverContext *pDriverContext)
+vr::EVRInitError ServerTrackedDeviceProvider::Init(vr::IVRDriverContext* pDriverContext)
 {
 	TRACE("ServerTrackedDeviceProvider::Init()");
 	VR_INIT_SERVER_DRIVER_CONTEXT(pDriverContext);
 
-	memset(transforms, 0, vr::k_unMaxTrackedDeviceCount * sizeof DeviceTransform);
+	memset(transforms, 0, vr::k_unMaxTrackedDeviceCount * sizeof(DeviceTransform));
 	memset(&alignmentSpeedParams, 0, sizeof alignmentSpeedParams);
+	memset(&smoothingParams, 0, sizeof smoothingParams);
 
 	alignmentSpeedParams.thr_rot_tiny = 0.1f * (EIGEN_PI / 180.0f);
 	alignmentSpeedParams.thr_rot_small = 1.0f * (EIGEN_PI / 180.0f);
 	alignmentSpeedParams.thr_rot_large = 5.0f * (EIGEN_PI / 180.0f);
 
-	alignmentSpeedParams.thr_trans_tiny = 0.1f / 1000.0; // mm
-	alignmentSpeedParams.thr_trans_small = 1.0f / 1000.0; // mm
+	alignmentSpeedParams.thr_trans_tiny = 0.1f / 1000.0;   // mm
+	alignmentSpeedParams.thr_trans_small = 1.0f / 1000.0;  // mm
 	alignmentSpeedParams.thr_trans_large = 20.0f / 1000.0; // mm
-	
+
 	alignmentSpeedParams.align_speed_tiny = 0.05f;
 	alignmentSpeedParams.align_speed_small = 0.2f;
 	alignmentSpeedParams.align_speed_large = 2.0f;
@@ -47,7 +48,8 @@ void ServerTrackedDeviceProvider::Cleanup()
 namespace {
 
 
-	vr::HmdQuaternion_t convert(const Eigen::Quaterniond& q) {
+	vr::HmdQuaternion_t convert(const Eigen::Quaterniond& q)
+	{
 		vr::HmdQuaternion_t result;
 		result.w = q.w();
 		result.x = q.x();
@@ -56,34 +58,42 @@ namespace {
 		return result;
 	}
 
-	vr::HmdVector3_t convert(const Eigen::Vector3d& v) {
+	vr::HmdVector3_t convert(const Eigen::Vector3d& v)
+	{
 		vr::HmdVector3_t result;
-		result.v[0] = (float) v.x();
-		result.v[1] = (float) v.y();
-		result.v[2] = (float) v.z();
+		result.v[0] = (float)v.x();
+		result.v[1] = (float)v.y();
+		result.v[2] = (float)v.z();
 		return result;
 	}
 
-	Eigen::Quaterniond convert(const vr::HmdQuaternion_t& q) {
+	Eigen::Quaterniond convert(const vr::HmdQuaternion_t& q)
+	{
 		return Eigen::Quaterniond(q.w, q.x, q.y, q.z);
 	}
 
-	Eigen::Vector3d convert(const vr::HmdVector3d_t& v) {
+	Eigen::Vector3d convert(const vr::HmdVector3d_t& v)
+	{
 		return Eigen::Vector3d(v.v[0], v.v[1], v.v[2]);
 	}
 
-	Eigen::Vector3d convert(const double* arr) {
+	Eigen::Vector3d convert(const double* arr)
+	{
 		return Eigen::Vector3d(arr[0], arr[1], arr[2]);
 	}
 
-	IsoTransform toIsoWorldTransform(const vr::DriverPose_t& pose) {
-		Eigen::Quaterniond rot(pose.qWorldFromDriverRotation.w, pose.qWorldFromDriverRotation.x, pose.qWorldFromDriverRotation.y, pose.qWorldFromDriverRotation.z);
-		Eigen::Vector3d trans(pose.vecWorldFromDriverTranslation[0], pose.vecWorldFromDriverTranslation[1], pose.vecWorldFromDriverTranslation[2]);
+	IsoTransform toIsoWorldTransform(const vr::DriverPose_t& pose)
+	{
+		Eigen::Quaterniond rot(pose.qWorldFromDriverRotation.w, pose.qWorldFromDriverRotation.x, pose.qWorldFromDriverRotation.y,
+		                       pose.qWorldFromDriverRotation.z);
+		Eigen::Vector3d trans(pose.vecWorldFromDriverTranslation[0], pose.vecWorldFromDriverTranslation[1],
+		                      pose.vecWorldFromDriverTranslation[2]);
 
 		return IsoTransform(rot, trans);
 	}
 
-	IsoTransform toIsoPose(const vr::DriverPose_t& pose) {
+	IsoTransform toIsoPose(const vr::DriverPose_t& pose)
+	{
 		auto worldXform = toIsoWorldTransform(pose);
 
 		Eigen::Quaterniond rot(pose.qRotation.w, pose.qRotation.x, pose.qRotation.y, pose.qRotation.z);
@@ -98,12 +108,11 @@ namespace {
  * This function heuristically evaluates the amount of drift between the src and target playspace transforms,
  * evaluated centered on the `pose` device transform. This is then used to control the speed of realignment.
  */
-ServerTrackedDeviceProvider::DeltaSize ServerTrackedDeviceProvider::GetTransformDeltaSize(
-	DeltaSize prior_delta,
-	const IsoTransform& deviceWorldPose,
-	const IsoTransform& src,
-	const IsoTransform& target
-) const {
+ServerTrackedDeviceProvider::DeltaSize ServerTrackedDeviceProvider::GetTransformDeltaSize(DeltaSize prior_delta,
+                                                                                          const IsoTransform& deviceWorldPose,
+                                                                                          const IsoTransform& src,
+                                                                                          const IsoTransform& target) const
+{
 	const auto src_pose = src * deviceWorldPose;
 	const auto target_pose = target * deviceWorldPose;
 
@@ -112,47 +121,56 @@ ServerTrackedDeviceProvider::DeltaSize ServerTrackedDeviceProvider::GetTransform
 
 	DeltaSize trans_level, rot_level;
 
-	if (trans_delta > alignmentSpeedParams.thr_trans_large) trans_level = DeltaSize::LARGE;
-	else if (trans_delta > alignmentSpeedParams.thr_trans_small) trans_level = DeltaSize::SMALL;
-	else trans_level = DeltaSize::TINY;
+	if (trans_delta > alignmentSpeedParams.thr_trans_large)
+		trans_level = DeltaSize::LARGE;
+	else if (trans_delta > alignmentSpeedParams.thr_trans_small)
+		trans_level = DeltaSize::SMALL;
+	else
+		trans_level = DeltaSize::TINY;
 
-	if (rot_delta > alignmentSpeedParams.thr_rot_large) rot_level = DeltaSize::LARGE;
-	else if (rot_delta > alignmentSpeedParams.thr_rot_small) rot_level = DeltaSize::SMALL;
-	else rot_level = DeltaSize::TINY;
+	if (rot_delta > alignmentSpeedParams.thr_rot_large)
+		rot_level = DeltaSize::LARGE;
+	else if (rot_delta > alignmentSpeedParams.thr_rot_small)
+		rot_level = DeltaSize::SMALL;
+	else
+		rot_level = DeltaSize::TINY;
 
-	if (trans_level == DeltaSize::TINY && rot_level == DeltaSize::TINY) return DeltaSize::TINY;
-	else return std::max(prior_delta, std::max(trans_level, rot_level));
+	if (trans_level == DeltaSize::TINY && rot_level == DeltaSize::TINY)
+		return DeltaSize::TINY;
+	else
+		return std::max(prior_delta, std::max(trans_level, rot_level));
 }
 
-double ServerTrackedDeviceProvider::GetTransformRate(DeltaSize delta) const {
+double ServerTrackedDeviceProvider::GetTransformRate(DeltaSize delta) const
+{
 	switch (delta) {
-	case DeltaSize::TINY: return alignmentSpeedParams.align_speed_tiny;
-	case DeltaSize::SMALL: return alignmentSpeedParams.align_speed_small;
-	default: return alignmentSpeedParams.align_speed_large;
+		case DeltaSize::TINY: return alignmentSpeedParams.align_speed_tiny;
+		case DeltaSize::SMALL: return alignmentSpeedParams.align_speed_small;
+		default: return alignmentSpeedParams.align_speed_large;
 	}
 }
 
 /**
  * Smoothly interpolates the device active transform towards the target transform.
  */
-void ServerTrackedDeviceProvider::BlendTransform(DeviceTransform& device, const IsoTransform &deviceWorldPose) const {
+void ServerTrackedDeviceProvider::BlendTransform(DeviceTransform& device, const IsoTransform& deviceWorldPose) const
+{
 	LARGE_INTEGER timestamp, freq;
 	QueryPerformanceCounter(&timestamp);
 	QueryPerformanceFrequency(&freq);
 
 	double lerp = (timestamp.QuadPart - device.lastPoll.QuadPart) / (double)freq.QuadPart;
 	device.lastPoll = timestamp;
-	
+
 	lerp *= GetTransformRate(device.currentRate);
-	if (lerp > 1.0)
-		lerp = 1.0;
-	if (lerp < 0 || isnan(lerp))
-		lerp = 0;
+	if (lerp > 1.0) lerp = 1.0;
+	if (lerp < 0 || isnan(lerp)) lerp = 0;
 
 	device.transform = device.transform.interpolateAround(lerp, device.targetTransform, deviceWorldPose.translation);
 }
 
-void ServerTrackedDeviceProvider::ApplyTransform(DeviceTransform& device, vr::DriverPose_t& devicePose) const {
+void ServerTrackedDeviceProvider::ApplyTransform(DeviceTransform& device, vr::DriverPose_t& devicePose) const
+{
 	auto deviceWorldTransform = toIsoWorldTransform(devicePose);
 	deviceWorldTransform = device.transform * deviceWorldTransform;
 	devicePose.vecWorldFromDriverTranslation[0] = deviceWorldTransform.translation(0);
@@ -162,25 +180,29 @@ void ServerTrackedDeviceProvider::ApplyTransform(DeviceTransform& device, vr::Dr
 }
 
 
-inline vr::HmdQuaternion_t operator*(const vr::HmdQuaternion_t &lhs, const vr::HmdQuaternion_t &rhs) {
-	return {
-		(lhs.w * rhs.w) - (lhs.x * rhs.x) - (lhs.y * rhs.y) - (lhs.z * rhs.z),
-		(lhs.w * rhs.x) + (lhs.x * rhs.w) + (lhs.y * rhs.z) - (lhs.z * rhs.y),
-		(lhs.w * rhs.y) + (lhs.y * rhs.w) + (lhs.z * rhs.x) - (lhs.x * rhs.z),
-		(lhs.w * rhs.z) + (lhs.z * rhs.w) + (lhs.x * rhs.y) - (lhs.y * rhs.x)
-	};
+inline vr::HmdQuaternion_t operator*(const vr::HmdQuaternion_t& lhs, const vr::HmdQuaternion_t& rhs)
+{
+	return {(lhs.w * rhs.w) - (lhs.x * rhs.x) - (lhs.y * rhs.y) - (lhs.z * rhs.z),
+	        (lhs.w * rhs.x) + (lhs.x * rhs.w) + (lhs.y * rhs.z) - (lhs.z * rhs.y),
+	        (lhs.w * rhs.y) + (lhs.y * rhs.w) + (lhs.z * rhs.x) - (lhs.x * rhs.z),
+	        (lhs.w * rhs.z) + (lhs.z * rhs.w) + (lhs.x * rhs.y) - (lhs.y * rhs.x)};
 }
 
-inline vr::HmdVector3d_t quaternionRotateVector(const vr::HmdQuaternion_t& quat, const double(&vector)[3]) {
-	vr::HmdQuaternion_t vectorQuat = { 0.0, vector[0], vector[1] , vector[2] };
-	vr::HmdQuaternion_t conjugate = { quat.w, -quat.x, -quat.y, -quat.z };
+inline vr::HmdVector3d_t quaternionRotateVector(const vr::HmdQuaternion_t& quat, const double (&vector)[3])
+{
+	vr::HmdQuaternion_t vectorQuat = {0.0, vector[0], vector[1], vector[2]};
+	vr::HmdQuaternion_t conjugate = {quat.w, -quat.x, -quat.y, -quat.z};
 	auto rotatedVectorQuat = quat * vectorQuat * conjugate;
-	return { rotatedVectorQuat.x, rotatedVectorQuat.y, rotatedVectorQuat.z };
+	return {rotatedVectorQuat.x, rotatedVectorQuat.y, rotatedVectorQuat.z};
 }
 
 void ServerTrackedDeviceProvider::SetDeviceTransform(const protocol::SetDeviceTransform& newTransform)
 {
-	auto &tf = transforms[newTransform.openVRID];
+	if (newTransform.openVRID >= vr::k_unMaxTrackedDeviceCount) {
+		return;
+	}
+
+	auto& tf = transforms[newTransform.openVRID];
 	tf.enabled = newTransform.enabled;
 
 	if (newTransform.updateTranslation) {
@@ -198,14 +220,109 @@ void ServerTrackedDeviceProvider::SetDeviceTransform(const protocol::SetDeviceTr
 		}
 	}
 
-	if (newTransform.updateScale)
-		tf.scale = newTransform.scale;
+	if (newTransform.updateScale) tf.scale = newTransform.scale;
 
 	tf.quash = newTransform.quash;
+	if (tf.smooth != newTransform.smooth) {
+		tf.filter.initialized = false;
+	}
+	tf.smooth = newTransform.smooth;
 }
 
-bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr::DriverPose_t &pose)
+void ServerTrackedDeviceProvider::HandleSetSmoothingParams(const protocol::SmoothingParams& params)
 {
+	const bool changed = smoothingParams.enabled != params.enabled || smoothingParams.posMinCutoffHz != params.posMinCutoffHz ||
+	                     smoothingParams.posBeta != params.posBeta || smoothingParams.rotMinCutoffHz != params.rotMinCutoffHz ||
+	                     smoothingParams.rotBeta != params.rotBeta || smoothingParams.dCutoffHz != params.dCutoffHz;
+	smoothingParams = params;
+	smoothingPos.minCutoffHz = params.posMinCutoffHz;
+	smoothingPos.beta = params.posBeta;
+	smoothingPos.dCutoffHz = params.dCutoffHz;
+	smoothingRot.minCutoffHz = params.rotMinCutoffHz;
+	smoothingRot.beta = params.rotBeta;
+	smoothingRot.dCutoffHz = params.dCutoffHz;
+	if (changed) {
+		LOG("smoothing %s pos(cutoff=%.2fHz beta=%.3f) rot(cutoff=%.2fHz beta=%.3f) dcutoff=%.2fHz", params.enabled ? "on" : "off",
+		    params.posMinCutoffHz, params.posBeta, params.rotMinCutoffHz, params.rotBeta, params.dCutoffHz);
+	}
+}
+
+void ServerTrackedDeviceProvider::HandleGetSmoothingStats(const protocol::SmoothingStatsRequest& request, protocol::SmoothingStats& stats)
+{
+	memset(&stats, 0, sizeof stats);
+	stats.openVRID = request.openVRID;
+	if (request.openVRID >= vr::k_unMaxTrackedDeviceCount) {
+		return;
+	}
+	const auto& tf = transforms[request.openVRID];
+	stats.active = smoothingParams.enabled && tf.smooth && tf.filter.initialized;
+	stats.lastResult = tf.lastResult;
+	stats.reseeds = tf.reseeds;
+	stats.rawJitterMm = std::sqrt(tf.rawPosJitter2) * 1000.0;
+	stats.smoothJitterMm = std::sqrt(tf.smoothPosJitter2) * 1000.0;
+	stats.rawJitterDeg = std::sqrt(tf.rawRotJitter2) * (180.0 / EIGEN_PI);
+	stats.smoothJitterDeg = std::sqrt(tf.smoothRotJitter2) * (180.0 / EIGEN_PI);
+}
+
+void ServerTrackedDeviceProvider::ApplySmoothing(DeviceTransform& device, vr::DriverPose_t& devicePose)
+{
+	if (!devicePose.poseIsValid || !devicePose.deviceIsConnected || devicePose.result != vr::TrackingResult_Running_OK) {
+		device.filter.initialized = false;
+		return;
+	}
+
+	LARGE_INTEGER now, freq;
+	QueryPerformanceCounter(&now);
+	QueryPerformanceFrequency(&freq);
+	const double dt = device.lastPoseQpc.QuadPart == 0 ? 0.0 : (now.QuadPart - device.lastPoseQpc.QuadPart) / (double)freq.QuadPart;
+	device.lastPoseQpc = now;
+
+	const double rawPos[3] = {devicePose.vecPosition[0], devicePose.vecPosition[1], devicePose.vecPosition[2]};
+	const double rawRot[4] = {devicePose.qRotation.w, devicePose.qRotation.x, devicePose.qRotation.y, devicePose.qRotation.z};
+	double prevRawPos[3], prevRawRot[4], prevPos[3], prevRot[4];
+	memcpy(prevRawPos, device.filter.prevRawPos, sizeof prevRawPos);
+	memcpy(prevRawRot, device.filter.prevRawRot, sizeof prevRawRot);
+	memcpy(prevPos, device.filter.pos, sizeof prevPos);
+	memcpy(prevRot, device.filter.rot, sizeof prevRot);
+
+	const auto result = spacecal::Step(device.filter, smoothingPos, smoothingRot, rawPos, rawRot, dt);
+	device.lastResult = (uint8_t)result;
+	if (result == spacecal::StepResult::Jump || result == spacecal::StepResult::Gap) {
+		device.reseeds++;
+	}
+	if (result == spacecal::StepResult::Invalid) {
+		return;
+	}
+
+	if (result == spacecal::StepResult::Ok) {
+		const double a = spacecal::Clamp(dt, 0.0, 1.0);
+		const double dRaw = spacecal::Distance3(rawPos, prevRawPos);
+		const double dSmooth = spacecal::Distance3(device.filter.pos, prevPos);
+		const double rRaw = spacecal::QuatAngleRad(rawRot, prevRawRot);
+		const double rSmooth = spacecal::QuatAngleRad(device.filter.rot, prevRot);
+		device.rawPosJitter2 += a * (dRaw * dRaw - device.rawPosJitter2);
+		device.smoothPosJitter2 += a * (dSmooth * dSmooth - device.smoothPosJitter2);
+		device.rawRotJitter2 += a * (rRaw * rRaw - device.rawRotJitter2);
+		device.smoothRotJitter2 += a * (rSmooth * rSmooth - device.smoothRotJitter2);
+	}
+
+	for (int i = 0; i < 3; ++i) {
+		devicePose.vecPosition[i] = device.filter.pos[i];
+		devicePose.vecVelocity[i] = device.filter.vel[i];
+		devicePose.vecAngularVelocity[i] = device.filter.angVel[i];
+	}
+	devicePose.qRotation.w = device.filter.rot[0];
+	devicePose.qRotation.x = device.filter.rot[1];
+	devicePose.qRotation.y = device.filter.rot[2];
+	devicePose.qRotation.z = device.filter.rot[3];
+}
+
+bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr::DriverPose_t& pose)
+{
+	if (openVRID >= vr::k_unMaxTrackedDeviceCount) {
+		return true;
+	}
+
 	// Apply debug pose before anything else
 	if (openVRID > 0) {
 		auto dbgPos = convert(pose.vecPosition) + debugTransform;
@@ -220,12 +337,16 @@ bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr:
 
 	auto& tf = transforms[openVRID];
 
+	if (tf.smooth && smoothingParams.enabled && !tf.quash) {
+		ApplySmoothing(tf, pose);
+	}
+
 	if (tf.quash) {
 		pose.vecPosition[0] = -pose.vecWorldFromDriverTranslation[0];
 		pose.vecPosition[1] = -pose.vecWorldFromDriverTranslation[1] + 9001; // put it 9001m above the origin
 		pose.vecPosition[2] = -pose.vecWorldFromDriverTranslation[2];
-	} else if (tf.enabled)
-	{
+	}
+	else if (tf.enabled) {
 		// @TODO: Offset, scale, and re-offset
 		pose.vecPosition[0] *= tf.scale;
 		pose.vecPosition[1] *= tf.scale;
@@ -242,7 +363,8 @@ bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr:
 	return true;
 }
 
-void ServerTrackedDeviceProvider::HandleApplyRandomOffset() {
+void ServerTrackedDeviceProvider::HandleApplyRandomOffset()
+{
 	std::random_device gen;
 	std::uniform_real_distribution<double> d(-1, 1);
 	auto init = Eigen::Vector3d(d(gen), d(gen), d(gen));
@@ -252,6 +374,6 @@ void ServerTrackedDeviceProvider::HandleApplyRandomOffset() {
 	debugRotation = Eigen::Quaterniond::Identity();
 
 	std::ostringstream oss;
-	oss << "Applied random offset: " << posOffset << " from init " << init << std::endl;
+	oss << "Applied random offset: " << posOffset << " from init " << init << '\n';
 	LOG("%s", oss.str().c_str());
 }

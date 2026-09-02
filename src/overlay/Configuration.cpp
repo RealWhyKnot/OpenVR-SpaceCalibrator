@@ -9,7 +9,7 @@
 #include <iomanip>
 #include <limits>
 
-static picojson::array FloatArray(const float *buf, size_t numFloats)
+static picojson::array FloatArray(const float* buf, size_t numFloats)
 {
 	picojson::array arr;
 
@@ -20,29 +20,30 @@ static picojson::array FloatArray(const float *buf, size_t numFloats)
 	return arr;
 }
 
-static void LoadFloatArray(const picojson::value &obj, float *buf, size_t numFloats)
+static void LoadFloatArray(const picojson::value& obj, float* buf, size_t numFloats)
 {
 	if (!obj.is<picojson::array>()) {
 		throw std::runtime_error("expected array, got " + obj.to_str());
 	}
 
-	auto &arr = obj.get<picojson::array>();
+	auto& arr = obj.get<picojson::array>();
 	if (arr.size() != numFloats) {
 		throw std::runtime_error("wrong buffer size");
 	}
 
 	for (int i = 0; i < numFloats; i++) {
-		buf[i] = (float) arr[i].get<double>();
+		buf[i] = (float)arr[i].get<double>();
 	}
 }
 
-static void LoadStandby(StandbyDevice& device, picojson::value& value) {
+static void LoadStandby(StandbyDevice& device, picojson::value& value)
+{
 	if (!value.is<picojson::object>()) {
 		return;
 	}
 	auto& obj = value.get<picojson::object>();
-	
-	const auto &system = obj["tracking_system"];
+
+	const auto& system = obj["tracking_system"];
 	if (system.is<std::string>()) {
 		device.trackingSystem = system.get<std::string>();
 	}
@@ -58,7 +59,8 @@ static void LoadStandby(StandbyDevice& device, picojson::value& value) {
 	}
 }
 
-static void VisitAlignmentParams(CalibrationContext& ctx, std::function<void(const char *, double&)> MapParam) {
+static void VisitAlignmentParams(CalibrationContext& ctx, std::function<void(const char*, double&)> MapParam)
+{
 #define P(s) MapParam(#s, ctx.alignmentSpeedParams.s)
 	P(align_speed_tiny);
 	P(align_speed_small);
@@ -69,21 +71,22 @@ static void VisitAlignmentParams(CalibrationContext& ctx, std::function<void(con
 	P(thr_rot_tiny);
 	P(thr_rot_small);
 	P(thr_rot_large);
-	
+
 	// Convert to double and back
 	double tmp = ctx.continuousCalibrationThreshold;
 	MapParam("continuousCalibrationThreshold", tmp);
 	ctx.continuousCalibrationThreshold = (float)tmp;
 }
 
-static void LoadAlignmentParams(CalibrationContext& ctx, picojson::value& value) {
+static void LoadAlignmentParams(CalibrationContext& ctx, picojson::value& value)
+{
 	ctx.ResetConfig();
-	
+
 	if (!value.is<picojson::object>()) {
 		return;
 	}
 	auto& obj = value.get<picojson::object>();
-	
+
 	VisitAlignmentParams(ctx, [&](auto name, auto& param) {
 		const picojson::value& node = obj[name];
 		if (node.is<double>()) {
@@ -92,17 +95,58 @@ static void LoadAlignmentParams(CalibrationContext& ctx, picojson::value& value)
 	});
 }
 
-static picojson::object SaveAlignmentParams(CalibrationContext& ctx) {
+static picojson::object SaveAlignmentParams(CalibrationContext& ctx)
+{
 	picojson::object obj;
 
-	VisitAlignmentParams(ctx, [&](auto name, auto& param) {
-		obj[name].set<double>(param);
-	});
+	VisitAlignmentParams(ctx, [&](auto name, auto& param) { obj[name].set<double>(param); });
 
 	return obj;
 }
 
-static void ParseProfile(CalibrationContext &ctx, std::istream &stream)
+static void VisitSmoothingParams(CalibrationContext& ctx, std::function<void(const char*, double&)> MapParam)
+{
+#undef P
+#define P(s) MapParam(#s, ctx.smoothingParams.s)
+	P(posMinCutoffHz);
+	P(posBeta);
+	P(rotMinCutoffHz);
+	P(rotBeta);
+	P(dCutoffHz);
+#undef P
+}
+
+static void LoadSmoothingParams(CalibrationContext& ctx, picojson::value& value)
+{
+	ctx.ResetSmoothingConfig();
+
+	if (!value.is<picojson::object>()) {
+		return;
+	}
+	auto& obj = value.get<picojson::object>();
+
+	ctx.smoothingParams.enabled = obj["enabled"].evaluate_as_boolean();
+	ctx.smoothControllers = obj["smooth_controllers"].evaluate_as_boolean();
+	VisitSmoothingParams(ctx, [&](auto name, auto& param) {
+		const picojson::value& node = obj[name];
+		if (node.is<double>()) {
+			param = node.get<double>();
+		}
+	});
+}
+
+static picojson::object SaveSmoothingParams(CalibrationContext& ctx)
+{
+	picojson::object obj;
+
+	obj["enabled"].set<bool>(ctx.smoothingParams.enabled);
+	obj["smooth_controllers"].set<bool>(ctx.smoothControllers);
+	VisitSmoothingParams(ctx, [&](auto name, auto& param) { obj[name].set<double>(param); });
+
+	return obj;
+}
+
+static void ParseProfile(CalibrationContext& ctx, std::istream& stream)
 {
 	picojson::value v;
 	std::string err = picojson::parse(v, stream);
@@ -118,6 +162,7 @@ static void ParseProfile(CalibrationContext &ctx, std::istream &stream)
 	auto obj = arr[0].get<picojson::object>();
 
 	LoadAlignmentParams(ctx, obj["alignment_params"]);
+	LoadSmoothingParams(ctx, obj["smoothing"]);
 	ctx.referenceTrackingSystem = obj["reference_tracking_system"].get<std::string>();
 	ctx.targetTrackingSystem = obj["target_tracking_system"].get<std::string>();
 	ctx.calibratedRotation(0) = obj["roll"].get<double>();
@@ -141,24 +186,27 @@ static void ParseProfile(CalibrationContext &ctx, std::istream &stream)
 		ctx.enableStaticRecalibration = obj["static_calibration"].get<bool>();
 	}
 	if (obj["jitter_threshold"].is<double>()) {
-		ctx.jitterThreshold = ((float) obj["jitter_threshold"].get<double>());
-	} else {
+		ctx.jitterThreshold = ((float)obj["jitter_threshold"].get<double>());
+	}
+	else {
 		ctx.jitterThreshold = 0.1f;
 	}
 	if (obj["max_relative_error_threshold"].is<double>()) {
-		ctx.maxRelativeErrorThreshold = ((float) obj["max_relative_error_threshold"].get<double>());
-	} else {
+		ctx.maxRelativeErrorThreshold = ((float)obj["max_relative_error_threshold"].get<double>());
+	}
+	else {
 		ctx.maxRelativeErrorThreshold = 0.005f;
 	}
 
 	if (obj["scale"].is<double>()) {
 		ctx.calibratedScale = obj["scale"].get<double>();
-	} else {
+	}
+	else {
 		ctx.calibratedScale = 1.0;
 	}
 
 	if (obj["calibration_speed"].is<double>()) {
-		ctx.calibrationSpeed = (CalibrationContext::Speed)(int) obj["calibration_speed"].get<double>();
+		ctx.calibrationSpeed = (CalibrationContext::Speed)(int)obj["calibration_speed"].get<double>();
 	}
 
 	if (obj["chaperone"].is<picojson::object>()) {
@@ -167,21 +215,18 @@ static void ParseProfile(CalibrationContext &ctx, std::istream &stream)
 
 		LoadFloatArray(chaperone["play_space_size"], ctx.chaperone.playSpaceSize.v, 2);
 
-		LoadFloatArray(
-			chaperone["standing_center"],
-			(float *) ctx.chaperone.standingCenter.m,
-			sizeof(ctx.chaperone.standingCenter.m) / sizeof(float)
-		);
+		LoadFloatArray(chaperone["standing_center"], (float*)ctx.chaperone.standingCenter.m,
+		               sizeof(ctx.chaperone.standingCenter.m) / sizeof(float));
 
 		if (!chaperone["geometry"].is<picojson::array>()) {
 			throw std::runtime_error("chaperone geometry is not an array");
 		}
 
-		auto &geometry = chaperone["geometry"].get<picojson::array>();
+		auto& geometry = chaperone["geometry"].get<picojson::array>();
 
 		if (geometry.size() > 0) {
 			ctx.chaperone.geometry.resize(geometry.size() * sizeof(float) / sizeof(ctx.chaperone.geometry[0]));
-			LoadFloatArray(chaperone["geometry"], (float *) ctx.chaperone.geometry.data(), geometry.size());
+			LoadFloatArray(chaperone["geometry"], (float*)ctx.chaperone.geometry.data(), geometry.size());
 
 			ctx.chaperone.valid = true;
 		}
@@ -205,10 +250,9 @@ static void ParseProfile(CalibrationContext &ctx, std::istream &stream)
 		refToTargetTranslation(2) = relTransform["z"].get<double>();
 
 		Eigen::Matrix3d rotationMatrix;
-		rotationMatrix =
-			Eigen::AngleAxisd(refToTragetRoation[0], Eigen::Vector3d::UnitX()) *
-			Eigen::AngleAxisd(refToTragetRoation[1], Eigen::Vector3d::UnitY()) *
-			Eigen::AngleAxisd(refToTragetRoation[2], Eigen::Vector3d::UnitZ());
+		rotationMatrix = Eigen::AngleAxisd(refToTragetRoation[0], Eigen::Vector3d::UnitX()) *
+		                 Eigen::AngleAxisd(refToTragetRoation[1], Eigen::Vector3d::UnitY()) *
+		                 Eigen::AngleAxisd(refToTragetRoation[2], Eigen::Vector3d::UnitZ());
 
 		ctx.refToTargetPose = Eigen::AffineCompact3d::Identity();
 		ctx.refToTargetPose.linear() = rotationMatrix;
@@ -219,7 +263,8 @@ static void ParseProfile(CalibrationContext &ctx, std::istream &stream)
 }
 
 
-static void WriteStandby(StandbyDevice& device, picojson::value& value) {
+static void WriteStandby(StandbyDevice& device, picojson::value& value)
+{
 	auto obj = picojson::object();
 
 	obj["tracking_system"].set<std::string>(device.trackingSystem);
@@ -230,7 +275,7 @@ static void WriteStandby(StandbyDevice& device, picojson::value& value) {
 }
 
 
-static void WriteProfile(CalibrationContext &ctx, std::ostream &out)
+static void WriteProfile(CalibrationContext& ctx, std::ostream& out)
 {
 	if (!ctx.validProfile) {
 		return;
@@ -238,7 +283,8 @@ static void WriteProfile(CalibrationContext &ctx, std::ostream &out)
 
 	picojson::object profile;
 	profile["alignment_params"].set<picojson::object>(SaveAlignmentParams(ctx));
-	
+	profile["smoothing"].set<picojson::object>(SaveSmoothingParams(ctx));
+
 	profile["reference_tracking_system"].set<std::string>(ctx.referenceTrackingSystem);
 	profile["target_tracking_system"].set<std::string>(ctx.targetTrackingSystem);
 	profile["roll"].set<double>(ctx.calibratedRotation(0));
@@ -264,7 +310,7 @@ static void WriteProfile(CalibrationContext &ctx, std::ostream &out)
 	double maxRelErrorThresTmp = (double)ctx.maxRelativeErrorThreshold;
 	profile["max_relative_error_threshold"].set<double>(maxRelErrorThresTmp);
 
-	double speed = (int) ctx.calibrationSpeed;
+	double speed = (int)ctx.calibrationSpeed;
 	profile["calibration_speed"].set<double>(speed);
 
 	if (ctx.chaperone.valid) {
@@ -272,15 +318,11 @@ static void WriteProfile(CalibrationContext &ctx, std::ostream &out)
 		chaperone["auto_apply"].set<bool>(ctx.chaperone.autoApply);
 		chaperone["play_space_size"].set<picojson::array>(FloatArray(ctx.chaperone.playSpaceSize.v, 2));
 
-		chaperone["standing_center"].set<picojson::array>(FloatArray(
-			(float *) ctx.chaperone.standingCenter.m,
-			sizeof(ctx.chaperone.standingCenter.m) / sizeof(float)
-		));
+		chaperone["standing_center"].set<picojson::array>(
+		    FloatArray((float*)ctx.chaperone.standingCenter.m, sizeof(ctx.chaperone.standingCenter.m) / sizeof(float)));
 
 		chaperone["geometry"].set<picojson::array>(FloatArray(
-			(float *) ctx.chaperone.geometry.data(),
-			sizeof(ctx.chaperone.geometry[0]) / sizeof(float) * ctx.chaperone.geometry.size()
-		));
+		    (float*)ctx.chaperone.geometry.data(), sizeof(ctx.chaperone.geometry[0]) / sizeof(float) * ctx.chaperone.geometry.size()));
 
 		profile["chaperone"].set<picojson::object>(chaperone);
 	}
@@ -312,12 +354,12 @@ static void WriteProfile(CalibrationContext &ctx, std::ostream &out)
 
 static void LogRegistryResult(LSTATUS result)
 {
-	char *message;
+	char* message;
 	FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER, 0, result, LANG_USER_DEFAULT, (LPSTR)&message, 0, nullptr);
-	std::cerr << "Opening registry key: " << message << std::endl;
+	std::cerr << "Opening registry key: " << message << '\n';
 }
 
-static const char *RegistryKey = "Software\\OpenVR-SpaceCalibrator";
+static const char* RegistryKey = "Software\\OpenVR-SpaceCalibrator";
 
 static std::string ReadRegistryKey()
 {
@@ -336,7 +378,7 @@ static std::string ReadRegistryKey()
 		LogRegistryResult(result);
 		return "";
 	}
-	
+
 	str.resize(size - 1);
 	return str;
 }
@@ -360,7 +402,7 @@ static void WriteRegistryKey(std::string str)
 	RegCloseKey(hkey);
 }
 
-void LoadProfile(CalibrationContext &ctx)
+void LoadProfile(CalibrationContext& ctx)
 {
 	// @TODO: Rewrite this to migrate configs from the registry to the spacecal directory
 	//        I don't know why whoever wrote this thought writing to the registry in the 2020s was a good idea...
@@ -371,7 +413,7 @@ void LoadProfile(CalibrationContext &ctx)
 
 	auto str = ReadRegistryKey();
 	if (str == "") {
-		std::cout << "Profile is empty" << std::endl;
+		std::cout << "Profile is empty" << '\n';
 		ctx.Clear();
 		return;
 	}
@@ -379,15 +421,16 @@ void LoadProfile(CalibrationContext &ctx)
 	try {
 		std::stringstream io(str);
 		ParseProfile(ctx, io);
-		std::cout << "Loaded profile" << std::endl;
-	} catch (const std::runtime_error &e) {
-		std::cerr << "Error loading profile: " << e.what() << std::endl;
+		std::cout << "Loaded profile" << '\n';
+	}
+	catch (const std::runtime_error& e) {
+		std::cerr << "Error loading profile: " << e.what() << '\n';
 	}
 }
 
-void SaveProfile(CalibrationContext &ctx)
+void SaveProfile(CalibrationContext& ctx)
 {
-	std::cout << "Saving profile to registry" << std::endl;
+	std::cout << "Saving profile to registry" << '\n';
 
 	std::stringstream io;
 	WriteProfile(ctx, io);

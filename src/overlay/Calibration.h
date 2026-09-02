@@ -20,7 +20,8 @@ enum class CalibrationState
 	ContinuousStandby,
 };
 
-struct StandbyDevice {
+struct StandbyDevice
+{
 	std::string trackingSystem;
 	std::string model, serial;
 };
@@ -62,6 +63,8 @@ struct CalibrationContext
 	Eigen::Vector3d continuousCalibrationOffset;
 
 	protocol::AlignmentSpeedParams alignmentSpeedParams;
+	protocol::SmoothingParams smoothingParams;
+	bool smoothControllers = false;
 	bool enableStaticRecalibration;
 	bool lockRelativePosition = false;
 
@@ -78,19 +81,21 @@ struct CalibrationContext
 
 	vr::DriverPose_t devicePoses[vr::k_unMaxTrackedDeviceCount];
 
-	CalibrationContext() {
+	CalibrationContext()
+	{
 		calibratedScale = 1.0;
 		memset(devicePoses, 0, sizeof(devicePoses));
 		ResetConfig();
 	}
 
-	void ResetConfig() {
+	void ResetConfig()
+	{
 		alignmentSpeedParams.thr_rot_tiny = 0.49f * (EIGEN_PI / 180.0f);
 		alignmentSpeedParams.thr_rot_small = 0.5f * (EIGEN_PI / 180.0f);
 		alignmentSpeedParams.thr_rot_large = 5.0f * (EIGEN_PI / 180.0f);
 
-		alignmentSpeedParams.thr_trans_tiny = 0.98f / 1000.0; // mm
-		alignmentSpeedParams.thr_trans_small = 1.0f / 1000.0; // mm
+		alignmentSpeedParams.thr_trans_tiny = 0.98f / 1000.0;  // mm
+		alignmentSpeedParams.thr_trans_small = 1.0f / 1000.0;  // mm
 		alignmentSpeedParams.thr_trans_large = 20.0f / 1000.0; // mm
 
 		alignmentSpeedParams.align_speed_tiny = 1.0f;
@@ -104,6 +109,18 @@ struct CalibrationContext
 		continuousCalibrationOffset = Eigen::Vector3d::Zero();
 
 		enableStaticRecalibration = false;
+		ResetSmoothingConfig();
+	}
+
+	void ResetSmoothingConfig()
+	{
+		smoothingParams.enabled = false;
+		smoothingParams.posMinCutoffHz = 1.0;
+		smoothingParams.posBeta = 0.05;
+		smoothingParams.rotMinCutoffHz = 1.0;
+		smoothingParams.rotBeta = 0.05;
+		smoothingParams.dCutoffHz = 1.0;
+		smoothControllers = false;
 	}
 
 	struct Chaperone
@@ -112,16 +129,12 @@ struct CalibrationContext
 		bool autoApply = true;
 		std::vector<vr::HmdQuad_t> geometry;
 		vr::HmdMatrix34_t standingCenter = {
-			1.0f, 0.0f, 0.0f, 0.0f,
-			0.0f, 1.0f, 0.0f, 0.0f,
-			0.0f, 0.0f, 1.0f, 0.0f,
+		    1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
 		};
-		vr::HmdVector2_t playSpaceSize = { 0.0f, 0.0f };
+		vr::HmdVector2_t playSpaceSize = {0.0f, 0.0f};
 	} chaperone;
 
-	void ClearLogOnMessage() {
-		clearOnLog = true;
-	}
+	void ClearLogOnMessage() { clearOnLog = true; }
 
 	void Clear()
 	{
@@ -143,14 +156,10 @@ struct CalibrationContext
 
 	size_t SampleCount()
 	{
-		switch (calibrationSpeed)
-		{
-		case FAST:
-			return 100;
-		case SLOW:
-			return 250;
-		case VERY_SLOW:
-			return 500;
+		switch (calibrationSpeed) {
+			case FAST: return 100;
+			case SLOW: return 250;
+			case VERY_SLOW: return 500;
 		}
 		return 100;
 	}
@@ -163,7 +172,7 @@ struct CalibrationContext
 			Progress
 		} type = String;
 
-		Message(Type type) : type(type), progress(0), target(0) { }
+		Message(Type type) : type(type), progress(0), target(0) {}
 
 		std::string str;
 		int progress, target;
@@ -171,41 +180,42 @@ struct CalibrationContext
 
 	std::deque<Message> messages;
 
-	void Log(const std::string &msg)
+	void Log(const std::string& msg)
 	{
 		if (clearOnLog) {
 			messages.clear();
 			clearOnLog = false;
 		}
 
-		if (messages.empty() || messages.back().type == Message::Progress)
-			messages.push_back(Message(Message::String));
+		if (messages.empty() || messages.back().type == Message::Progress) messages.push_back(Message(Message::String));
 
 		OutputDebugStringA(msg.c_str());
 
 		messages.back().str += msg;
 		std::cerr << msg;
 
-		while (messages.size() > 15) messages.pop_front();
+		while (messages.size() > 15)
+			messages.pop_front();
 	}
 
 	void Progress(int current, int target)
 	{
-		if (messages.empty() || messages.back().type == Message::String)
-			messages.push_back(Message(Message::Progress));
+		if (messages.empty() || messages.back().type == Message::String) messages.push_back(Message(Message::Progress));
 
 		messages.back().progress = current;
 		messages.back().target = target;
 	}
 
-	bool TargetPoseIsValidSimple() const {
-		return targetID >= 0 && targetID <= vr::k_unMaxTrackedDeviceCount
-			&& devicePoses[targetID].poseIsValid && devicePoses[targetID].result == vr::ETrackingResult::TrackingResult_Running_OK;
+	bool TargetPoseIsValidSimple() const
+	{
+		return targetID >= 0 && targetID <= vr::k_unMaxTrackedDeviceCount && devicePoses[targetID].poseIsValid &&
+		       devicePoses[targetID].result == vr::ETrackingResult::TrackingResult_Running_OK;
 	}
 
-	bool ReferencePoseIsValidSimple() const {
-		return referenceID >= 0 && referenceID <= vr::k_unMaxTrackedDeviceCount
-			&& devicePoses[referenceID].poseIsValid && devicePoses[referenceID].result == vr::ETrackingResult::TrackingResult_Running_OK;
+	bool ReferencePoseIsValidSimple() const
+	{
+		return referenceID >= 0 && referenceID <= vr::k_unMaxTrackedDeviceCount && devicePoses[referenceID].poseIsValid &&
+		       devicePoses[referenceID].result == vr::ETrackingResult::TrackingResult_Running_OK;
 	}
 };
 
@@ -218,6 +228,9 @@ void StartContinuousCalibration();
 void EndContinuousCalibration();
 void LoadChaperoneBounds();
 void ApplyChaperoneBounds();
+
+void ApplySmoothingSettings();
+bool QuerySmoothingStats(uint32_t id, protocol::SmoothingStats& stats);
 
 void PushCalibrationApplyTime();
 void ShowCalibrationDebug(int r, int c);

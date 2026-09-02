@@ -13,7 +13,7 @@
 #define OPENVR_SPACECALIBRATOR_PIPE_NAME "\\\\.\\pipe\\OpenVRSpaceCalibratorDriver"
 #define OPENVR_SPACECALIBRATOR_SHMEM_NAME "OpenVRSpaceCalibratorPoseMemoryV1"
 
-#ifdef _OPENVR_API 
+#ifdef _OPENVR_API
 
 namespace vr {
 	// We can't include openvr_driver.h as it will result in multiple definition of some structures.
@@ -51,10 +51,10 @@ namespace vr {
 
 		/* State of driver pose, in meters and radians. */
 		/* Position of the driver tracking reference in driver world space
-		* +[0] (x) is right
-		* +[1] (y) is up
-		* -[2] (z) is forward
-		*/
+		 * +[0] (x) is right
+		 * +[1] (y) is up
+		 * -[2] (z) is forward
+		 */
 		double vecPosition[3];
 
 		/* Velocity of the pose in meters/second */
@@ -67,15 +67,15 @@ namespace vr {
 		vr::HmdQuaternion_t qRotation;
 
 		/* Angular velocity of the pose in axis-angle
-		* representation. The direction is the angle of
-		* rotation and the magnitude is the angle around
-		* that axis in radians/second. */
+		 * representation. The direction is the angle of
+		 * rotation and the magnitude is the angle around
+		 * that axis in radians/second. */
 		double vecAngularVelocity[3];
 
 		/* Angular acceleration of the pose in axis-angle
-		* representation. The direction is the angle of
-		* rotation and the magnitude is the angle around
-		* that axis in radians/second^2. */
+		 * representation. The direction is the angle of
+		 * rotation and the magnitude is the angle around
+		 * that axis in radians/second^2. */
 		double vecAngularAcceleration[3];
 
 		ETrackingResult result;
@@ -90,9 +90,8 @@ namespace vr {
 
 #endif
 
-namespace protocol
-{
-	const uint32_t Version = 4;
+namespace protocol {
+	const uint32_t Version = 5;
 
 	enum RequestType
 	{
@@ -100,7 +99,9 @@ namespace protocol
 		RequestHandshake,
 		RequestSetDeviceTransform,
 		RequestSetAlignmentSpeedParams,
-		RequestDebugOffset
+		RequestDebugOffset,
+		RequestSetSmoothingParams,
+		RequestGetSmoothingStats
 	};
 
 	enum ResponseType
@@ -108,6 +109,34 @@ namespace protocol
 		ResponseInvalid,
 		ResponseHandshake,
 		ResponseSuccess,
+		ResponseSmoothingStats
+	};
+
+	struct SmoothingParams
+	{
+		bool enabled;
+		double posMinCutoffHz;
+		double posBeta;
+		double rotMinCutoffHz;
+		double rotBeta;
+		double dCutoffHz;
+	};
+
+	struct SmoothingStatsRequest
+	{
+		uint32_t openVRID;
+	};
+
+	struct SmoothingStats
+	{
+		uint32_t openVRID;
+		bool active;
+		uint8_t lastResult;
+		uint32_t reseeds;
+		double rawJitterMm;
+		double smoothJitterMm;
+		double rawJitterDeg;
+		double smoothJitterDeg;
 	};
 
 	struct Protocol
@@ -121,7 +150,7 @@ namespace protocol
 		 * The threshold at which we adjust the alignment speed based on the position offset
 		 * between current and target calibrations. Generally, we increase the speed if we go
 		 * above small/large, and decrease it only once it's under tiny.
-		 * 
+		 *
 		 * These values are expressed as distance squared
 		 */
 		double thr_trans_tiny, thr_trans_small, thr_trans_large;
@@ -130,7 +159,7 @@ namespace protocol
 		 * Similar thresholds for rotation offsets, in radians
 		 */
 		double thr_rot_tiny, thr_rot_small, thr_rot_large;
-		
+
 		/**
 		 * The speed of alignment, expressed as a lerp/slerp factor. 1 will blend most of the way in <1 second.
 		 * (We actually do a lerp(s * delta_t) where s is the speed factor here)
@@ -150,37 +179,59 @@ namespace protocol
 		double scale;
 		bool lerp;
 		bool quash;
+		bool smooth;
 
-		SetDeviceTransform(uint32_t id, bool enabled) :
-			openVRID(id), enabled(enabled), updateTranslation(false), updateRotation(false), updateScale(false), translation({}), rotation({1,0,0,0}), scale(1), lerp(false), quash(false) { }
+		SetDeviceTransform(uint32_t id, bool enabled)
+		    : openVRID(id), enabled(enabled), updateTranslation(false), updateRotation(false), updateScale(false), translation({}),
+		      rotation({1, 0, 0, 0}), scale(1), lerp(false), quash(false), smooth(false)
+		{
+		}
 
-		SetDeviceTransform(uint32_t id, bool enabled, vr::HmdVector3d_t translation) :
-			openVRID(id), enabled(enabled), updateTranslation(true), updateRotation(false), updateScale(false), translation(translation), rotation({ 1,0,0,0 }), scale(1), lerp(false), quash(false) { }
+		SetDeviceTransform(uint32_t id, bool enabled, vr::HmdVector3d_t translation)
+		    : openVRID(id), enabled(enabled), updateTranslation(true), updateRotation(false), updateScale(false), translation(translation),
+		      rotation({1, 0, 0, 0}), scale(1), lerp(false), quash(false), smooth(false)
+		{
+		}
 
-		SetDeviceTransform(uint32_t id, bool enabled, vr::HmdQuaternion_t rotation) :
-			openVRID(id), enabled(enabled), updateTranslation(false), updateRotation(true), updateScale(false), translation({}), rotation(rotation), scale(1), lerp(false), quash(false) { }
+		SetDeviceTransform(uint32_t id, bool enabled, vr::HmdQuaternion_t rotation)
+		    : openVRID(id), enabled(enabled), updateTranslation(false), updateRotation(true), updateScale(false), translation({}),
+		      rotation(rotation), scale(1), lerp(false), quash(false), smooth(false)
+		{
+		}
 
-		SetDeviceTransform(uint32_t id, bool enabled, double scale) :
-			openVRID(id), enabled(enabled), updateTranslation(false), updateRotation(false), updateScale(true), translation({}), rotation({ 1,0,0,0 }), scale(scale), lerp(false), quash(false) { }
+		SetDeviceTransform(uint32_t id, bool enabled, double scale)
+		    : openVRID(id), enabled(enabled), updateTranslation(false), updateRotation(false), updateScale(true), translation({}),
+		      rotation({1, 0, 0, 0}), scale(scale), lerp(false), quash(false), smooth(false)
+		{
+		}
 
-		SetDeviceTransform(uint32_t id, bool enabled, vr::HmdVector3d_t translation, vr::HmdQuaternion_t rotation) :
-			openVRID(id), enabled(enabled), updateTranslation(true), updateRotation(true), updateScale(false), translation(translation), rotation(rotation), scale(1), lerp(false), quash(false) { }
+		SetDeviceTransform(uint32_t id, bool enabled, vr::HmdVector3d_t translation, vr::HmdQuaternion_t rotation)
+		    : openVRID(id), enabled(enabled), updateTranslation(true), updateRotation(true), updateScale(false), translation(translation),
+		      rotation(rotation), scale(1), lerp(false), quash(false), smooth(false)
+		{
+		}
 
-		SetDeviceTransform(uint32_t id, bool enabled, vr::HmdVector3d_t translation, vr::HmdQuaternion_t rotation, double scale) :
-			openVRID(id), enabled(enabled), updateTranslation(true), updateRotation(true), updateScale(true), translation(translation), rotation(rotation), scale(scale), lerp(false), quash(false) { }
+		SetDeviceTransform(uint32_t id, bool enabled, vr::HmdVector3d_t translation, vr::HmdQuaternion_t rotation, double scale)
+		    : openVRID(id), enabled(enabled), updateTranslation(true), updateRotation(true), updateScale(true), translation(translation),
+		      rotation(rotation), scale(scale), lerp(false), quash(false), smooth(false)
+		{
+		}
 	};
 
 	struct Request
 	{
 		RequestType type;
 
-		union {
+		union
+		{
 			SetDeviceTransform setDeviceTransform;
 			AlignmentSpeedParams setAlignmentSpeedParams;
+			SmoothingParams setSmoothingParams;
+			SmoothingStatsRequest getSmoothingStats;
 		};
 
-		Request() : type(RequestInvalid), setAlignmentSpeedParams({}) { }
-		Request(RequestType type) : type(type), setAlignmentSpeedParams({}) { }
+		Request() : type(RequestInvalid), setAlignmentSpeedParams({}) {}
+		Request(RequestType type) : type(type), setAlignmentSpeedParams({}) {}
 		Request(AlignmentSpeedParams params) : type(RequestType::RequestSetAlignmentSpeedParams), setAlignmentSpeedParams(params) {}
 	};
 
@@ -188,30 +239,36 @@ namespace protocol
 	{
 		ResponseType type;
 
-		union {
+		union
+		{
 			Protocol protocol;
+			SmoothingStats smoothingStats;
 		};
 
 		Response() : type(ResponseInvalid), protocol({}) {}
-		Response(ResponseType type) : type(type), protocol({}) { }
+		Response(ResponseType type) : type(type), protocol({}) {}
 	};
 
-	class DriverPoseShmem {
+	class DriverPoseShmem
+	{
 	public:
-		struct AugmentedPose {
+		struct AugmentedPose
+		{
 			LARGE_INTEGER sample_time;
 			int deviceId;
 			vr::DriverPose_t pose;
 		};
+
 	private:
 		static const uint32_t SYNC_ACTIVE_POSE_B = 0x80000000;
 		static const uint32_t BUFFERED_SAMPLES = 64 * 1024;
 
-		struct ShmemData {
+		struct ShmemData
+		{
 			std::atomic<uint64_t> index;
 			AugmentedPose poses[BUFFERED_SAMPLES];
 		};
-		
+
 	private:
 		HANDLE hMapFile;
 		ShmemData* pData;
@@ -222,10 +279,8 @@ namespace protocol
 		std::string LastErrorString(DWORD lastError)
 		{
 			LPSTR buffer = nullptr;
-			size_t size = FormatMessageA(
-				FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-				NULL, lastError, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&buffer, 0, NULL
-			);
+			size_t size = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,
+			                             lastError, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&buffer, 0, NULL);
 
 			std::string message(buffer, size);
 			LocalFree(buffer);
@@ -233,75 +288,50 @@ namespace protocol
 		}
 
 	public:
-		operator bool() const {
-			return pData != nullptr;
-		}
+		operator bool() const { return pData != nullptr; }
 
-		bool operator!() const {
-			return pData == nullptr;
-		}
+		bool operator!() const { return pData == nullptr; }
 
-		DriverPoseShmem() {
+		DriverPoseShmem()
+		{
 			hMapFile = INVALID_HANDLE_VALUE;
 			pData = nullptr;
 			cursor = 0;
 		}
 
-		~DriverPoseShmem() {
-			Close();
-		}
+		~DriverPoseShmem() { Close(); }
 
-		void Close() {
+		void Close()
+		{
 			if (pData) UnmapViewOfFile(pData);
 			if (hMapFile) CloseHandle(hMapFile);
 		}
 
-		bool Create(LPCSTR segment_name) {
+		bool Create(LPCSTR segment_name)
+		{
 			Close();
 
-			hMapFile = CreateFileMappingA(
-				INVALID_HANDLE_VALUE,
-				NULL,
-				PAGE_READWRITE,
-				0,
-				sizeof(ShmemData),
-				segment_name
-			);
+			hMapFile = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(ShmemData), segment_name);
 
 			if (!hMapFile) return false;
 
-			pData = reinterpret_cast<ShmemData*>(MapViewOfFile(
-				hMapFile,
-				FILE_MAP_ALL_ACCESS,
-				0,
-				0,
-				sizeof(ShmemData)
-			));
+			pData = reinterpret_cast<ShmemData*>(MapViewOfFile(hMapFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(ShmemData)));
 
 			return !!pData;
 		}
 
 
-		void Open(LPCSTR segment_name) {
+		void Open(LPCSTR segment_name)
+		{
 			Close();
 
-			hMapFile = OpenFileMappingA(
-				FILE_MAP_ALL_ACCESS,
-				FALSE,
-				segment_name
-			);
+			hMapFile = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, segment_name);
 
 			if (!hMapFile) {
 				throw std::runtime_error("Failed to open pose data shared memory segment: " + LastErrorString(GetLastError()));
 			}
 
-			pData = reinterpret_cast<ShmemData*>(MapViewOfFile(
-				hMapFile,
-				FILE_MAP_ALL_ACCESS,
-				0,
-				0,
-				sizeof(ShmemData)
-			));
+			pData = reinterpret_cast<ShmemData*>(MapViewOfFile(hMapFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(ShmemData)));
 
 			if (!pData) {
 				throw std::runtime_error("Failed to map pose data shared memory segment: " + LastErrorString(GetLastError()));
@@ -312,9 +342,10 @@ namespace protocol
 			OutputDebugStringA(tmp);
 		}
 
-		void ReadNewPoses(std::function<void(AugmentedPose const&)> cb) {
+		void ReadNewPoses(std::function<void(AugmentedPose const&)> cb)
+		{
 			if (!pData) throw std::runtime_error("Not open");
-			
+
 			uint64_t cur_index = pData->index.load(std::memory_order_acquire);
 			if (cur_index < cursor || cur_index - cursor > BUFFERED_SAMPLES / 2) {
 				if (cur_index < BUFFERED_SAMPLES / 2)
@@ -331,7 +362,8 @@ namespace protocol
 			std::atomic_thread_fence(std::memory_order_release);
 		}
 
-		bool GetPose(int index, vr::DriverPose_t& pose, LARGE_INTEGER *pSampleTime = NULL) {
+		bool GetPose(int index, vr::DriverPose_t& pose, LARGE_INTEGER* pSampleTime = NULL)
+		{
 			ReadNewPoses([this](AugmentedPose const& pose) {
 				if (pose.pose.poseIsValid && pose.pose.result == vr::ETrackingResult::TrackingResult_Running_OK) {
 					this->lastPose[pose.deviceId] = pose;
@@ -345,7 +377,8 @@ namespace protocol
 			}
 		}
 
-		void SetPose(int index, const vr::DriverPose_t& pose) {
+		void SetPose(int index, const vr::DriverPose_t& pose)
+		{
 			if (index >= vr::k_unMaxTrackedDeviceCount) return;
 			if (pData == nullptr) return;
 

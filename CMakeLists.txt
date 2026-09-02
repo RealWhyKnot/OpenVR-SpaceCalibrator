@@ -19,11 +19,24 @@ endfunction()
 
 project("SpaceCalibrator")
 
+set(SPACECAL_VERSION "0.0.0.0-DEV" CACHE STRING "Build stamp")
+set(SPACECAL_CHANNEL "dev" CACHE STRING "Build channel: dev, beta or release")
+if(NOT SPACECAL_CHANNEL MATCHES "^(dev|beta|release)$")
+	message(FATAL_ERROR "SPACECAL_CHANNEL must be dev, beta or release (got '${SPACECAL_CHANNEL}')")
+endif()
+configure_file(src/common/Version.h.in ${CMAKE_BINARY_DIR}/generated/Version.h @ONLY)
+option(SPACECAL_BUILD_TESTS "Build the test executables" ON)
+
 # Include project
 add_subdirectory ("src")
 
 # Libs
 add_subdirectory ("lib")
+
+if(SPACECAL_BUILD_TESTS)
+	enable_testing()
+	add_subdirectory ("tests")
+endif()
 
 if ("${CMAKE_CXX_COMPILER}" MATCHES "Clang" OR "${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
 	# add_compile_options(-Werror=return-type -Wall -Wextra -Wpedantic /MP)

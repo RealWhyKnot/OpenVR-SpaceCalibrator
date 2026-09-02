@@ -64,6 +64,7 @@ set_target_properties(SpaceCalibratorOverlay PROPERTIES
 target_include_directories(SpaceCalibratorOverlay
     PUBLIC ${CMAKE_SOURCE_DIR}
     PUBLIC ${CMAKE_SOURCE_DIR}/src/common
+    PUBLIC ${CMAKE_BINARY_DIR}/generated/
     PUBLIC ${CMAKE_SOURCE_DIR}/src/overlay
     PUBLIC ${CMAKE_SOURCE_DIR}/lib
     PUBLIC ${CMAKE_SOURCE_DIR}/lib/openvr/headers

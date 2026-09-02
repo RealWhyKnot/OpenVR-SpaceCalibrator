@@ -4,6 +4,7 @@
 
 #include "IPCServer.h"
 #include "Protocol.h"
+#include "PoseFilter.h"
 #include "IsometryTransform.h"
 
 #include <Eigen/Dense>
@@ -17,43 +18,44 @@ public:
 	////// Start vr::IServerTrackedDeviceProvider functions
 
 	/** initializes the driver. This will be called before any other methods are called. */
-	virtual vr::EVRInitError Init(vr::IVRDriverContext *pDriverContext) override;
+	virtual vr::EVRInitError Init(vr::IVRDriverContext* pDriverContext) override;
 
 	/** cleans up the driver right before it is unloaded */
 	virtual void Cleanup() override;
 
 	/** Returns the version of the ITrackedDeviceServerDriver interface used by this driver */
-	virtual const char * const *GetInterfaceVersions() { return vr::k_InterfaceVersions; }
+	virtual const char* const* GetInterfaceVersions() { return vr::k_InterfaceVersions; }
 
 	/** Allows the driver do to some work in the main loop of the server. */
-	virtual void RunFrame() { }
+	virtual void RunFrame() {}
 
 	/** Returns true if the driver wants to block Standby mode. */
 	virtual bool ShouldBlockStandbyMode() { return false; }
 
 	/** Called when the system is entering Standby mode. The driver should switch itself into whatever sort of low-power
-	* state it has. */
-	virtual void EnterStandby() { }
+	 * state it has. */
+	virtual void EnterStandby() {}
 
 	/** Called when the system is leaving Standby mode. The driver should switch itself back to
 	full operation. */
-	virtual void LeaveStandby() { }
+	virtual void LeaveStandby() {}
 
 	////// End vr::IServerTrackedDeviceProvider functions
 
-	ServerTrackedDeviceProvider() : server(this) { }
-	void SetDeviceTransform(const protocol::SetDeviceTransform &newTransform);
-	bool HandleDevicePoseUpdated(uint32_t openVRID, vr::DriverPose_t &pose);
+	ServerTrackedDeviceProvider() : server(this) {}
+	void SetDeviceTransform(const protocol::SetDeviceTransform& newTransform);
+	bool HandleDevicePoseUpdated(uint32_t openVRID, vr::DriverPose_t& pose);
 	void HandleApplyRandomOffset();
-	void HandleSetAlignmentSpeedParams(const protocol::AlignmentSpeedParams params) {
-		alignmentSpeedParams = params;
-	}
+	void HandleSetAlignmentSpeedParams(const protocol::AlignmentSpeedParams params) { alignmentSpeedParams = params; }
+	void HandleSetSmoothingParams(const protocol::SmoothingParams& params);
+	void HandleGetSmoothingStats(const protocol::SmoothingStatsRequest& request, protocol::SmoothingStats& stats);
 
 private:
 	IPCServer server;
 	protocol::DriverPoseShmem shmem;
 
-	enum DeltaSize {
+	enum DeltaSize
+	{
 		TINY,
 		SMALL,
 		LARGE
@@ -67,6 +69,15 @@ private:
 		double scale;
 		LARGE_INTEGER lastPoll;
 		DeltaSize currentRate = DeltaSize::TINY;
+		bool smooth = false;
+		spacecal::PoseFilter filter;
+		LARGE_INTEGER lastPoseQpc;
+		uint32_t reseeds = 0;
+		uint8_t lastResult = 0;
+		double rawPosJitter2 = 0.0;
+		double smoothPosJitter2 = 0.0;
+		double rawRotJitter2 = 0.0;
+		double smoothRotJitter2 = 0.0;
 	};
 
 	DeviceTransform transforms[vr::k_unMaxTrackedDeviceCount];
@@ -76,13 +87,14 @@ private:
 	DeltaSize currentDeltaSpeed[vr::k_unMaxTrackedDeviceCount];
 
 	protocol::AlignmentSpeedParams alignmentSpeedParams;
+	protocol::SmoothingParams smoothingParams;
+	spacecal::OneEuroParams smoothingPos;
+	spacecal::OneEuroParams smoothingRot;
 
-	DeltaSize GetTransformDeltaSize(
-		DeltaSize prior_delta,
-		const IsoTransform& deviceWorldPose,
-		const IsoTransform& src,
-		const IsoTransform& target
-	) const;
+	void ApplySmoothing(DeviceTransform& device, vr::DriverPose_t& devicePose);
+
+	DeltaSize GetTransformDeltaSize(DeltaSize prior_delta, const IsoTransform& deviceWorldPose, const IsoTransform& src,
+	                                const IsoTransform& target) const;
 
 	double GetTransformRate(DeltaSize delta) const;
 

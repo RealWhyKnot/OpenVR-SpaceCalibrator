@@ -99,7 +99,7 @@ foreach(SOURCE IN ITEMS ${SOURCES_API})
     source_group("${GROUP_PATH}" FILES "${SOURCE}")
 endforeach()
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY $<1:${CMAKE_BINARY_DIR}/${DRIVER_NAME}/bin/${ARCH_TARGET}>)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY $<1:${CMAKE_BINARY_DIR}/${TARGET_NAME}/bin/${ARCH_TARGET}>)
 
 add_library(SpaceCalibratorDriver SHARED ${SOURCES_API} ${SOURCES_HEADERS})
 GroupSourcesByFolder(SpaceCalibratorDriver)
@@ -107,6 +107,7 @@ GroupSourcesByFolder(SpaceCalibratorDriver)
 target_include_directories(SpaceCalibratorDriver
 	PRIVATE ${CMAKE_SOURCE_DIR}
     PRIVATE ${CMAKE_SOURCE_DIR}/src/common
+    PRIVATE ${CMAKE_BINARY_DIR}/generated/
     PRIVATE ${CMAKE_SOURCE_DIR}/src/driver
 	PRIVATE ${OPENVR_LIB_DIR}
 	PRIVATE ${CMAKE_SOURCE_DIR}/lib/openvr/headers
@@ -131,5 +132,5 @@ add_custom_command(
     PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_SOURCE_DIR}/${DRIVER_NAME}
-    ${CMAKE_BINARY_DIR}/${DRIVER_NAME}
+    ${CMAKE_BINARY_DIR}/${TARGET_NAME}
 )
