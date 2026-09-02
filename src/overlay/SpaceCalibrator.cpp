@@ -726,6 +726,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
 static void HandleCommandLine(LPWSTR lpCmdLine)
 {
+	size_t length = wcslen(lpCmdLine);
+	while (length > 0 && iswspace(lpCmdLine[length - 1])) {
+		lpCmdLine[--length] = 0;
+	}
 	if (lstrcmp(lpCmdLine, L"-openvrpath") == 0) {
 		auto vrErr = vr::VRInitError_None;
 		vr::VR_Init(&vrErr, vr::VRApplication_Utility);
