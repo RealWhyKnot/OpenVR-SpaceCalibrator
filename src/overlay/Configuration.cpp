@@ -127,7 +127,8 @@ static picojson::object SaveSmoothingParams(CalibrationContext& ctx)
 {
 	picojson::object obj;
 
-	obj["strength"].set<double>(ctx.smoothingParams.strength);
+	const double strength = ctx.smoothingParams.strength;
+	obj["strength"].set<double>(strength);
 	obj["smooth_controllers"].set<bool>(ctx.smoothControllers);
 
 	return obj;
