@@ -114,12 +114,7 @@ struct CalibrationContext
 
 	void ResetSmoothingConfig()
 	{
-		smoothingParams.enabled = false;
-		smoothingParams.posMinCutoffHz = 1.0;
-		smoothingParams.posBeta = 0.05;
-		smoothingParams.rotMinCutoffHz = 1.0;
-		smoothingParams.rotBeta = 0.05;
-		smoothingParams.dCutoffHz = 1.0;
+		smoothingParams.strength = 0;
 		smoothControllers = false;
 	}
 

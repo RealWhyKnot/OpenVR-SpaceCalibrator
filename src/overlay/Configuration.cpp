@@ -104,18 +104,6 @@ static picojson::object SaveAlignmentParams(CalibrationContext& ctx)
 	return obj;
 }
 
-static void VisitSmoothingParams(CalibrationContext& ctx, std::function<void(const char*, double&)> MapParam)
-{
-#undef P
-#define P(s) MapParam(#s, ctx.smoothingParams.s)
-	P(posMinCutoffHz);
-	P(posBeta);
-	P(rotMinCutoffHz);
-	P(rotBeta);
-	P(dCutoffHz);
-#undef P
-}
-
 static void LoadSmoothingParams(CalibrationContext& ctx, picojson::value& value)
 {
 	ctx.ResetSmoothingConfig();
@@ -125,23 +113,22 @@ static void LoadSmoothingParams(CalibrationContext& ctx, picojson::value& value)
 	}
 	auto& obj = value.get<picojson::object>();
 
-	ctx.smoothingParams.enabled = obj["enabled"].evaluate_as_boolean();
 	ctx.smoothControllers = obj["smooth_controllers"].evaluate_as_boolean();
-	VisitSmoothingParams(ctx, [&](auto name, auto& param) {
-		const picojson::value& node = obj[name];
-		if (node.is<double>()) {
-			param = node.get<double>();
-		}
-	});
+	if (obj["strength"].is<double>()) {
+		const double strength = obj["strength"].get<double>();
+		ctx.smoothingParams.strength = (uint8_t)(strength < 0.0 ? 0.0 : (strength > 100.0 ? 100.0 : strength));
+	}
+	else if (obj["enabled"].evaluate_as_boolean()) {
+		ctx.smoothingParams.strength = 50;
+	}
 }
 
 static picojson::object SaveSmoothingParams(CalibrationContext& ctx)
 {
 	picojson::object obj;
 
-	obj["enabled"].set<bool>(ctx.smoothingParams.enabled);
+	obj["strength"].set<double>(ctx.smoothingParams.strength);
 	obj["smooth_controllers"].set<bool>(ctx.smoothControllers);
-	VisitSmoothingParams(ctx, [&](auto name, auto& param) { obj[name].set<double>(param); });
 
 	return obj;
 }

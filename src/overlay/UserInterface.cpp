@@ -292,43 +292,21 @@ void DrawSmoothingPanel(ImVec2 panel_size)
 
 	ImGui::BeginGroupPanel("Tracker smoothing", panel_size);
 
-	const protocol::SmoothingParams before = CalCtx.smoothingParams;
-	const bool controllersBefore = CalCtx.smoothControllers;
-	bool reset = false;
-
-	ImGui::Checkbox("Smooth trackers", &CalCtx.smoothingParams.enabled);
-	SmoothingTooltip("Runs a one euro filter on every tracker in the calibrated target space, in place.\n"
-	                 "No extra devices are created; games keep seeing the same trackers, just steadier.\n"
+	int strength = CalCtx.smoothingParams.strength;
+	bool changed = ImGui::SliderInt("Smoothing", &strength, 0, 100, strength > 0 ? "%d%%" : "off", ImGuiSliderFlags_AlwaysClamp);
+	SmoothingTooltip("Steadies every tracker in the calibrated target space, in place. No extra devices are created.\n"
+	                 "0 turns it off. Higher is calmer when the tracker is still; fast movement stays responsive at any setting.\n"
 	                 "Takes effect immediately and is saved with the profile.");
-	ImGui::SameLine();
-	ImGui::Checkbox("Also smooth controllers", &CalCtx.smoothControllers);
-	SmoothingTooltip("Filter controllers from the target space too. Off by default: controller input is latency sensitive.");
-	ImGui::SameLine();
-	if (ImGui::Button("Reset to defaults")) {
-		CalCtx.ResetSmoothingConfig();
-		reset = true;
-	}
+	CalCtx.smoothingParams.strength = (uint8_t)strength;
 
-	ImGui::BeginDisabled(!CalCtx.smoothingParams.enabled);
-	ImGui::Text("Position");
-	ScaledDragFloat("Jitter cutoff (Hz)##pos", CalCtx.smoothingParams.posMinCutoffHz, 1.0, 0.1, 10.0);
-	SmoothingTooltip("Lower = calmer when the tracker is still, but more lag on slow moves.");
-	ScaledDragFloat("Responsiveness##pos", CalCtx.smoothingParams.posBeta, 1.0, 0.0, 1.0);
-	SmoothingTooltip("Higher = the filter opens up sooner on fast moves, so quick motion lags less.");
-	ImGui::Text("Rotation");
-	ScaledDragFloat("Jitter cutoff (Hz)##rot", CalCtx.smoothingParams.rotMinCutoffHz, 1.0, 0.1, 10.0);
-	SmoothingTooltip("Lower = calmer when the tracker is still, but more lag on slow turns.");
-	ScaledDragFloat("Responsiveness##rot", CalCtx.smoothingParams.rotBeta, 1.0, 0.0, 1.0);
-	SmoothingTooltip("Higher = the filter opens up sooner on fast turns, so quick rotation lags less.");
-	ImGui::EndDisabled();
+	changed |= ImGui::Checkbox("Also smooth controllers", &CalCtx.smoothControllers);
+	SmoothingTooltip("Smooth controllers from the target space too. Off by default: controller input is latency sensitive.");
 
-	const bool changed =
-	    reset || controllersBefore != CalCtx.smoothControllers || memcmp(&before, &CalCtx.smoothingParams, sizeof before) != 0;
 	if (changed) {
 		ApplySmoothingSettings();
 	}
 
-	if (CalCtx.smoothingParams.enabled) {
+	if (CalCtx.smoothingParams.strength > 0) {
 		const double now = ImGui::GetTime();
 		if (now - lastRefresh > 0.5) {
 			RefreshSmoothingStats(rows);
@@ -337,11 +315,10 @@ void DrawSmoothingPanel(ImVec2 panel_size)
 		if (rows.empty()) {
 			ImGui::TextDisabled("No smoothed devices yet. Smoothing follows the calibrated target space, so a profile must be active.");
 		}
-		else if (ImGui::BeginTable("SmoothingStats", 5, ImGuiTableFlags_SizingStretchProp)) {
+		else if (ImGui::BeginTable("SmoothingStats", 4, ImGuiTableFlags_SizingStretchProp)) {
 			ImGui::TableSetupColumn("Device");
 			ImGui::TableSetupColumn("State");
 			ImGui::TableSetupColumn("Position jitter (mm)");
-			ImGui::TableSetupColumn("Rotation jitter (deg)");
 			ImGui::TableSetupColumn("Reseeds");
 			ImGui::TableHeadersRow();
 			for (const auto& row : rows) {
@@ -353,8 +330,6 @@ void DrawSmoothingPanel(ImVec2 panel_size)
 				ImGui::TableSetColumnIndex(2);
 				ImGui::Text("%.2f -> %.2f", row.stats.rawJitterMm, row.stats.smoothJitterMm);
 				ImGui::TableSetColumnIndex(3);
-				ImGui::Text("%.3f -> %.3f", row.stats.rawJitterDeg, row.stats.smoothJitterDeg);
-				ImGui::TableSetColumnIndex(4);
 				ImGui::Text("%u", row.stats.reseeds);
 			}
 			ImGui::EndTable();

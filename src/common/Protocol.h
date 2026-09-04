@@ -91,7 +91,7 @@ namespace vr {
 #endif
 
 namespace protocol {
-	const uint32_t Version = 5;
+	const uint32_t Version = 6;
 
 	enum RequestType
 	{
@@ -114,12 +114,7 @@ namespace protocol {
 
 	struct SmoothingParams
 	{
-		bool enabled;
-		double posMinCutoffHz;
-		double posBeta;
-		double rotMinCutoffHz;
-		double rotBeta;
-		double dCutoffHz;
+		uint8_t strength;
 	};
 
 	struct SmoothingStatsRequest
@@ -135,8 +130,6 @@ namespace protocol {
 		uint32_t reseeds;
 		double rawJitterMm;
 		double smoothJitterMm;
-		double rawJitterDeg;
-		double smoothJitterDeg;
 	};
 
 	struct Protocol

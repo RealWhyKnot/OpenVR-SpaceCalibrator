@@ -76,8 +76,6 @@ private:
 		uint8_t lastResult = 0;
 		double rawPosJitter2 = 0.0;
 		double smoothPosJitter2 = 0.0;
-		double rawRotJitter2 = 0.0;
-		double smoothRotJitter2 = 0.0;
 	};
 
 	DeviceTransform transforms[vr::k_unMaxTrackedDeviceCount];
@@ -87,9 +85,9 @@ private:
 	DeltaSize currentDeltaSpeed[vr::k_unMaxTrackedDeviceCount];
 
 	protocol::AlignmentSpeedParams alignmentSpeedParams;
-	protocol::SmoothingParams smoothingParams;
-	spacecal::OneEuroParams smoothingPos;
-	spacecal::OneEuroParams smoothingRot;
+	uint8_t smoothingStrength = 0;
+	spacecal::OneEuroParams smoothingFilter;
+	double smoothingPredictionScale = 1.0;
 
 	void ApplySmoothing(DeviceTransform& device, vr::DriverPose_t& devicePose);
 

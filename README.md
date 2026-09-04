@@ -8,17 +8,17 @@ see the same trackers they always did, just steadier at rest.
 ## What smoothing does
 
 The driver already rewrites every target-space pose on its way into SteamVR to apply the
-calibration. With smoothing on, it first runs a one euro filter on the tracker's position and
-rotation, in the tracker's own space, before the calibration transform is applied. Velocities are
-recomputed from the filtered motion so SteamVR's prediction stays consistent. Continuous
-calibration corrections never enter the filter, so they behave exactly as before.
+calibration. With smoothing on, it first runs a one euro filter on the tracker's position, in the
+tracker's own space, before the calibration transform is applied. Rotation passes through untouched,
+so aim never lags. SteamVR's own prediction is scaled back by the same amount, which is what takes
+the overshoot off a twitchy tracker. Continuous calibration corrections never enter the filter, so
+they behave exactly as before.
 
 Controls live in the overlay under "Tracker smoothing":
 
-- Smooth trackers: master switch. Takes effect immediately and is saved with the profile.
-- Also smooth controllers: off by default; controllers are latency sensitive.
-- Jitter cutoff (Hz): lower is calmer at rest, but lags slow movement more.
-- Responsiveness: higher opens the filter sooner on fast moves so quick motion lags less.
+- Smoothing: 0 to 100%, where 0 is off. Higher is calmer while a tracker sits still. The filter
+  opens up on movement at every setting, so real motion trails by under 15 mm even at 100%.
+- Also smooth controllers: off by default; controller input is latency sensitive.
 - A live table shows raw versus smoothed frame-to-frame movement per device, and how often the
   filter restarted after a gap or a jump.
 

@@ -12,7 +12,6 @@ vr::EVRInitError ServerTrackedDeviceProvider::Init(vr::IVRDriverContext* pDriver
 
 	memset(transforms, 0, vr::k_unMaxTrackedDeviceCount * sizeof(DeviceTransform));
 	memset(&alignmentSpeedParams, 0, sizeof alignmentSpeedParams);
-	memset(&smoothingParams, 0, sizeof smoothingParams);
 
 	alignmentSpeedParams.thr_rot_tiny = 0.1f * (EIGEN_PI / 180.0f);
 	alignmentSpeedParams.thr_rot_small = 1.0f * (EIGEN_PI / 180.0f);
@@ -231,19 +230,17 @@ void ServerTrackedDeviceProvider::SetDeviceTransform(const protocol::SetDeviceTr
 
 void ServerTrackedDeviceProvider::HandleSetSmoothingParams(const protocol::SmoothingParams& params)
 {
-	const bool changed = smoothingParams.enabled != params.enabled || smoothingParams.posMinCutoffHz != params.posMinCutoffHz ||
-	                     smoothingParams.posBeta != params.posBeta || smoothingParams.rotMinCutoffHz != params.rotMinCutoffHz ||
-	                     smoothingParams.rotBeta != params.rotBeta || smoothingParams.dCutoffHz != params.dCutoffHz;
-	smoothingParams = params;
-	smoothingPos.minCutoffHz = params.posMinCutoffHz;
-	smoothingPos.beta = params.posBeta;
-	smoothingPos.dCutoffHz = params.dCutoffHz;
-	smoothingRot.minCutoffHz = params.rotMinCutoffHz;
-	smoothingRot.beta = params.rotBeta;
-	smoothingRot.dCutoffHz = params.dCutoffHz;
+	const uint8_t strength = params.strength > 100 ? 100 : params.strength;
+	const bool changed = smoothingStrength != strength;
+	smoothingStrength = strength;
+	smoothingFilter = spacecal::ParamsFromStrength(strength);
+	smoothingPredictionScale = spacecal::PredictionScaleFromStrength(strength);
 	if (changed) {
-		LOG("smoothing %s pos(cutoff=%.2fHz beta=%.3f) rot(cutoff=%.2fHz beta=%.3f) dcutoff=%.2fHz", params.enabled ? "on" : "off",
-		    params.posMinCutoffHz, params.posBeta, params.rotMinCutoffHz, params.rotBeta, params.dCutoffHz);
+		for (auto& tf : transforms) {
+			tf.filter.initialized = false;
+		}
+		LOG("smoothing strength %u%% (cutoff=%.2fHz beta=%.1fHz/mps prediction=%.2f)", (unsigned)strength, smoothingFilter.minCutoffHz,
+		    smoothingFilter.beta, smoothingPredictionScale);
 	}
 }
 
@@ -255,13 +252,11 @@ void ServerTrackedDeviceProvider::HandleGetSmoothingStats(const protocol::Smooth
 		return;
 	}
 	const auto& tf = transforms[request.openVRID];
-	stats.active = smoothingParams.enabled && tf.smooth && tf.filter.initialized;
+	stats.active = smoothingStrength > 0 && tf.smooth && tf.filter.initialized;
 	stats.lastResult = tf.lastResult;
 	stats.reseeds = tf.reseeds;
 	stats.rawJitterMm = std::sqrt(tf.rawPosJitter2) * 1000.0;
 	stats.smoothJitterMm = std::sqrt(tf.smoothPosJitter2) * 1000.0;
-	stats.rawJitterDeg = std::sqrt(tf.rawRotJitter2) * (180.0 / EIGEN_PI);
-	stats.smoothJitterDeg = std::sqrt(tf.smoothRotJitter2) * (180.0 / EIGEN_PI);
 }
 
 void ServerTrackedDeviceProvider::ApplySmoothing(DeviceTransform& device, vr::DriverPose_t& devicePose)
@@ -278,14 +273,11 @@ void ServerTrackedDeviceProvider::ApplySmoothing(DeviceTransform& device, vr::Dr
 	device.lastPoseQpc = now;
 
 	const double rawPos[3] = {devicePose.vecPosition[0], devicePose.vecPosition[1], devicePose.vecPosition[2]};
-	const double rawRot[4] = {devicePose.qRotation.w, devicePose.qRotation.x, devicePose.qRotation.y, devicePose.qRotation.z};
-	double prevRawPos[3], prevRawRot[4], prevPos[3], prevRot[4];
+	double prevRawPos[3], prevPos[3];
 	memcpy(prevRawPos, device.filter.prevRawPos, sizeof prevRawPos);
-	memcpy(prevRawRot, device.filter.prevRawRot, sizeof prevRawRot);
 	memcpy(prevPos, device.filter.pos, sizeof prevPos);
-	memcpy(prevRot, device.filter.rot, sizeof prevRot);
 
-	const auto result = spacecal::Step(device.filter, smoothingPos, smoothingRot, rawPos, rawRot, dt);
+	const auto result = spacecal::Step(device.filter, smoothingFilter, rawPos, dt);
 	device.lastResult = (uint8_t)result;
 	if (result == spacecal::StepResult::Jump || result == spacecal::StepResult::Gap) {
 		device.reseeds++;
@@ -298,23 +290,19 @@ void ServerTrackedDeviceProvider::ApplySmoothing(DeviceTransform& device, vr::Dr
 		const double a = spacecal::Clamp(dt, 0.0, 1.0);
 		const double dRaw = spacecal::Distance3(rawPos, prevRawPos);
 		const double dSmooth = spacecal::Distance3(device.filter.pos, prevPos);
-		const double rRaw = spacecal::QuatAngleRad(rawRot, prevRawRot);
-		const double rSmooth = spacecal::QuatAngleRad(device.filter.rot, prevRot);
 		device.rawPosJitter2 += a * (dRaw * dRaw - device.rawPosJitter2);
 		device.smoothPosJitter2 += a * (dSmooth * dSmooth - device.smoothPosJitter2);
-		device.rawRotJitter2 += a * (rRaw * rRaw - device.rawRotJitter2);
-		device.smoothRotJitter2 += a * (rSmooth * rSmooth - device.smoothRotJitter2);
 	}
 
+	const double scale = smoothingPredictionScale;
 	for (int i = 0; i < 3; ++i) {
 		devicePose.vecPosition[i] = device.filter.pos[i];
-		devicePose.vecVelocity[i] = device.filter.vel[i];
-		devicePose.vecAngularVelocity[i] = device.filter.angVel[i];
+		devicePose.vecVelocity[i] *= scale;
+		devicePose.vecAcceleration[i] *= scale;
+		devicePose.vecAngularVelocity[i] *= scale;
+		devicePose.vecAngularAcceleration[i] *= scale;
 	}
-	devicePose.qRotation.w = device.filter.rot[0];
-	devicePose.qRotation.x = device.filter.rot[1];
-	devicePose.qRotation.y = device.filter.rot[2];
-	devicePose.qRotation.z = device.filter.rot[3];
+	devicePose.poseTimeOffset *= scale;
 }
 
 bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr::DriverPose_t& pose)
@@ -337,7 +325,7 @@ bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr:
 
 	auto& tf = transforms[openVRID];
 
-	if (tf.smooth && smoothingParams.enabled && !tf.quash) {
+	if (tf.smooth && smoothingStrength > 0 && !tf.quash) {
 		ApplySmoothing(tf, pose);
 	}
 
