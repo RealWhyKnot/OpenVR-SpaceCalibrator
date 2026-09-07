@@ -76,6 +76,7 @@ target_link_libraries(SpaceCalibratorOverlay
     PRIVATE opengl32.lib
     PRIVATE dwmapi.lib
     PRIVATE winhttp.lib
+    PRIVATE windowsapp.lib
     PRIVATE glfw
     PRIVATE gl3w
     PRIVATE imgui

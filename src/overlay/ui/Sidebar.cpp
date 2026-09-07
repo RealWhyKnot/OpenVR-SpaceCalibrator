@@ -31,6 +31,7 @@ namespace ui {
 
 	static const SidebarEntry kEntries[] = {
 	    {Page::Calibration, ICON_MI_MY_LOCATION, "Calibration"},
+	    {Page::BaseStations, ICON_MI_SENSORS, "Base stations"},
 	    {Page::Smoothing, ICON_MI_WAVES, "Smoothing"},
 	    {Page::Settings, ICON_MI_SETTINGS, "Settings"},
 	    {Page::Learn, ICON_MI_SCHOOL, "Learn"},

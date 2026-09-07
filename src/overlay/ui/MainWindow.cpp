@@ -73,6 +73,7 @@ void BuildMainWindow(bool runningInOverlay_)
 
 	switch (ui::CurrentPage()) {
 		case ui::Page::Calibration: DrawCalibrationPage(); break;
+		case ui::Page::BaseStations: DrawBaseStationsPage(); break;
 		case ui::Page::Smoothing: DrawSmoothingPage(); break;
 		case ui::Page::Settings: CCal_DrawSettings(); break;
 		case ui::Page::Learn: DrawLearnPage(); break;

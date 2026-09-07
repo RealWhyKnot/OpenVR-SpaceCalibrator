@@ -5,6 +5,7 @@
 #include "LegacyInstall.h"
 #include "UserInterface.h"
 #include "VRSession.h"
+#include "basestations/BaseStationsController.h"
 
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
@@ -61,6 +62,7 @@ void RunLoop()
 		VRSessionTick(time);
 		if (VRSess.quitRequested) return;
 		CalibrationTick(time);
+		spacecal::basestations::BaseStationsController::Get().Tick(VRSess.state == VRConnectionState::Connected);
 
 		bool dashboardVisible = false;
 		int width, height;

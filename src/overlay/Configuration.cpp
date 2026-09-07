@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "Configuration.h"
+#include "basestations/BaseStationsSettings.h"
 
 #include <picojson.h>
 
@@ -453,6 +454,16 @@ void SaveUpdateSettings(const UpdateSettings& settings)
 	obj["check_on_startup"].set<bool>(settings.checkOnStartup);
 	obj["skipped_tag"].set<std::string>(settings.skippedTag);
 	WriteRegistryKey("Updates", picojson::value(obj).serialize());
+}
+
+void LoadBaseStationsSettings(spacecal::basestations::BaseStationsSettings& settings)
+{
+	settings = spacecal::basestations::ParseBaseStationsSettings(ReadRegistryKey("BaseStations"));
+}
+
+void SaveBaseStationsSettings(const spacecal::basestations::BaseStationsSettings& settings)
+{
+	WriteRegistryKey("BaseStations", spacecal::basestations::SerializeBaseStationsSettings(settings));
 }
 
 void LoadKnownDevices(std::vector<KnownDevice>& devices)

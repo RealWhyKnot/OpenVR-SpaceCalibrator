@@ -13,6 +13,7 @@ namespace {
 		Standard,
 		Continuous,
 		Smoothing,
+		BaseStations,
 	};
 
 	LearnArticle currentArticle = LearnArticle::Home;
@@ -39,6 +40,9 @@ namespace {
 		}
 		if (ui::IconButton(ICON_MI_WAVES, "Tracker smoothing", card)) {
 			currentArticle = LearnArticle::Smoothing;
+		}
+		if (ui::IconButton(ICON_MI_SENSORS, "Base stations", card)) {
+			currentArticle = LearnArticle::BaseStations;
 		}
 	}
 
@@ -74,6 +78,21 @@ namespace {
 		                   "adjust the recalibration threshold on the Settings page.");
 	}
 
+	void DrawBaseStations()
+	{
+		ui::TextHeading("Base stations");
+		ImGui::TextWrapped("The Base stations page finds lighthouse base stations over Bluetooth LE and can wake them, put them "
+		                   "to sleep, change 2.0 channels, and rename them. Your PC needs a Bluetooth LE adapter.");
+		ImGui::Spacing();
+		Bullet("1.0 stations accept wake and sleep. Their state can't be read back, so they always show as unknown.");
+		Bullet("2.0 stations also report their state, channel, and faults, and support standby on current firmware.");
+		Bullet("Two 2.0 stations on the same channel can't track. The page flags conflicts and can fix them in one click.");
+		ImGui::Spacing();
+		ImGui::TextWrapped("Power automation wakes stations when your VR session starts and powers them down when it ends. Leave "
+		                   "it off if other SteamVR machines share the same stations, and don't run it together with SteamVR's "
+		                   "own base station power management.");
+	}
+
 	void DrawSmoothing()
 	{
 		ui::TextHeading("Tracker smoothing");
@@ -103,5 +122,6 @@ void DrawLearnPage()
 		case LearnArticle::Standard: DrawStandard(); break;
 		case LearnArticle::Continuous: DrawContinuous(); break;
 		case LearnArticle::Smoothing: DrawSmoothing(); break;
+		case LearnArticle::BaseStations: DrawBaseStations(); break;
 	}
 }

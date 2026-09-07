@@ -5,6 +5,7 @@ namespace ui {
 	enum class Page
 	{
 		Calibration,
+		BaseStations,
 		Smoothing,
 		Settings,
 		Learn,

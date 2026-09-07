@@ -34,6 +34,7 @@ void CCal_BasicInfo();
 void DrawSteamVRWarning();
 void DrawLearnPage();
 void DrawAboutPage();
+void DrawBaseStationsPage();
 void CCal_DrawSettings();
 void BuildMenu(bool runningInOverlay);
 void BuildProfileEditor();

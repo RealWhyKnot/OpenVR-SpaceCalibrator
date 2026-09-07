@@ -8,6 +8,7 @@
 #include "OverlayApp.h"
 #include "Updater.h"
 #include "VRSession.h"
+#include "basestations/BaseStationsController.h"
 
 #include <GLFW/glfw3.h>
 #include <openvr.h>
@@ -85,8 +86,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 		if (UpdaterCtx.settings.checkOnStartup) {
 			UpdaterCtx.StartCheck(false);
 		}
+		{
+			auto& baseStations = spacecal::basestations::BaseStationsController::Get();
+			if (baseStations.Settings().automation.powerManagement) {
+				baseStations.EnsureStarted();
+			}
+		}
 		RunLoop();
 		std::cerr << "run loop exited\n";
+
+		spacecal::basestations::BaseStationsController::Get().Shutdown();
 
 		if (vr::VRSystem()) vr::VR_Shutdown();
 
