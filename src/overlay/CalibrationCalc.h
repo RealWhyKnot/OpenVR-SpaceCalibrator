@@ -125,7 +125,6 @@ private:
 	std::vector<bool> DetectOutliers() const;
 	Eigen::Vector3d CalibrateRotation(const bool ignoreOutliers) const;
 	Eigen::Vector3d CalibrateTranslation(const Eigen::Matrix3d& rotation) const;
-	void CalibrateScaleOffset(const Eigen::Matrix3d& rotation, Eigen::Vector3d* out_scaleOffset, float* out_scaleFactor) const;
 
 	Eigen::AffineCompact3d ComputeCalibration(const bool ignoreOutliers) const;
 
