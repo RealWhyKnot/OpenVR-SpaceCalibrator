@@ -64,7 +64,7 @@ jobs:
         run: |
           ./.github/scripts/Test-WorkflowSyntax.ps1
           ./.github/scripts/Test-ReleaseVersionSequence.ps1
-          ./.github/scripts/Test-GenerateReleaseNotes.ps1
+          ./.github/scripts/Test-AssertNoUpstreamReferences.ps1
 
       - name: Build and test
         shell: pwsh
@@ -86,10 +86,27 @@ jobs:
           Compress-Archive -Path "build/$name/*" -DestinationPath $zip -Force
           $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           [System.IO.File]::WriteAllText("$zip.sha256", "$hash  $name.zip`n", (New-Object System.Text.UTF8Encoding($false)))
-          ./.github/scripts/Generate-ReleaseNotes.ps1 -Tag $env:RELEASE_TAG -ZipPath $zip -OutFile build/notes.md | Out-Null
+          $sizeMiB = [math]::Round((Get-Item -LiteralPath $zip).Length / 1MB, 2)
           Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "zip=$zip"
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "name=$name.zip"
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "size=$sizeMiB"
           Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "sha256=$hash"
-          Get-Content build/notes.md
+
+      - name: Build release notes
+        id: notes
+        uses: RealWhyKnot/workflows/release-notes@v1
+        with:
+          tag: ${{ env.RELEASE_TAG }}
+          title: Space Calibrator ${{ env.RELEASE_TAG }}
+          extra: |
+            ### Download
+
+            - `${{ steps.package.outputs.name }}` (${{ steps.package.outputs.size }} MiB)
+            - SHA256 `${{ steps.package.outputs.sha256 }}`
+
+      - name: Check the notes for upstream references
+        shell: pwsh
+        run: ./.github/scripts/Assert-NoUpstreamReferences.ps1 -Path '${{ steps.notes.outputs.file }}'
 
       - name: Publish release
         shell: pwsh
@@ -97,7 +114,7 @@ jobs:
           $tag = $env:RELEASE_TAG
           $extra = @()
           if ('${{ steps.tag.outputs.prerelease }}' -eq 'true') { $extra = @('--prerelease', '--latest=false') }
-          gh release create $tag '${{ steps.package.outputs.zip }}' '${{ steps.package.outputs.zip }}.sha256' --repo '${{ github.repository }}' --target '${{ steps.tag.outputs.sha }}' --title $tag --notes-file build/notes.md @extra
+          gh release create $tag '${{ steps.package.outputs.zip }}' '${{ steps.package.outputs.zip }}.sha256' --repo '${{ github.repository }}' --target '${{ steps.tag.outputs.sha }}' --title $tag --notes-file '${{ steps.notes.outputs.file }}' @extra
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
 
       - name: Verify uploaded asset

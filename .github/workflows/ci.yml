@@ -71,7 +71,7 @@ jobs:
         run: |
           ./.github/scripts/Test-WorkflowSyntax.ps1
           ./.github/scripts/Test-ReleaseVersionSequence.ps1
-          ./.github/scripts/Test-GenerateReleaseNotes.ps1
+          ./.github/scripts/Test-AssertNoUpstreamReferences.ps1
 
       - name: Configure
         shell: pwsh
