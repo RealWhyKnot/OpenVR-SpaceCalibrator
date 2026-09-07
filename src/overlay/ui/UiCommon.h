@@ -31,6 +31,7 @@ void DrawUpdatePrompt();
 void DrawUpdatesPanel(ImVec2 panel_size);
 void DrawSmoothingPanel(ImVec2 panel_size);
 void CCal_BasicInfo();
+void DrawSteamVRWarning();
 void CCal_DrawSettings();
 void BuildMenu(bool runningInOverlay);
 void BuildProfileEditor();

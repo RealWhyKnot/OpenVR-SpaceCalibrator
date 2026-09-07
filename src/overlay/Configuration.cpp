@@ -454,3 +454,49 @@ void SaveUpdateSettings(const UpdateSettings& settings)
 	obj["skipped_tag"].set<std::string>(settings.skippedTag);
 	WriteRegistryKey("Updates", picojson::value(obj).serialize());
 }
+
+void LoadKnownDevices(std::vector<KnownDevice>& devices)
+{
+	devices.clear();
+	auto str = ReadRegistryKey("Devices");
+	if (str.empty()) {
+		return;
+	}
+	picojson::value v;
+	auto err = picojson::parse(v, str);
+	if (!err.empty() || !v.is<picojson::array>()) {
+		std::cerr << "Error loading known devices: " << err << '\n';
+		return;
+	}
+	for (auto& entry : v.get<picojson::array>()) {
+		if (!entry.is<picojson::object>()) continue;
+		auto obj = entry.get<picojson::object>();
+		KnownDevice device;
+		if (obj["tracking_system"].is<std::string>()) device.trackingSystem = obj["tracking_system"].get<std::string>();
+		if (obj["model"].is<std::string>()) device.model = obj["model"].get<std::string>();
+		if (obj["serial"].is<std::string>()) device.serial = obj["serial"].get<std::string>();
+		if (obj["device_class"].is<double>()) device.deviceClass = (vr::TrackedDeviceClass)(int)obj["device_class"].get<double>();
+		if (!device.serial.empty() || !device.model.empty()) {
+			devices.push_back(std::move(device));
+		}
+	}
+}
+
+void SaveKnownDevices(const std::vector<KnownDevice>& devices)
+{
+	picojson::array arr;
+	for (const auto& device : devices) {
+		picojson::object obj;
+		obj["tracking_system"].set<std::string>(device.trackingSystem);
+		obj["model"].set<std::string>(device.model);
+		obj["serial"].set<std::string>(device.serial);
+		const double deviceClass = (double)device.deviceClass;
+		obj["device_class"].set<double>(deviceClass);
+		picojson::value entry;
+		entry.set<picojson::object>(obj);
+		arr.push_back(entry);
+	}
+	picojson::value v;
+	v.set<picojson::array>(arr);
+	WriteRegistryKey("Devices", v.serialize());
+}

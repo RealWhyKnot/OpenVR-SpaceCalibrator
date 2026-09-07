@@ -23,7 +23,13 @@ static std::string LastErrorString(DWORD lastError)
 
 IPCClient::~IPCClient()
 {
+	Disconnect();
+}
+
+void IPCClient::Disconnect()
+{
 	if (pipe && pipe != INVALID_HANDLE_VALUE) CloseHandle(pipe);
+	pipe = INVALID_HANDLE_VALUE;
 }
 
 void IPCClient::Connect()
@@ -41,13 +47,28 @@ void IPCClient::Connect()
 	DWORD mode = PIPE_READMODE_MESSAGE;
 	if (!SetNamedPipeHandleState(pipe, &mode, 0, 0)) {
 		DWORD lastError = GetLastError();
+		Disconnect();
 		throw std::runtime_error("Couldn't set pipe mode. Error " + std::to_string(lastError) + ": " + LastErrorString(lastError));
 	}
 
 	auto response = SendBlocking(protocol::Request(protocol::RequestHandshake));
 	if (response.type != protocol::ResponseHandshake || response.protocol.version != protocol::Version) {
+		Disconnect();
 		throw std::runtime_error("Incorrect driver version installed, try reinstalling Space Calibrator. (Client: " +
 		                         std::to_string(protocol::Version) + ", Driver: " + std::to_string(response.protocol.version) + ")");
+	}
+}
+
+bool IPCClient::TryConnect(std::string& error)
+{
+	try {
+		Connect();
+		return true;
+	}
+	catch (const std::runtime_error& e) {
+		error = e.what();
+		Disconnect();
+		return false;
 	}
 }
 

@@ -5,6 +5,7 @@
 VRState VRState::Load()
 {
 	VRState state;
+	if (!vr::VRSystem()) return state;
 	auto& trackingSystems = state.trackingSystems;
 
 	char buffer[vr::k_unMaxPropertyStringSize] = {};

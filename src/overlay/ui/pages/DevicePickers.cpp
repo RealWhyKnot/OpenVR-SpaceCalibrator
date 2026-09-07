@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "ui/UiCommon.h"
 #include "Calibration.h"
+#include "VRSession.h"
 
 #include <imgui/imgui.h>
 #include "imgui_extensions.h"
@@ -120,6 +121,11 @@ static std::string LabelString(const StandbyDevice& device)
 	return label;
 }
 
+static bool DeviceIsSelectable(const VRDevice& device)
+{
+	return device.id >= 0 && vr::VRSystem() && vr::VRSystem()->IsTrackedDeviceConnected(device.id);
+}
+
 static void BuildDeviceSelection(const VRState& state, int& initialSelected, const std::string& system, StandbyDevice& standbyDevice)
 {
 	int selected = initialSelected;
@@ -147,6 +153,7 @@ static void BuildDeviceSelection(const VRState& state, int& initialSelected, con
 	if (selected == -1 && !standby) {
 		for (auto& device : state.devices) {
 			if (device.trackingSystem != system) continue;
+			if (!DeviceIsSelectable(device)) continue;
 
 			if (device.controllerRole == vr::TrackedControllerRole_LeftHand) {
 				selected = device.id;
@@ -157,6 +164,7 @@ static void BuildDeviceSelection(const VRState& state, int& initialSelected, con
 		if (selected == -1) {
 			for (auto& device : state.devices) {
 				if (device.trackingSystem != system) continue;
+				if (!DeviceIsSelectable(device)) continue;
 
 				selected = device.id;
 				break;
@@ -196,7 +204,13 @@ static void BuildDeviceSelection(const VRState& state, int& initialSelected, con
 		std::string uniqueId = label + "_pass1_" + std::to_string(iterator);
 		iterator++;
 		ImGui::PushID(uniqueId.c_str());
-		if (ImGui::Selectable(label.c_str(), selected == device.id)) {
+		if (!DeviceIsSelectable(device)) {
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.35f, 0.35f, 1.0f));
+			label += " (not connected)";
+			ImGui::Selectable(label.c_str(), device.id >= 0 && selected == device.id, ImGuiSelectableFlags_Disabled);
+			ImGui::PopStyleColor();
+		}
+		else if (ImGui::Selectable(label.c_str(), selected == device.id)) {
 			selected = device.id;
 		}
 		ImGui::PopID();
@@ -242,6 +256,21 @@ VRState LoadVRState()
 {
 	VRState state = VRState::Load();
 	auto& trackingSystems = state.trackingSystems;
+
+	if (VRSess.state != VRConnectionState::Connected) {
+		for (const auto& known : GetKnownDevices()) {
+			auto existing = std::find(trackingSystems.begin(), trackingSystems.end(), known.trackingSystem);
+			if (existing == trackingSystems.end()) {
+				trackingSystems.push_back(known.trackingSystem);
+			}
+			VRDevice device;
+			device.deviceClass = known.deviceClass;
+			device.model = known.model;
+			device.serial = known.serial;
+			device.trackingSystem = known.trackingSystem;
+			state.devices.push_back(device);
+		}
+	}
 
 	// Inject entries for continuous calibration targets which have yet to load
 

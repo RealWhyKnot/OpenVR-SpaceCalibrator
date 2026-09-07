@@ -1,6 +1,9 @@
 #include "stdafx.h"
 #include "VRSession.h"
+#include "Calibration.h"
 #include "Constants.h"
+
+#include <tlhelp32.h>
 
 #include <cstdio>
 #include <format>
@@ -9,6 +12,117 @@
 #include <string>
 
 VRSessionState VRSess;
+
+bool IsVRServerRunning()
+{
+	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	if (snapshot == INVALID_HANDLE_VALUE) return false;
+
+	bool found = false;
+	PROCESSENTRY32W entry = {};
+	entry.dwSize = sizeof(entry);
+	if (Process32FirstW(snapshot, &entry)) {
+		do {
+			if (_wcsicmp(entry.szExeFile, L"vrserver.exe") == 0) {
+				found = true;
+				break;
+			}
+		} while (Process32NextW(snapshot, &entry));
+	}
+	CloseHandle(snapshot);
+	return found;
+}
+
+static void CheckInterfaceVersions()
+{
+	if (!vr::VR_IsInterfaceVersionValid(vr::IVRSystem_Version)) {
+		throw std::runtime_error("OpenVR error: Outdated IVRSystem_Version");
+	}
+	else if (!vr::VR_IsInterfaceVersionValid(vr::IVRSettings_Version)) {
+		throw std::runtime_error("OpenVR error: Outdated IVRSettings_Version");
+	}
+	else if (!vr::VR_IsInterfaceVersionValid(vr::IVROverlay_Version)) {
+		throw std::runtime_error("OpenVR error: Outdated IVROverlay_Version");
+	}
+}
+
+void VRSessionTick(double time)
+{
+	if (VRSess.state != VRConnectionState::Disconnected && time >= VRSess.nextServerCheckTime) {
+		VRSess.nextServerCheckTime = time + 2.0;
+		if (!IsVRServerRunning()) {
+			VRSessionHandleLost(time);
+			return;
+		}
+	}
+
+	switch (VRSess.state) {
+		case VRConnectionState::Disconnected: {
+			if (time < VRSess.nextAttemptTime) return;
+			if (!IsVRServerRunning()) {
+				VRSess.lastInitError = vr::VRInitError_Init_NoServerForBackgroundApp;
+				VRSess.statusText.clear();
+				VRSess.nextAttemptTime = time + 5.0;
+				return;
+			}
+			auto initError = vr::VRInitError_None;
+			vr::VR_Init(&initError, vr::VRApplication_Overlay);
+			if (initError != vr::VRInitError_None) {
+				VRSess.lastInitError = initError;
+				VRSess.statusText = vr::VR_GetVRInitErrorAsEnglishDescription(initError);
+				VRSess.nextAttemptTime = time + 5.0;
+				return;
+			}
+			VRSess.lastInitError = vr::VRInitError_None;
+			VRSess.state = VRConnectionState::Connecting;
+			VRSess.nextAttemptTime = 0.0;
+			[[fallthrough]];
+		}
+		case VRConnectionState::Connecting: {
+			if (time < VRSess.nextAttemptTime) return;
+			try {
+				CheckInterfaceVersions();
+				ActivateMultipleDrivers();
+				VerifySetupCorrect();
+				TryCreateVROverlay();
+			}
+			catch (const std::runtime_error& e) {
+				VRSess.statusText = e.what();
+				VRSess.nextAttemptTime = time + 5.0;
+				return;
+			}
+			std::string driverError;
+			if (!TryConnectDriver(driverError)) {
+				VRSess.statusText = driverError;
+				VRSess.nextAttemptTime = time + 2.0;
+				return;
+			}
+			VRSess.statusText.clear();
+			VRSess.state = VRConnectionState::Connected;
+			return;
+		}
+		case VRConnectionState::Connected: return;
+	}
+}
+
+void VRSessionHandleLost(double time)
+{
+	std::cerr << "steamvr closed, exiting\n";
+	DisconnectDriver();
+	if (vr::VRSystem()) vr::VR_Shutdown();
+	VRSess.overlayMainHandle = 0;
+	VRSess.overlayThumbnailHandle = 0;
+	VRSess.state = VRConnectionState::Disconnected;
+	VRSess.quitRequested = true;
+}
+
+void VRSessionDriverLost(double time, const std::string& why)
+{
+	DisconnectDriver();
+	VRSess.state = VRConnectionState::Connecting;
+	VRSess.nextAttemptTime = time + 2.0;
+	VRSess.statusText = why;
+}
 
 void ActivateMultipleDrivers()
 {
@@ -36,28 +150,6 @@ void ActivateMultipleDrivers()
 	else {
 		std::cerr << "\"" << vr::k_pch_SteamVR_ActivateMultipleDrivers_Bool << "\" setting previously enabled" << '\n';
 	}
-}
-
-void InitVR()
-{
-	auto initError = vr::VRInitError_None;
-	vr::VR_Init(&initError, vr::VRApplication_Overlay);
-	if (initError != vr::VRInitError_None) {
-		auto error = vr::VR_GetVRInitErrorAsEnglishDescription(initError);
-		throw std::runtime_error("OpenVR error:" + std::string(error));
-	}
-
-	if (!vr::VR_IsInterfaceVersionValid(vr::IVRSystem_Version)) {
-		throw std::runtime_error("OpenVR error: Outdated IVRSystem_Version");
-	}
-	else if (!vr::VR_IsInterfaceVersionValid(vr::IVRSettings_Version)) {
-		throw std::runtime_error("OpenVR error: Outdated IVRSettings_Version");
-	}
-	else if (!vr::VR_IsInterfaceVersionValid(vr::IVROverlay_Version)) {
-		throw std::runtime_error("OpenVR error: Outdated IVROverlay_Version");
-	}
-
-	ActivateMultipleDrivers();
 }
 
 void TryCreateVROverlay()

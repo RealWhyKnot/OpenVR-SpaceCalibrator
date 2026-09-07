@@ -5,6 +5,7 @@
 #include "CalibrationMetrics.h"
 #include "Updater.h"
 #include "Version.h"
+#include "VRSession.h"
 
 #include <imgui/imgui.h>
 #include "imgui_extensions.h"
@@ -33,6 +34,9 @@ void BuildMainWindow(bool runningInOverlay_)
 		BuildContinuousCalDisplay();
 	}
 	else {
+		if (VRSess.state != VRConnectionState::Connected) {
+			DrawSteamVRWarning();
+		}
 		auto state = LoadVRState();
 
 		ImGui::BeginDisabled(CalCtx.state == CalibrationState::Continuous);
@@ -78,6 +82,10 @@ void BuildContinuousCalDisplay()
 	if (!ImGui::Begin("Continuous Calibration", nullptr, bareWindowFlags & ~ImGuiWindowFlags_NoTitleBar)) {
 		ImGui::End();
 		return;
+	}
+
+	if (VRSess.state != VRConnectionState::Connected) {
+		DrawSteamVRWarning();
 	}
 
 	ImVec2 contentRegion;

@@ -4,6 +4,14 @@
 #include <vector>
 #include <openvr.h>
 
+struct KnownDevice
+{
+	std::string trackingSystem;
+	std::string model;
+	std::string serial;
+	vr::TrackedDeviceClass deviceClass = vr::TrackedDeviceClass_Invalid;
+};
+
 struct VRDevice
 {
 	int id = -1;

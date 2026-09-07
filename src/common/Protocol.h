@@ -297,7 +297,9 @@ namespace protocol {
 		void Close()
 		{
 			if (pData) UnmapViewOfFile(pData);
-			if (hMapFile) CloseHandle(hMapFile);
+			if (hMapFile && hMapFile != INVALID_HANDLE_VALUE) CloseHandle(hMapFile);
+			pData = nullptr;
+			hMapFile = INVALID_HANDLE_VALUE;
 		}
 
 		bool Create(LPCSTR segment_name)

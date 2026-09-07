@@ -6,8 +6,10 @@
 #include "CalibrationCalc.h"
 #include "CalibrationMath.h"
 #include "TrackingSystemFixups.h"
+#include "VRSession.h"
 #include "VRState.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <iostream>
@@ -110,10 +112,64 @@ namespace {
 	}
 }
 
-void InitCalibrator()
+static std::vector<KnownDevice> knownDevices;
+static bool knownDevicesLoaded = false;
+static double timeLastDeviceScan = 0.0;
+
+const std::vector<KnownDevice>& GetKnownDevices()
 {
-	Driver.Connect();
-	shmem.Open(OPENVR_SPACECALIBRATOR_SHMEM_NAME);
+	if (!knownDevicesLoaded) {
+		LoadKnownDevices(knownDevices);
+		knownDevicesLoaded = true;
+	}
+	return knownDevices;
+}
+
+static void MaintainKnownDevices(double time)
+{
+	if (time - timeLastDeviceScan < 10.0) return;
+	timeLastDeviceScan = time;
+	GetKnownDevices();
+
+	auto state = VRState::Load();
+	bool changed = false;
+	for (const auto& device : state.devices) {
+		auto existing = std::find_if(knownDevices.begin(), knownDevices.end(), [&](const KnownDevice& known) {
+			return known.trackingSystem == device.trackingSystem && known.serial == device.serial;
+		});
+		if (existing == knownDevices.end()) {
+			knownDevices.push_back({device.trackingSystem, device.model, device.serial, device.deviceClass});
+			changed = true;
+		}
+		else if (existing->model != device.model || existing->deviceClass != device.deviceClass) {
+			existing->model = device.model;
+			existing->deviceClass = device.deviceClass;
+			changed = true;
+		}
+	}
+	if (changed) SaveKnownDevices(knownDevices);
+}
+
+bool TryConnectDriver(std::string& error)
+{
+	if (!Driver.TryConnect(error)) {
+		return false;
+	}
+	try {
+		shmem.Open(OPENVR_SPACECALIBRATOR_SHMEM_NAME);
+	}
+	catch (const std::runtime_error& e) {
+		error = e.what();
+		Driver.Disconnect();
+		return false;
+	}
+	return true;
+}
+
+void DisconnectDriver()
+{
+	Driver.Disconnect();
+	shmem.Close();
 }
 
 void ResetAndDisableOffsets(uint32_t id)
@@ -134,7 +190,7 @@ void ResetAndDisableOffsets(uint32_t id)
 
 static_assert(vr::k_unTrackedDeviceIndex_Hmd == 0, "HMD index expected to be 0");
 
-void ScanAndApplyProfile(CalibrationContext& ctx)
+static void ScanAndApplyProfileImpl(CalibrationContext& ctx)
 {
 	std::unique_ptr<char[]> buffer_array(new char[vr::k_unMaxPropertyStringSize]);
 	char* buffer = buffer_array.get();
@@ -210,6 +266,17 @@ void ScanAndApplyProfile(CalibrationContext& ctx)
 	}
 }
 
+void ScanAndApplyProfile(CalibrationContext& ctx)
+{
+	if (!vr::VRSystem() || !Driver.IsConnected()) return;
+	try {
+		ScanAndApplyProfileImpl(ctx);
+	}
+	catch (const std::runtime_error& e) {
+		VRSessionDriverLost(glfwGetTime(), e.what());
+	}
+}
+
 void ApplySmoothingSettings()
 {
 	ScanAndApplyProfile(CalCtx);
@@ -218,14 +285,21 @@ void ApplySmoothingSettings()
 
 bool QuerySmoothingStats(uint32_t id, protocol::SmoothingStats& stats)
 {
-	protocol::Request req(protocol::RequestGetSmoothingStats);
-	req.getSmoothingStats.openVRID = id;
-	auto response = Driver.SendBlocking(req);
-	if (response.type != protocol::ResponseSmoothingStats) {
+	if (!Driver.IsConnected()) return false;
+	try {
+		protocol::Request req(protocol::RequestGetSmoothingStats);
+		req.getSmoothingStats.openVRID = id;
+		auto response = Driver.SendBlocking(req);
+		if (response.type != protocol::ResponseSmoothingStats) {
+			return false;
+		}
+		stats = response.smoothingStats;
+		return true;
+	}
+	catch (const std::runtime_error& e) {
+		VRSessionDriverLost(glfwGetTime(), e.what());
 		return false;
 	}
-	stats = response.smoothingStats;
-	return true;
 }
 
 void StartCalibration()
@@ -266,7 +340,7 @@ void EndContinuousCalibration()
 
 void CalibrationTick(double time)
 {
-	if (!vr::VRSystem()) return;
+	if (!vr::VRSystem() || VRSess.state != VRConnectionState::Connected || !shmem) return;
 
 	auto& ctx = CalCtx;
 	if ((time - ctx.timeLastTick) < 0.05) return;
@@ -282,6 +356,7 @@ void CalibrationTick(double time)
 	}
 
 	ctx.timeLastTick = time;
+	MaintainKnownDevices(time);
 	shmem.ReadNewPoses([&](const protocol::DriverPoseShmem::AugmentedPose& augmented_pose) {
 		if (augmented_pose.deviceId >= 0 && augmented_pose.deviceId <= vr::k_unMaxTrackedDeviceCount) {
 			ctx.devicePoses[augmented_pose.deviceId] = augmented_pose.pose;
@@ -500,6 +575,7 @@ void CalibrationTick(double time)
 
 void LoadChaperoneBounds()
 {
+	if (!vr::VRChaperoneSetup()) return;
 	vr::VRChaperoneSetup()->RevertWorkingCopy();
 
 	uint32_t quadCount = 0;
@@ -514,6 +590,7 @@ void LoadChaperoneBounds()
 
 void ApplyChaperoneBounds()
 {
+	if (!vr::VRChaperoneSetup()) return;
 	vr::VRChaperoneSetup()->RevertWorkingCopy();
 	vr::VRChaperoneSetup()->SetWorkingCollisionBoundsInfo(&CalCtx.chaperone.geometry[0], (uint32_t)CalCtx.chaperone.geometry.size());
 	vr::VRChaperoneSetup()->SetWorkingStandingZeroPoseToRawTrackingPose(&CalCtx.chaperone.standingCenter);
@@ -523,6 +600,12 @@ void ApplyChaperoneBounds()
 
 void DebugApplyRandomOffset()
 {
-	protocol::Request req(protocol::RequestDebugOffset);
-	Driver.SendBlocking(req);
+	if (!Driver.IsConnected()) return;
+	try {
+		protocol::Request req(protocol::RequestDebugOffset);
+		Driver.SendBlocking(req);
+	}
+	catch (const std::runtime_error& e) {
+		VRSessionDriverLost(glfwGetTime(), e.what());
+	}
 }

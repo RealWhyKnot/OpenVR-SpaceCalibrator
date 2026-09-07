@@ -32,6 +32,7 @@ const char* AppCwd()
 }
 
 static HANDLE hSteamMutex = INVALID_HANDLE_VALUE;
+static HANDLE hAppMutex = INVALID_HANDLE_VALUE;
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 {
@@ -44,6 +45,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
 	if (!InitGlfw()) {
 		MessageBox(nullptr, L"Failed to initialize GLFW", L"", 0);
+		return 0;
+	}
+
+	hAppMutex = CreateMutexA(NULL, FALSE, APP_MUTEX_KEY);
+	if (hAppMutex != nullptr && GetLastError() == ERROR_ALREADY_EXISTS) {
+		CloseHandle(hAppMutex);
+		MessageBox(nullptr, L"Space Calibrator is already running.", L"Space Calibrator", 0);
 		return 0;
 	}
 
@@ -68,23 +76,19 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	}
 
 	try {
-		InitVR();
-		printf("isSteam: %d\n", isRunningViaSteam);
 		if (isRunningViaSteam) {
 			CheckGithubVersionInstalledOnSteam();
-			printf("foundGithub: %d\n", IsGithubVersionInstalled());
 		}
-		VerifySetupCorrect();
-		CreateGLFWWindow();
-		InitCalibrator();
+		CreateGLFWWindow(IsVRServerRunning());
 		LoadProfile(CalCtx);
 		LoadUpdateSettings(UpdaterCtx.settings);
 		if (UpdaterCtx.settings.checkOnStartup) {
 			UpdaterCtx.StartCheck(false);
 		}
 		RunLoop();
+		std::cerr << "run loop exited\n";
 
-		vr::VR_Shutdown();
+		if (vr::VRSystem()) vr::VR_Shutdown();
 
 		DestroyGLFWResources();
 	}
@@ -98,6 +102,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	if (hSteamMutex != INVALID_HANDLE_VALUE && hSteamMutex != nullptr) {
 		CloseHandle(hSteamMutex);
 		hSteamMutex = nullptr;
+	}
+
+	if (hAppMutex != INVALID_HANDLE_VALUE && hAppMutex != nullptr) {
+		CloseHandle(hAppMutex);
+		hAppMutex = nullptr;
 	}
 
 	if (AppWindow.window) glfwDestroyWindow(AppWindow.window);

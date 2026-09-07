@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <iostream>
 #include <thread>
 
 static char textBuf[0x400] = {};
@@ -56,8 +57,9 @@ void RunLoop()
 	double lastFrameStartTime = glfwGetTime();
 
 	while (!glfwWindowShouldClose(AppWindow.window)) {
-		TryCreateVROverlay();
 		double time = glfwGetTime();
+		VRSessionTick(time);
+		if (VRSess.quitRequested) return;
 		CalibrationTick(time);
 
 		bool dashboardVisible = false;
@@ -104,8 +106,9 @@ void RunLoop()
 				}
 			}
 
+			bool vrQuit = false;
 			vr::VREvent_t vrEvent;
-			while (vr::VROverlay()->PollNextOverlayEvent(VRSess.overlayMainHandle, &vrEvent, sizeof(vrEvent))) {
+			while (!vrQuit && vr::VROverlay()->PollNextOverlayEvent(VRSess.overlayMainHandle, &vrEvent, sizeof(vrEvent))) {
 				switch (vrEvent.eventType) {
 					case vr::VREvent_MouseMove: io.AddMousePosEvent(vrEvent.data.mouse.x, vrEvent.data.mouse.y); break;
 					case vr::VREvent_MouseButtonDown:
@@ -137,8 +140,15 @@ void RunLoop()
 						keyboardJustClosed = true;
 						break;
 					}
-					case vr::VREvent_Quit: return;
+					case vr::VREvent_Quit: vrQuit = true; break;
 				}
+			}
+
+			if (vrQuit) {
+				std::cerr << "vr quit event received\n";
+				vr::VRSystem()->AcknowledgeQuit_Exiting();
+				VRSessionHandleLost(time);
+				return;
 			}
 		}
 

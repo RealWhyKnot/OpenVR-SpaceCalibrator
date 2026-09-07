@@ -68,7 +68,7 @@ bool InitGlfw()
 	return true;
 }
 
-void CreateGLFWWindow()
+void CreateGLFWWindow(bool startMinimized)
 {
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
@@ -89,7 +89,7 @@ void CreateGLFWWindow()
 	glfwSwapInterval(1);
 	gl3wInit();
 
-	glfwIconifyWindow(AppWindow.window);
+	if (startMinimized) glfwIconifyWindow(AppWindow.window);
 	HWND windowHwmd = glfwGetWin32Window(AppWindow.window);
 	EnableDarkModeTopBar(windowHwmd);
 

@@ -14,7 +14,7 @@ struct AppWindowState
 extern AppWindowState AppWindow;
 
 bool InitGlfw();
-void CreateGLFWWindow();
+void CreateGLFWWindow(bool startMinimized);
 void DestroyGLFWResources();
 void RequestImmediateRedraw();
 bool ConsumeImmediateRedraw();

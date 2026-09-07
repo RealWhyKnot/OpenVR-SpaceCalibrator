@@ -8,6 +8,7 @@
 #include <deque>
 
 #include "Protocol.h"
+#include "VRState.h"
 
 enum class CalibrationState
 {
@@ -216,7 +217,9 @@ struct CalibrationContext
 
 extern CalibrationContext CalCtx;
 
-void InitCalibrator();
+bool TryConnectDriver(std::string& error);
+void DisconnectDriver();
+const std::vector<KnownDevice>& GetKnownDevices();
 void CalibrationTick(double time);
 void StartCalibration();
 void StartContinuousCalibration();

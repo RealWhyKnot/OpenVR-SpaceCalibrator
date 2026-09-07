@@ -3,9 +3,35 @@
 #include "Calibration.h"
 #include "CalibrationMetrics.h"
 #include "Configuration.h"
+#include "VRSession.h"
 
 #include <imgui/imgui.h>
 #include "imgui_extensions.h"
+
+void DrawSteamVRWarning()
+{
+	ImVec2 panel_size{ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, 0};
+
+	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.75f, 0.3f, 1.0f));
+	ImGui::BeginGroupPanel("SteamVR not connected", panel_size);
+	ImGui::PopStyleColor();
+	switch (VRSess.lastInitError) {
+		case vr::VRInitError_None: ImGui::TextWrapped("Connecting to SteamVR..."); break;
+		case vr::VRInitError_Init_NoServerForBackgroundApp:
+			ImGui::TextWrapped("SteamVR isn't running. Settings are saved and apply once it starts.");
+			break;
+		case vr::VRInitError_Init_HmdNotFound:
+		case vr::VRInitError_Init_HmdNotFoundPresenceFailed:
+			ImGui::TextWrapped("SteamVR can't find your headset. Connect it, then start SteamVR.");
+			break;
+		default: ImGui::TextWrapped("%s", VRSess.statusText.c_str()); break;
+	}
+	if (VRSess.state == VRConnectionState::Connecting && !VRSess.statusText.empty()) {
+		ImGui::TextWrapped("%s", VRSess.statusText.c_str());
+	}
+	ImGui::TextDisabled("Space Calibrator connects automatically when SteamVR is ready.");
+	ImGui::EndGroupPanel();
+}
 
 void CCal_BasicInfo()
 {
@@ -123,6 +149,8 @@ void BuildMenu(bool runningInOverlay)
 			scale = 1.0f / 4.0f;
 		}
 
+		ImGui::BeginDisabled(VRSess.state != VRConnectionState::Connected);
+
 		if (ImGui::Button("Start Calibration", ImVec2(width * scale, ImGui::GetTextLineHeight() * 2))) {
 			ImGui::OpenPopup("Calibration Progress");
 			StartCalibration();
@@ -169,6 +197,8 @@ void BuildMenu(bool runningInOverlay)
 				SaveProfile(CalCtx);
 			}
 		}
+
+		ImGui::EndDisabled();
 
 		ImGui::Text("");
 		auto speed = CalCtx.calibrationSpeed;
