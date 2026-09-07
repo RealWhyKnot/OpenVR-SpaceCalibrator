@@ -1,6 +1,9 @@
 #include "stdafx.h"
 #include "UserInterface.h"
 #include "UiCommon.h"
+#include "Sidebar.h"
+#include "Style.h"
+#include "Widgets.h"
 #include "Calibration.h"
 #include "CalibrationMetrics.h"
 #include "Updater.h"
@@ -12,31 +15,18 @@
 
 static bool runningInOverlay;
 
-void BuildMainWindow(bool runningInOverlay_)
+static void DrawCalibrationPage()
 {
-	runningInOverlay = runningInOverlay_;
-	UpdaterCtx.Poll();
 	bool continuousCalibration = CalCtx.state == CalibrationState::Continuous || CalCtx.state == CalibrationState::ContinuousStandby;
 
-	auto& io = ImGui::GetIO();
-
-	ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
-	ImGui::SetNextWindowSize(io.DisplaySize, ImGuiCond_Always);
-
-	if (!ImGui::Begin("SpaceCalibrator", nullptr, bareWindowFlags)) {
-		ImGui::End();
-		return;
+	if (VRSess.state != VRConnectionState::Connected) {
+		DrawSteamVRWarning();
 	}
-
-	ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImGui::GetStyleColorVec4(ImGuiCol_Button));
 
 	if (continuousCalibration) {
 		BuildContinuousCalDisplay();
 	}
 	else {
-		if (VRSess.state != VRConnectionState::Connected) {
-			DrawSteamVRWarning();
-		}
 		auto state = LoadVRState();
 
 		ImGui::BeginDisabled(CalCtx.state == CalibrationState::Continuous);
@@ -45,8 +35,54 @@ void BuildMainWindow(bool runningInOverlay_)
 		ImGui::EndDisabled();
 		BuildMenu(runningInOverlay);
 	}
+}
+
+static void DrawSmoothingPage()
+{
+	ui::TextHeading("Smoothing");
+	ImVec2 panel_size{ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, 0};
+	DrawSmoothingPanel(panel_size);
+}
+
+void BuildMainWindow(bool runningInOverlay_)
+{
+	runningInOverlay = runningInOverlay_;
+	UpdaterCtx.Poll();
+
+	auto& io = ImGui::GetIO();
+
+	ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(io.DisplaySize, ImGuiCond_Always);
+
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+	bool open = ImGui::Begin("SpaceCalibrator", nullptr, bareWindowFlags);
+	ImGui::PopStyleVar();
+	if (!open) {
+		ImGui::End();
+		return;
+	}
+
+	ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImGui::GetStyleColorVec4(ImGuiCol_Button));
+
+	ui::DrawSidebar();
+	ImGui::SameLine(0.0f, 0.0f);
+
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 14.0f));
+	ImGui::BeginChild("content", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()), ImGuiChildFlags_AlwaysUseWindowPadding);
+	ImGui::PopStyleVar();
+
+	switch (ui::CurrentPage()) {
+		case ui::Page::Calibration: DrawCalibrationPage(); break;
+		case ui::Page::Smoothing: DrawSmoothingPage(); break;
+		case ui::Page::Settings: CCal_DrawSettings(); break;
+		case ui::Page::Learn: DrawLearnPage(); break;
+		case ui::Page::About: DrawAboutPage(); break;
+	}
 
 	DrawUpdatePrompt();
+
+	ImGui::EndChild();
+
 	ShowVersionLine();
 
 	ImGui::PopStyleColor();
@@ -76,28 +112,6 @@ void ShowVersionLine()
 
 void BuildContinuousCalDisplay()
 {
-	ImGui::SetNextWindowPos(ImVec2(0, 0));
-	ImGui::SetNextWindowSize(ImGui::GetWindowSize());
-	ImGui::SetNextWindowBgAlpha(1);
-	if (!ImGui::Begin("Continuous Calibration", nullptr, bareWindowFlags & ~ImGuiWindowFlags_NoTitleBar)) {
-		ImGui::End();
-		return;
-	}
-
-	if (VRSess.state != VRConnectionState::Connected) {
-		DrawSteamVRWarning();
-	}
-
-	ImVec2 contentRegion;
-	contentRegion.x = ImGui::GetWindowContentRegionWidth();
-	contentRegion.y = ImGui::GetWindowHeight() - ImGui::GetFrameHeightWithSpacing() * 2.1f;
-
-	if (!ImGui::BeginChild("CCalDisplayFrame", contentRegion, ImGuiChildFlags_None)) {
-		ImGui::EndChild();
-		ImGui::End();
-		return;
-	}
-
 	if (ImGui::BeginTabBar("CCalTabs", 0)) {
 		if (ImGui::BeginTabItem("Status")) {
 			CCal_BasicInfo();
@@ -109,17 +123,6 @@ void BuildContinuousCalDisplay()
 			ImGui::EndTabItem();
 		}
 
-		if (ImGui::BeginTabItem("Settings")) {
-			CCal_DrawSettings();
-			ImGui::EndTabItem();
-		}
-
 		ImGui::EndTabBar();
 	}
-
-	ImGui::EndChild();
-
-	ShowVersionLine();
-
-	ImGui::End();
 }

@@ -1,0 +1,52 @@
+#pragma once
+
+#include <imgui/imgui.h>
+
+#define ICON_MI_MY_LOCATION "\xEE\x95\x9C"
+#define ICON_MI_SENSORS "\xEE\x94\x9E"
+#define ICON_MI_SHOW_CHART "\xEE\x9B\xA1"
+#define ICON_MI_WAVES "\xEE\x85\xB6"
+#define ICON_MI_SETTINGS "\xEE\xA2\xB8"
+#define ICON_MI_SCHOOL "\xEE\xA0\x8C"
+#define ICON_MI_INFO "\xEE\xA2\x8E"
+#define ICON_MI_UPDATE "\xEE\xA4\xA3"
+#define ICON_MI_WARNING "\xEE\x80\x82"
+#define ICON_MI_BLUETOOTH "\xEE\x86\xA7"
+#define ICON_MI_POWER "\xEE\xA2\xAC"
+#define ICON_MI_ARROW_BACK "\xEE\x97\x84"
+#define ICON_MI_CHECK "\xEE\x97\x8A"
+#define ICON_MI_CLOSE "\xEE\x97\x8D"
+#define ICON_MI_REFRESH "\xEE\x97\x95"
+#define ICON_MI_EDIT "\xEE\x8F\x89"
+#define ICON_MI_SAVE "\xEE\x85\xA1"
+#define ICON_MI_DELETE "\xEE\xA1\xB2"
+#define ICON_MI_DOWNLOAD "\xEE\x8B\x84"
+#define ICON_MI_VIDEOGAME "\xEE\x8C\xB8"
+#define ICON_MI_VISIBILITY "\xEE\xA3\xB4"
+#define ICON_MI_STRAIGHTEN "\xEE\x90\x9C"
+#define ICON_MI_TUNE "\xEE\x90\xA9"
+#define ICON_MI_SPEED "\xEE\xA7\xA4"
+#define ICON_MI_BUG_REPORT "\xEE\xA1\xA8"
+#define ICON_MI_WIFI_TETHERING "\xEE\x87\xA2"
+#define ICON_MI_ROUTER "\xEE\x8C\xA8"
+#define ICON_MI_HELP "\xEE\xA2\x87"
+#define ICON_MI_SYNC "\xEE\x98\xA7"
+#define ICON_MI_PLAY_ARROW "\xEE\x80\xB7"
+#define ICON_MI_BEDTIME "\xEE\xBD\x84"
+#define ICON_MI_MIC "\xEE\x80\xA9"
+#define ICON_MI_EXTENSION "\xEE\xA1\xBB"
+#define ICON_MI_HOME "\xEE\xA2\x8A"
+#define ICON_MI_ARTICLE "\xEE\xBD\x82"
+#define ICON_MI_LIGHTBULB "\xEE\x83\xB0"
+#define ICON_MI_GAMEPAD "\xEE\x8C\x8F"
+#define ICON_MI_OPEN_IN_NEW "\xEE\xA2\x9E"
+#define ICON_MI_HISTORY "\xEE\xA2\x89"
+#define ICON_MI_CANCEL "\xEE\x97\x89"
+
+inline const ImWchar kIconGlyphRanges[] = {
+    0xE002, 0xE002, 0xE029, 0xE029, 0xE037, 0xE037, 0xE0F0, 0xE0F0, 0xE161, 0xE161, 0xE176, 0xE176, 0xE1A7, 0xE1A7, 0xE1E2, 0xE1E2, 0xE2C4,
+    0xE2C4, 0xE30F, 0xE30F, 0xE328, 0xE328, 0xE338, 0xE338, 0xE3C9, 0xE3C9, 0xE41C, 0xE41C, 0xE429, 0xE429, 0xE51E, 0xE51E, 0xE55C, 0xE55C,
+    0xE5C4, 0xE5C4, 0xE5C9, 0xE5C9, 0xE5CA, 0xE5CA, 0xE5CD, 0xE5CD, 0xE5D5, 0xE5D5, 0xE627, 0xE627, 0xE6E1, 0xE6E1, 0xE80C, 0xE80C, 0xE868,
+    0xE868, 0xE872, 0xE872, 0xE87B, 0xE87B, 0xE887, 0xE887, 0xE889, 0xE889, 0xE88A, 0xE88A, 0xE88E, 0xE88E, 0xE89E, 0xE89E, 0xE8AC, 0xE8AC,
+    0xE8B8, 0xE8B8, 0xE8F4, 0xE8F4, 0xE923, 0xE923, 0xE9E4, 0xE9E4, 0xEF42, 0xEF42, 0xEF44, 0xEF44, 0,
+};

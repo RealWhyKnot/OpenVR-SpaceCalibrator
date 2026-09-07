@@ -1,7 +1,7 @@
 #include "stdafx.h"
 #include "AppWindow.h"
 #include "Constants.h"
-#include "EmbeddedFiles.h"
+#include "ui/Style.h"
 
 #include <imgui/imgui.h>
 #include <imgui/backends/imgui_impl_glfw.h>
@@ -111,12 +111,12 @@ void CreateGLFWWindow(bool startMinimized)
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 	io.IniFilename = nullptr;
-	io.Fonts->AddFontFromMemoryCompressedTTF(DroidSans_compressed_data, DroidSans_compressed_size, 24.0f);
+	ui::LoadFonts();
 
 	ImGui_ImplGlfw_InitForOpenGL(AppWindow.window, true);
 	ImGui_ImplOpenGL3_Init("#version 330");
 
-	ImGui::StyleColorsDark();
+	ui::ApplyStyle();
 
 	glGenTextures(1, &AppWindow.fboTexture);
 	glBindTexture(GL_TEXTURE_2D, AppWindow.fboTexture);

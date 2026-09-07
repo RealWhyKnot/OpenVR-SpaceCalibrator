@@ -111,10 +111,10 @@ void CCal_BasicInfo()
 	ImGui::Checkbox("Static recalibration", &CalCtx.enableStaticRecalibration);
 	ImGui::SameLine();
 	ImGui::Checkbox("Enable debug logs", &Metrics::enableLogs);
-	ImGui::SameLine();
 	ImGui::Checkbox("Lock relative transform", &CalCtx.lockRelativePosition);
 	ImGui::SameLine();
 	ImGui::Checkbox("Require triggers", &CalCtx.requireTriggerPressToApply);
+	ImGui::SameLine();
 	ImGui::Checkbox("Ignore outliers", &CalCtx.ignoreOutliers);
 
 	ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 1));

@@ -69,8 +69,6 @@ void CCal_DrawSettings()
 	ImGui::Text("Hover over settings to learn more about them!");
 	ImGui::EndGroupPanel();
 
-	DrawSmoothingPanel(panel_size);
-
 	{
 		ImGui::BeginGroupPanel("Calibration speeds", panel_size);
 
@@ -226,19 +224,6 @@ void CCal_DrawSettings()
 	}
 	ImGui::Unindent();
 	ImGui::NewLine();
-
-	{
-		ImGui::BeginGroupPanel("Credits", panel_size);
-
-		ImGui::TextDisabled("tach");
-		ImGui::TextDisabled("pushrax");
-		ImGui::TextDisabled("bd_");
-		ImGui::TextDisabled("ArcticFox");
-		ImGui::TextDisabled("hekky");
-		ImGui::TextDisabled("pimaker");
-
-		ImGui::EndGroupPanel();
-	}
 }
 
 void BuildProfileEditor()
