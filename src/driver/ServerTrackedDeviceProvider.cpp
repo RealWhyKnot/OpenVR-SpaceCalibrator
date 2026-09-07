@@ -2,6 +2,7 @@
 #include "Logging.h"
 #include "InterfaceHookInjector.h"
 #include "IsometryTransform.h"
+#include "SkeletalHook.h"
 
 #include <random>
 
@@ -25,6 +26,7 @@ vr::EVRInitError ServerTrackedDeviceProvider::Init(vr::IVRDriverContext* pDriver
 	alignmentSpeedParams.align_speed_small = 0.2f;
 	alignmentSpeedParams.align_speed_large = 2.0f;
 
+	spacecal::skeletal_hook::Init(this);
 	InjectHooks(this, pDriverContext);
 	server.Run();
 	shmem.Create(OPENVR_SPACECALIBRATOR_SHMEM_NAME);
@@ -40,6 +42,7 @@ void ServerTrackedDeviceProvider::Cleanup()
 	TRACE("ServerTrackedDeviceProvider::Cleanup()");
 	server.Stop();
 	shmem.Close();
+	spacecal::skeletal_hook::Shutdown();
 	DisableHooks();
 	VR_CLEANUP_SERVER_DRIVER_CONTEXT();
 }
@@ -242,6 +245,25 @@ void ServerTrackedDeviceProvider::HandleSetSmoothingParams(const protocol::Smoot
 		LOG("smoothing strength %u%% (cutoff=%.2fHz beta=%.1fHz/mps prediction=%.2f)", (unsigned)strength, smoothingFilter.minCutoffHz,
 		    smoothingFilter.beta, smoothingPredictionScale);
 	}
+}
+
+void ServerTrackedDeviceProvider::SetFingerSmoothingConfig(const protocol::FingerSmoothingConfig& config)
+{
+	protocol::FingerSmoothingConfig clamped = config;
+	if (clamped.strength > 100) clamped.strength = 100;
+	for (auto& value : clamped.perFinger) {
+		if (value > 100) value = 100;
+	}
+	clamped.fingerMask &= protocol::kAllFingersMask;
+
+	const protocol::FingerSmoothingConfig previous = GetFingerSmoothingConfig();
+	fingerCfgLowPacked.exchange(spacecal::skeletal::PackFingerLow(clamped), std::memory_order_acq_rel);
+	fingerCfgHeaderPacked.exchange(spacecal::skeletal::PackFingerHeader(clamped), std::memory_order_acq_rel);
+
+	const uint16_t reseedBits = spacecal::skeletal::ComputeFingerSmoothingReseedBits(previous, clamped);
+	spacecal::skeletal_hook::MarkFingersNeedReseed(reseedBits);
+	LOG("finger smoothing strength=%u mask=0x%04x reseed=0x%04x", (unsigned)clamped.strength, (unsigned)clamped.fingerMask,
+	    (unsigned)reseedBits);
 }
 
 void ServerTrackedDeviceProvider::HandleGetSmoothingStats(const protocol::SmoothingStatsRequest& request, protocol::SmoothingStats& stats)

@@ -13,6 +13,11 @@ target_include_directories(fixup_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/overlay $
 set_target_properties(fixup_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
 add_test(NAME fixup COMMAND fixup_tests)
 
+add_executable(skeletal_tests skeletal_tests.cpp)
+target_include_directories(skeletal_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/lib/openvr/headers)
+set_target_properties(skeletal_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
+add_test(NAME skeletal COMMAND skeletal_tests)
+
 add_executable(basestations_tests basestations_tests.cpp)
 target_include_directories(basestations_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/overlay ${CMAKE_SOURCE_DIR}/lib)
 set_target_properties(basestations_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")

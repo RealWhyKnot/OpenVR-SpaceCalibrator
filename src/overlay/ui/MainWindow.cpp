@@ -42,6 +42,7 @@ static void DrawSmoothingPage()
 	ui::TextHeading("Smoothing");
 	ImVec2 panel_size{ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, 0};
 	DrawSmoothingPanel(panel_size);
+	DrawFingerSmoothingPanel(panel_size);
 }
 
 void BuildMainWindow(bool runningInOverlay_)

@@ -2,6 +2,9 @@
 #include "Hooking.h"
 #include "InterfaceHookInjector.h"
 #include "ServerTrackedDeviceProvider.h"
+#include "SkeletalHook.h"
+
+#include <cstring>
 
 static ServerTrackedDeviceProvider* Driver = nullptr;
 
@@ -52,6 +55,14 @@ static void* DetourGetGenericInterface(vr::IVRDriverContext* _this, const char* 
 {
 	TRACE("ServerTrackedDeviceProvider::DetourGetGenericInterface(%s)", pchInterfaceVersion);
 	auto originalInterface = GetGenericInterfaceHook.originalFunc(_this, pchInterfaceVersion, peError);
+
+	if (!originalInterface || !pchInterfaceVersion) {
+		return originalInterface;
+	}
+
+	if (std::strstr(pchInterfaceVersion, "IVRDriverInput_") != nullptr && std::strstr(pchInterfaceVersion, "Internal") == nullptr) {
+		spacecal::skeletal_hook::TryInstallPublicHooks(originalInterface);
+	}
 
 	std::string iface(pchInterfaceVersion);
 	if (iface == "IVRServerDriverHost_005") {

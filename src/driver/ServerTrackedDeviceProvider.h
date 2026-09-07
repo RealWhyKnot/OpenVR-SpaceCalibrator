@@ -5,11 +5,14 @@
 #include "IPCServer.h"
 #include "Protocol.h"
 #include "PoseFilter.h"
+#include "FingerConfigPacking.h"
 #include "IsometryTransform.h"
 
 #include <Eigen/Dense>
 
 #include <openvr_driver.h>
+
+#include <atomic>
 
 
 class ServerTrackedDeviceProvider : public vr::IServerTrackedDeviceProvider
@@ -49,6 +52,14 @@ public:
 	void HandleSetAlignmentSpeedParams(const protocol::AlignmentSpeedParams params) { alignmentSpeedParams = params; }
 	void HandleSetSmoothingParams(const protocol::SmoothingParams& params);
 	void HandleGetSmoothingStats(const protocol::SmoothingStatsRequest& request, protocol::SmoothingStats& stats);
+	void SetFingerSmoothingConfig(const protocol::FingerSmoothingConfig& config);
+
+	protocol::FingerSmoothingConfig GetFingerSmoothingConfig() const
+	{
+		const uint64_t header = fingerCfgHeaderPacked.load(std::memory_order_acquire);
+		const uint64_t low = fingerCfgLowPacked.load(std::memory_order_acquire);
+		return spacecal::skeletal::UnpackFingerSmoothing(header, low);
+	}
 
 private:
 	IPCServer server;
@@ -85,6 +96,8 @@ private:
 	DeltaSize currentDeltaSpeed[vr::k_unMaxTrackedDeviceCount];
 
 	protocol::AlignmentSpeedParams alignmentSpeedParams;
+	mutable std::atomic<uint64_t> fingerCfgHeaderPacked{0};
+	mutable std::atomic<uint64_t> fingerCfgLowPacked{0};
 	uint8_t smoothingStrength = 0;
 	spacecal::OneEuroParams smoothingFilter;
 	double smoothingPredictionScale = 1.0;

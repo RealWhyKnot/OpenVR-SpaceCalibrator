@@ -99,3 +99,106 @@ void DrawSmoothingPanel(ImVec2 panel_size)
 
 	ImGui::EndGroupPanel();
 }
+
+void DrawFingerSmoothingPanel(ImVec2 panel_size)
+{
+	static const char* kFingerLabels[5] = {"Thumb", "Index", "Middle", "Ring", "Pinky"};
+	static const char* kHandLabels[2] = {"Left", "Right"};
+
+	ImGui::BeginGroupPanel("Finger smoothing", panel_size);
+
+	ImGui::TextDisabled("Index Knuckles only. Every finger bone is slerped toward the incoming pose before it reaches the game.");
+
+	bool dirty = false;
+
+	int strength = CalCtx.fingerSmoothing.strength;
+	dirty |= ImGui::SliderInt("Strength##fingers", &strength, 0, 100, strength > 0 ? "%d%%" : "off", ImGuiSliderFlags_AlwaysClamp);
+	SmoothingTooltip("0 = no smoothing (each frame snaps to the incoming bones).\n"
+	                 "50 = moderate, a good starting point.\n"
+	                 "100 = heavy lag (slerp factor 0.05 per frame). Never fully freezes.\n"
+	                 "Applied to every enabled finger below; per-finger values override it.");
+	CalCtx.fingerSmoothing.strength = (uint8_t)strength;
+
+	ImGui::BeginDisabled(CalCtx.fingerSmoothing.strength == 0);
+
+	if (ImGui::BeginTable("fingers_grid", 6, ImGuiTableFlags_SizingStretchProp)) {
+		ImGui::TableSetupColumn("Hand");
+		for (int f = 0; f < 5; ++f) {
+			ImGui::TableSetupColumn(kFingerLabels[f]);
+		}
+		ImGui::TableHeadersRow();
+		for (int hand = 0; hand < 2; ++hand) {
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::TextUnformatted(kHandLabels[hand]);
+			for (int f = 0; f < 5; ++f) {
+				ImGui::TableSetColumnIndex(f + 1);
+				const int bit = protocol::FingerBit(hand, f);
+				bool enabled = ((CalCtx.fingerSmoothing.fingerMask >> bit) & 1u) != 0;
+				ImGui::PushID(bit);
+				if (ImGui::Checkbox("##finger", &enabled)) {
+					if (enabled) {
+						CalCtx.fingerSmoothing.fingerMask |= (uint16_t)(1u << bit);
+					}
+					else {
+						CalCtx.fingerSmoothing.fingerMask &= (uint16_t)~(1u << bit);
+					}
+					dirty = true;
+				}
+				ImGui::PopID();
+			}
+		}
+		ImGui::EndTable();
+	}
+
+	if (ImGui::Button("Enable all fingers")) {
+		CalCtx.fingerSmoothing.fingerMask = protocol::kAllFingersMask;
+		dirty = true;
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Disable all fingers")) {
+		CalCtx.fingerSmoothing.fingerMask = 0;
+		dirty = true;
+	}
+
+	if (ImGui::BeginTable("fingers_strength_grid", 6, ImGuiTableFlags_SizingStretchProp)) {
+		ImGui::TableSetupColumn("Hand");
+		for (int f = 0; f < 5; ++f) {
+			ImGui::TableSetupColumn(kFingerLabels[f]);
+		}
+		ImGui::TableHeadersRow();
+		for (int hand = 0; hand < 2; ++hand) {
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::TextUnformatted(kHandLabels[hand]);
+			for (int f = 0; f < 5; ++f) {
+				ImGui::TableSetColumnIndex(f + 1);
+				const int bit = protocol::FingerBit(hand, f);
+				const bool fingerEnabled = ((CalCtx.fingerSmoothing.fingerMask >> bit) & 1u) != 0;
+				int value = CalCtx.fingerSmoothing.perFinger[bit];
+				ImGui::PushID(bit);
+				ImGui::SetNextItemWidth(-FLT_MIN);
+				ImGui::BeginDisabled(!fingerEnabled);
+				if (ImGui::SliderInt("##perfinger", &value, 0, 100, value > 0 ? "%d" : "global")) {
+					CalCtx.fingerSmoothing.perFinger[bit] = (uint8_t)value;
+					dirty = true;
+				}
+				ImGui::EndDisabled();
+				if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+					ImGui::SetTooltip("%s %s\n0 = use the global strength (%d).", kHandLabels[hand], kFingerLabels[f],
+					                  (int)CalCtx.fingerSmoothing.strength);
+				}
+				ImGui::PopID();
+			}
+		}
+		ImGui::EndTable();
+	}
+
+	ImGui::EndDisabled();
+
+	if (dirty) {
+		ApplySmoothingSettings();
+	}
+
+	ImGui::EndGroupPanel();
+}

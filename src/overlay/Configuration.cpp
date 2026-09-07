@@ -105,6 +105,11 @@ static picojson::object SaveAlignmentParams(CalibrationContext& ctx)
 	return obj;
 }
 
+static uint8_t ClampStrength(double value)
+{
+	return (uint8_t)(value < 0.0 ? 0.0 : (value > 100.0 ? 100.0 : value));
+}
+
 static void LoadSmoothingParams(CalibrationContext& ctx, picojson::value& value)
 {
 	ctx.ResetSmoothingConfig();
@@ -116,11 +121,28 @@ static void LoadSmoothingParams(CalibrationContext& ctx, picojson::value& value)
 
 	ctx.smoothControllers = obj["smooth_controllers"].evaluate_as_boolean();
 	if (obj["strength"].is<double>()) {
-		const double strength = obj["strength"].get<double>();
-		ctx.smoothingParams.strength = (uint8_t)(strength < 0.0 ? 0.0 : (strength > 100.0 ? 100.0 : strength));
+		ctx.smoothingParams.strength = ClampStrength(obj["strength"].get<double>());
 	}
 	else if (obj["enabled"].evaluate_as_boolean()) {
 		ctx.smoothingParams.strength = 50;
+	}
+
+	if (obj["fingers"].is<picojson::object>()) {
+		auto fingers = obj["fingers"].get<picojson::object>();
+		if (fingers["strength"].is<double>()) {
+			ctx.fingerSmoothing.strength = ClampStrength(fingers["strength"].get<double>());
+		}
+		if (fingers["mask"].is<double>()) {
+			ctx.fingerSmoothing.fingerMask = (uint16_t)fingers["mask"].get<double>() & protocol::kAllFingersMask;
+		}
+		if (fingers["per_finger"].is<picojson::array>()) {
+			auto& perFinger = fingers["per_finger"].get<picojson::array>();
+			for (size_t i = 0; i < perFinger.size() && i < 10; ++i) {
+				if (perFinger[i].is<double>()) {
+					ctx.fingerSmoothing.perFinger[i] = ClampStrength(perFinger[i].get<double>());
+				}
+			}
+		}
 	}
 }
 
@@ -131,6 +153,18 @@ static picojson::object SaveSmoothingParams(CalibrationContext& ctx)
 	const double strength = ctx.smoothingParams.strength;
 	obj["strength"].set<double>(strength);
 	obj["smooth_controllers"].set<bool>(ctx.smoothControllers);
+
+	picojson::object fingers;
+	const double fingerStrength = ctx.fingerSmoothing.strength;
+	fingers["strength"].set<double>(fingerStrength);
+	const double mask = ctx.fingerSmoothing.fingerMask;
+	fingers["mask"].set<double>(mask);
+	picojson::array perFinger;
+	for (int i = 0; i < 10; ++i) {
+		perFinger.push_back(picojson::value((double)ctx.fingerSmoothing.perFinger[i]));
+	}
+	fingers["per_finger"].set<picojson::array>(perFinger);
+	obj["fingers"].set<picojson::object>(fingers);
 
 	return obj;
 }
