@@ -1,34 +1,6 @@
 # Space Calibrator with tracker smoothing
 
-Fork of the 1.5.1 line of Space Calibrator, the SteamVR tool that lines up trackers from one
-tracking system with another and keeps them lined up while you play. This fork adds a one euro
-filter on the calibrated trackers. It runs inside the driver that already applies the calibration,
-so nothing extra shows up in SteamVR and games see the trackers they always saw. They just stop
-jittering when you hold still.
-
-## Smoothing
-
-The driver already rewrites every target-space pose on its way into SteamVR, since that is how the
-calibration gets applied at all. Smoothing hooks the same spot. Position runs through a one euro
-filter first, in the tracker's own space, and then the calibration transform happens as before.
-
-Rotation isn't filtered. An earlier version did filter it, and that turned out to be the thing
-making a twitchy tracker feel worse, so it's gone. Added lag would show up there first anyway.
-
-Prediction is the other half. SteamVR extrapolates each pose forward to photon time, and on a noisy
-tracker that extrapolation is what you actually see as overshoot, so the driver walks its prediction
-back by however much smoothing you asked for. Continuous calibration corrections never enter the
-filter; they land exactly as they did before.
-
-Controls live in the overlay under "Tracker smoothing":
-
-- Smoothing, 0 to 100%, 0 being off. Higher is calmer at rest. The filter opens back up the moment
-  you move, so real motion trails by under 15 mm even at 100%.
-- Also smooth controllers, off by default. Latency is much easier to feel in your hands.
-- A live table of raw against smoothed frame-to-frame movement per device, and a count of filter
-  restarts, which happen after a dropout or a jump.
-
-Only devices in the calibrated target space are smoothed, so you need an active profile.
+Fork of the 1.5.1 line of Space Calibrator. This fork adds a one euro filter on the calibrated trackers to smooth them out.
 
 ## Install a release
 
