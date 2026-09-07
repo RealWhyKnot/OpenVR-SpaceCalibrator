@@ -5,6 +5,7 @@
 #include "IPCClient.h"
 #include "CalibrationCalc.h"
 #include "CalibrationMath.h"
+#include "TrackingSystemFixups.h"
 #include "VRState.h"
 
 #include <string>
@@ -151,15 +152,6 @@ void ScanAndApplyProfile(CalibrationContext& ctx)
 		auto deviceClass = vr::VRSystem()->GetTrackedDeviceClass(id);
 		if (deviceClass == vr::TrackedDeviceClass_Invalid) continue;
 
-		/*if (deviceClass == vr::TrackedDeviceClass_HMD) // for debugging unexpected universe switches
-		{
-		    vr::ETrackedPropertyError err = vr::TrackedProp_Success;
-		    auto universeId = vr::VRSystem()->GetUint64TrackedDeviceProperty(id, vr::Prop_CurrentUniverseId_Uint64, &err);
-		    printf("uid %d err %d\n", universeId, err);
-		    ResetAndDisableOffsets(id);
-		    continue;
-		}*/
-
 		if (!ctx.enabled) {
 			ResetAndDisableOffsets(id);
 			continue;
@@ -176,24 +168,7 @@ void ScanAndApplyProfile(CalibrationContext& ctx)
 		std::string trackingSystem(buffer);
 
 		if (id == vr::k_unTrackedDeviceIndex_Hmd) {
-			// auto p = ctx.devicePoses[id].mDeviceToAbsoluteTracking.m;
-			// printf("HMD %d: %f %f %f\n", id, p[0][3], p[1][3], p[2][3]);
-
-			// Check if the current HMD is a Pimax crystal
-			if (trackingSystem == "aapvr") {
-				// HMD is a Pimax HMD
-				vr::HmdMatrix34_t eyeToHeadLeft = vr::VRSystem()->GetEyeToHeadTransform(vr::Eye_Left);
-				// Crystal's projection matrix is constant 0s or 1s except for [0][3], which stores the IPD offset from the nose
-				bool isCrystalHmd = eyeToHeadLeft.m[0][0] == 1 && eyeToHeadLeft.m[0][1] == 0 && eyeToHeadLeft.m[0][2] == 0 && // IPD
-				                    eyeToHeadLeft.m[1][0] == 0 && eyeToHeadLeft.m[1][1] == 1 && eyeToHeadLeft.m[1][2] == 0 &&
-				                    eyeToHeadLeft.m[1][3] == 0 && eyeToHeadLeft.m[2][0] == 0 && eyeToHeadLeft.m[2][1] == 0 &&
-				                    eyeToHeadLeft.m[2][2] == 1 && eyeToHeadLeft.m[2][3] == 0;
-
-				if (isCrystalHmd) {
-					// Move it outside the aapvr system ; we treat aapvr as if it were lighthouse
-					trackingSystem = "Pimax Crystal HMD";
-				}
-			}
+			ApplyTrackingSystemFixups(id, deviceClass, trackingSystem);
 
 			if (trackingSystem != ctx.referenceTrackingSystem) {
 				// Currently using an HMD with a different tracking system than the calibration.
@@ -204,23 +179,7 @@ void ScanAndApplyProfile(CalibrationContext& ctx)
 			continue;
 		}
 
-		// Detect Pimax crystal controllers and separate them too
-		if (deviceClass == vr::TrackedDeviceClass_Controller) {
-			if (trackingSystem == "oculus") {
-				vr::VRSystem()->GetStringTrackedDeviceProperty(id, vr::Prop_RenderModelName_String, buffer, vr::k_unMaxPropertyStringSize,
-				                                               &err);
-				std::string renderModel(buffer);
-				vr::VRSystem()->GetStringTrackedDeviceProperty(id, vr::Prop_ConnectedWirelessDongle_String, buffer,
-				                                               vr::k_unMaxPropertyStringSize, &err);
-				std::string connectedWirelessDongle(buffer);
-
-				// Check if the controller claims its an oculus controller but also pimax
-				if (renderModel.find("{aapvr}") != std::string::npos && renderModel.find("crystal") != std::string::npos &&
-				    connectedWirelessDongle.find("lighthouse") != std::string::npos) {
-					trackingSystem = "Pimax Crystal Controllers";
-				}
-			}
-		}
+		ApplyTrackingSystemFixups(id, deviceClass, trackingSystem);
 
 		if (trackingSystem != ctx.targetTrackingSystem) {
 			ResetAndDisableOffsets(id);
