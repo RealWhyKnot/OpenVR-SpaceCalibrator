@@ -83,6 +83,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 		CreateGLFWWindow(IsVRServerRunning());
 		LoadProfile(CalCtx);
 		LoadUpdateSettings(UpdaterCtx.settings);
+		UpdaterCtx.LoadLastRunNote();
 		if (UpdaterCtx.settings.checkOnStartup) {
 			UpdaterCtx.StartCheck(false);
 		}

@@ -184,19 +184,46 @@ void Updater::Poll()
 	}
 	std::cout << "update: fetched " << result->releases.size() << " releases\n";
 	const spacecal::GithubRelease* selected = spacecal::SelectRelease(result->releases, current, Channel());
-	if (!selected) {
-		state = UpdateState::UpToDate;
-		std::cout << "update: no release newer than " << SPACECAL_VERSION_STRING << '\n';
+	switch (spacecal::DecideUpdateAction(selected, manual, settings.autoInstall, settings.skippedTag)) {
+		case spacecal::UpdateAction::None:
+			state = UpdateState::UpToDate;
+			std::cout << "update: no release newer than " << SPACECAL_VERSION_STRING << '\n';
+			return;
+		case spacecal::UpdateAction::Skip:
+			state = UpdateState::Idle;
+			std::cout << "update: " << selected->tag << " available but skipped by user\n";
+			return;
+		case spacecal::UpdateAction::AutoInstall:
+			available = *selected;
+			std::cout << "update: auto-installing " << available.tag << '\n';
+			Update();
+			return;
+		case spacecal::UpdateAction::Prompt:
+			available = *selected;
+			state = UpdateState::Available;
+			std::cout << "update: " << available.tag << " is newer than " << SPACECAL_VERSION_STRING << '\n';
+			return;
+	}
+}
+
+void Updater::LoadLastRunNote()
+{
+	lastRunNote.clear();
+	std::ifstream log(LocalAppDataDir() / L"update.log");
+	if (!log) {
 		return;
 	}
-	if (!manual && selected->tag == settings.skippedTag) {
-		state = UpdateState::Idle;
-		std::cout << "update: " << selected->tag << " available but skipped by user\n";
-		return;
+	std::string line;
+	std::string lastLine;
+	while (std::getline(log, line)) {
+		if (!line.empty() && line.find_first_not_of(" \t\r") != std::string::npos) {
+			lastLine = line;
+		}
 	}
-	available = *selected;
-	state = UpdateState::Available;
-	std::cout << "update: " << available.tag << " is newer than " << SPACECAL_VERSION_STRING << '\n';
+	if (!lastLine.empty() && lastLine.find("installed") == std::string::npos) {
+		lastRunNote = "the last update may not have finished; see update.log";
+		std::cerr << "update: last helper run ended with: " << lastLine << '\n';
+	}
 }
 
 void Updater::Update()

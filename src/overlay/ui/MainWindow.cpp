@@ -49,7 +49,6 @@ static void DrawSmoothingPage()
 void BuildMainWindow(bool runningInOverlay_)
 {
 	runningInOverlay = runningInOverlay_;
-	UpdaterCtx.Poll();
 
 	auto& io = ImGui::GetIO();
 

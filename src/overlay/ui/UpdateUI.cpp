@@ -67,6 +67,9 @@ void DrawUpdatesPanel(ImVec2 panel_size)
 		if (ImGui::Checkbox("Check for updates when the overlay starts", &UpdaterCtx.settings.checkOnStartup)) {
 			SaveUpdateSettings(UpdaterCtx.settings);
 		}
+		if (ImGui::Checkbox("Install updates automatically when SteamVR closes", &UpdaterCtx.settings.autoInstall)) {
+			SaveUpdateSettings(UpdaterCtx.settings);
+		}
 		ImGui::BeginDisabled(UpdaterCtx.state == UpdateState::Checking);
 		if (ImGui::Button("Check now")) {
 			UpdaterCtx.StartCheck(true);
@@ -81,6 +84,11 @@ void DrawUpdatesPanel(ImVec2 panel_size)
 		std::string status = UpdaterCtx.StatusText();
 		if (!status.empty()) {
 			ImGui::TextDisabled("%s", status.c_str());
+		}
+		if (!UpdaterCtx.lastRunNote.empty()) {
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.75f, 0.3f, 1.0f));
+			ImGui::TextWrapped("%s", UpdaterCtx.lastRunNote.c_str());
+			ImGui::PopStyleColor();
 		}
 	}
 	ImGui::EndGroupPanel();

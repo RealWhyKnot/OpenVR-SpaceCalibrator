@@ -134,4 +134,26 @@ namespace spacecal {
 		return best;
 	}
 
+	enum class UpdateAction
+	{
+		None,
+		Skip,
+		Prompt,
+		AutoInstall
+	};
+
+	inline UpdateAction DecideUpdateAction(const GithubRelease* selected, bool manual, bool autoInstall, const std::string& skippedTag)
+	{
+		if (!selected) {
+			return UpdateAction::None;
+		}
+		if (!manual && !skippedTag.empty() && selected->tag == skippedTag) {
+			return UpdateAction::Skip;
+		}
+		if (!manual && autoInstall) {
+			return UpdateAction::AutoInstall;
+		}
+		return UpdateAction::Prompt;
+	}
+
 } // namespace spacecal

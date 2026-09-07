@@ -1,9 +1,12 @@
 #include "stdafx.h"
 #include "ui/UiCommon.h"
 #include "Calibration.h"
+#include "LegacyInstall.h"
 
 #include <imgui/imgui.h>
 #include "imgui_extensions.h"
+
+#include <shellapi.h>
 
 #include <string>
 
@@ -59,6 +62,59 @@ static void DrawVectorElement(const std::string id, const char* text, double* va
 	if (ImGui::ArrowButton((id + text + "_increase").c_str(), ImGuiDir_Up)) {
 		*value += CONTINUOUS_CALIBRATION_TRACKER_OFFSET_DELTA;
 	}
+}
+
+static void DrawLegacyInstallPanel(ImVec2 panel_size)
+{
+	static bool detected = false;
+	static LegacyInstallInfo info;
+	static bool queued = false;
+	static std::string queueError;
+	if (!detected) {
+		info = DetectLegacyInstalls();
+		detected = true;
+	}
+	if (!info.AnyRemovable() && !info.steamAppInstalled) return;
+
+	ImGui::BeginGroupPanel("Old Space Calibrator versions", panel_size);
+
+	if (info.AnyRemovable()) {
+		ImGui::TextWrapped("Leftovers from an old Space Calibrator install were found. They can conflict with this version.");
+		if (!info.uninstallExe.empty())
+			ImGui::TextDisabled("Installer: %s", info.uninstallExe.c_str());
+		else if (!info.programFilesDir.empty())
+			ImGui::TextDisabled("Folder: %s", info.programFilesDir.c_str());
+		for (const auto& dir : info.runtimeDriverDirs) {
+			ImGui::TextDisabled("SteamVR driver copy: %s", dir.c_str());
+		}
+		if (queued) {
+			ImGui::TextWrapped("Removal is queued and runs after SteamVR closes.");
+		}
+		else {
+			if (ImGui::Button("Remove when SteamVR closes")) {
+				queueError.clear();
+				queued = QueueLegacyUninstall(info, queueError);
+			}
+			if (ImGui::IsItemHovered(0)) {
+				ImGui::SetTooltip("Asks for administrator rights now, then waits in the background and removes the old install "
+				                  "once SteamVR has closed.");
+			}
+			if (!queueError.empty()) {
+				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.4f, 0.4f, 1.0f));
+				ImGui::TextWrapped("%s", queueError.c_str());
+				ImGui::PopStyleColor();
+			}
+		}
+	}
+
+	if (info.steamAppInstalled) {
+		ImGui::TextWrapped("The Steam release of Space Calibrator is also installed. Uninstall it through Steam so the two don't fight.");
+		if (ImGui::Button("Open Steam to uninstall")) {
+			ShellExecuteW(nullptr, L"open", L"steam://uninstall/3368750", nullptr, nullptr, SW_SHOWNORMAL);
+		}
+	}
+
+	ImGui::EndGroupPanel();
 }
 
 void CCal_DrawSettings()
@@ -216,6 +272,8 @@ void CCal_DrawSettings()
 	}
 
 	DrawUpdatesPanel(panel_size);
+
+	DrawLegacyInstallPanel(panel_size);
 
 	ImGui::NewLine();
 	ImGui::Indent();

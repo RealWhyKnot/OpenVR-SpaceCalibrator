@@ -477,6 +477,9 @@ void LoadUpdateSettings(UpdateSettings& settings)
 	if (obj["check_on_startup"].is<bool>()) {
 		settings.checkOnStartup = obj["check_on_startup"].get<bool>();
 	}
+	if (obj["auto_install"].is<bool>()) {
+		settings.autoInstall = obj["auto_install"].get<bool>();
+	}
 	if (obj["skipped_tag"].is<std::string>()) {
 		settings.skippedTag = obj["skipped_tag"].get<std::string>();
 	}
@@ -486,6 +489,7 @@ void SaveUpdateSettings(const UpdateSettings& settings)
 {
 	picojson::object obj;
 	obj["check_on_startup"].set<bool>(settings.checkOnStartup);
+	obj["auto_install"].set<bool>(settings.autoInstall);
 	obj["skipped_tag"].set<std::string>(settings.skippedTag);
 	WriteRegistryKey("Updates", picojson::value(obj).serialize());
 }

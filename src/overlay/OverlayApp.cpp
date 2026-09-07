@@ -4,6 +4,7 @@
 #include "AutoDetectController.h"
 #include "Calibration.h"
 #include "LegacyInstall.h"
+#include "Updater.h"
 #include "UserInterface.h"
 #include "VRSession.h"
 #include "basestations/BaseStationsController.h"
@@ -63,6 +64,7 @@ void RunLoop()
 		VRSessionTick(time);
 		if (VRSess.quitRequested) return;
 		CalibrationTick(time);
+		UpdaterCtx.Poll();
 		AutoDetectController::Get().Tick(time);
 		spacecal::basestations::BaseStationsController::Get().Tick(VRSess.state == VRConnectionState::Connected);
 

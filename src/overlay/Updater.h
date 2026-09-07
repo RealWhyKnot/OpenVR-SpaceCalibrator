@@ -21,6 +21,7 @@ enum class UpdateState
 struct UpdateSettings
 {
 	bool checkOnStartup = true;
+	bool autoInstall = true;
 	std::string skippedTag;
 };
 
@@ -36,11 +37,13 @@ public:
 	void Later();
 	std::string StatusText() const;
 	spacecal::UpdateChannel Channel() const;
+	void LoadLastRunNote();
 
 	UpdateState state = UpdateState::Idle;
 	bool manual = false;
 	spacecal::GithubRelease available;
 	std::string error;
+	std::string lastRunNote;
 	UpdateSettings settings;
 
 private:

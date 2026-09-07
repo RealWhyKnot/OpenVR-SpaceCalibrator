@@ -1,4 +1,5 @@
 #include "ReleaseSelector.h"
+#include "UninstallHelperScript.h"
 #include "UpdateHelperScript.h"
 #include "UpdateVersion.h"
 
@@ -131,6 +132,45 @@ namespace {
 		}
 	}
 
+	void TestDecideUpdateAction()
+	{
+		GithubRelease release = R("v2026.9.9.0-beta", true);
+		CHECK(DecideUpdateAction(nullptr, false, true, "") == UpdateAction::None);
+		CHECK(DecideUpdateAction(&release, false, true, "v2026.9.9.0-beta") == UpdateAction::Skip);
+		CHECK(DecideUpdateAction(&release, true, true, "v2026.9.9.0-beta") == UpdateAction::Prompt);
+		CHECK(DecideUpdateAction(&release, false, true, "") == UpdateAction::AutoInstall);
+		CHECK(DecideUpdateAction(&release, false, false, "") == UpdateAction::Prompt);
+		CHECK(DecideUpdateAction(&release, true, true, "") == UpdateAction::Prompt);
+	}
+
+	void TestUninstallScript()
+	{
+		UninstallHelperParams p;
+		p.overlayPid = 777;
+		p.logPath = "C:\\Users\\it's me\\AppData\\Local\\SpaceCalibrator\\uninstall-old.log";
+		p.runtimeDriverDirs = {"C:\\Program Files (x86)\\Steam\\steamapps\\common\\SteamVR\\drivers\\01spacecalibrator"};
+		p.uninstallExe = "C:\\Program Files\\SpaceCalibrator\\Uninstall.exe";
+		p.programFilesDir = "C:\\Program Files\\SpaceCalibrator";
+		p.registryKeys = {"HKLM:\\Software\\SpaceCalibrator"};
+		p.startMenuShortcut = "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Space Calibrator.lnk";
+		std::string script = BuildUninstallHelperScript(p);
+		CHECK(script.find("Wait-Process -Id 777") != std::string::npos);
+		CHECK(script.find("Get-Process vrserver") != std::string::npos);
+		CHECK(script.find("Get-Process vrmonitor") != std::string::npos);
+		CHECK(script.find("drivers\\01spacecalibrator") != std::string::npos);
+		CHECK(script.find("-ArgumentList '/S' -Wait") != std::string::npos);
+		CHECK(script.find("HKLM:\\Software\\SpaceCalibrator") != std::string::npos);
+		CHECK(script.find("Space Calibrator.lnk") != std::string::npos);
+		CHECK(script.find("'C:\\Users\\it''s me\\AppData\\Local\\SpaceCalibrator\\uninstall-old.log'") != std::string::npos);
+		CHECK(script.find("Wait-Process") < script.find("Remove-Item"));
+
+		UninstallHelperParams noExe = p;
+		noExe.uninstallExe.clear();
+		std::string scriptNoExe = BuildUninstallHelperScript(noExe);
+		CHECK(scriptNoExe.find("Uninstall.exe") == std::string::npos);
+		CHECK(scriptNoExe.find("'C:\\Program Files\\SpaceCalibrator'") != std::string::npos);
+	}
+
 } // namespace
 
 int main()
@@ -140,6 +180,8 @@ int main()
 	TestSelect();
 	TestJson();
 	TestScript();
+	TestDecideUpdateAction();
+	TestUninstallScript();
 	if (failures) {
 		std::printf("%d failure(s)\n", failures);
 		return 1;
