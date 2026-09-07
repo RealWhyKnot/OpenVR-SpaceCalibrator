@@ -27,6 +27,7 @@ static void DrawCalibrationPage()
 		BuildContinuousCalDisplay();
 	}
 	else {
+		DrawAutoDetectCard();
 		auto state = LoadVRState();
 
 		ImGui::BeginDisabled(CalCtx.state == CalibrationState::Continuous);

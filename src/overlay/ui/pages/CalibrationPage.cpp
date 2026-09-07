@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "ui/UiCommon.h"
+#include "AutoDetectController.h"
 #include "Calibration.h"
 #include "CalibrationMetrics.h"
 #include "Configuration.h"
@@ -30,6 +31,38 @@ void DrawSteamVRWarning()
 		ImGui::TextWrapped("%s", VRSess.statusText.c_str());
 	}
 	ImGui::TextDisabled("Space Calibrator connects automatically when SteamVR is ready.");
+	ImGui::EndGroupPanel();
+}
+
+void DrawAutoDetectCard()
+{
+	auto& detect = AutoDetectController::Get();
+	ImVec2 panel_size{ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, 0};
+
+	if (detect.HasResult()) {
+		ImGui::BeginGroupPanel("Tracker auto-detected", panel_size);
+		ImGui::TextWrapped("Selected %s as the target and %s as the reference.", detect.ResultTargetLabel().c_str(),
+		                   detect.ResultReferenceLabel().c_str());
+		if (ImGui::Button("Undo auto-selection")) {
+			detect.Undo();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("OK")) {
+			detect.DismissResult();
+		}
+		ImGui::EndGroupPanel();
+		return;
+	}
+
+	if (!detect.Active()) return;
+
+	ImGui::BeginGroupPanel("Looking for your tracker", panel_size);
+	ImGui::TextWrapped("No calibration profile yet, so Space Calibrator is watching for a device pair moving together. Hold "
+	                   "your tracker firmly against a controller and wave them around.");
+	ImGui::ProgressBar((float)detect.Progress(), ImVec2(-FLT_MIN, 0.0f));
+	if (ImGui::Button("Stop watching")) {
+		detect.Cancel();
+	}
 	ImGui::EndGroupPanel();
 }
 

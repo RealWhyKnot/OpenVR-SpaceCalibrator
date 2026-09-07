@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "OverlayApp.h"
 #include "AppWindow.h"
+#include "AutoDetectController.h"
 #include "Calibration.h"
 #include "LegacyInstall.h"
 #include "UserInterface.h"
@@ -62,6 +63,7 @@ void RunLoop()
 		VRSessionTick(time);
 		if (VRSess.quitRequested) return;
 		CalibrationTick(time);
+		AutoDetectController::Get().Tick(time);
 		spacecal::basestations::BaseStationsController::Get().Tick(VRSess.state == VRConnectionState::Connected);
 
 		bool dashboardVisible = false;
