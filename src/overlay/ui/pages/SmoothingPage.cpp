@@ -52,7 +52,8 @@ void DrawSmoothingPanel(ImVec2 panel_size)
 	ImGui::BeginGroupPanel("Tracker smoothing", panel_size);
 
 	int strength = CalCtx.smoothingParams.strength;
-	bool changed = ImGui::SliderInt("Smoothing", &strength, 0, 100, strength > 0 ? "%d%%" : "off", ImGuiSliderFlags_AlwaysClamp);
+	ImGui::SliderInt("Smoothing", &strength, 0, 100, strength > 0 ? "%d%%" : "off", ImGuiSliderFlags_AlwaysClamp);
+	bool changed = ImGui::IsItemDeactivatedAfterEdit();
 	SmoothingTooltip("Steadies every tracker in the calibrated target space, in place. No extra devices are created.\n"
 	                 "0 turns it off. Higher is calmer when the tracker is still; fast movement stays responsive at any setting.\n"
 	                 "Takes effect immediately and is saved with the profile.");
@@ -112,7 +113,8 @@ void DrawFingerSmoothingPanel(ImVec2 panel_size)
 	bool dirty = false;
 
 	int strength = CalCtx.fingerSmoothing.strength;
-	dirty |= ImGui::SliderInt("Strength##fingers", &strength, 0, 100, strength > 0 ? "%d%%" : "off", ImGuiSliderFlags_AlwaysClamp);
+	ImGui::SliderInt("Strength##fingers", &strength, 0, 100, strength > 0 ? "%d%%" : "off", ImGuiSliderFlags_AlwaysClamp);
+	dirty |= ImGui::IsItemDeactivatedAfterEdit();
 	SmoothingTooltip("0 = no smoothing (each frame snaps to the incoming bones).\n"
 	                 "50 = moderate, a good starting point.\n"
 	                 "100 = heavy lag (slerp factor 0.05 per frame). Never fully freezes.\n"
@@ -181,8 +183,8 @@ void DrawFingerSmoothingPanel(ImVec2 panel_size)
 				ImGui::BeginDisabled(!fingerEnabled);
 				if (ImGui::SliderInt("##perfinger", &value, 0, 100, value > 0 ? "%d" : "global")) {
 					CalCtx.fingerSmoothing.perFinger[bit] = (uint8_t)value;
-					dirty = true;
 				}
+				dirty |= ImGui::IsItemDeactivatedAfterEdit();
 				ImGui::EndDisabled();
 				if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
 					ImGui::SetTooltip("%s %s\n0 = use the global strength (%d).", kHandLabels[hand], kFingerLabels[f],

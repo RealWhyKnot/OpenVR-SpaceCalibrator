@@ -14,9 +14,10 @@ static void ScaledDragFloat(const char* label, double& f, double scale, double m
 {
 	float v = (float)(f * scale);
 	std::string labelStr = std::string(label);
+	bool changed;
 
 	if (labelStr.size() > 2 && labelStr[0] == '#' && labelStr[1] == '#') {
-		ImGui::SliderFloat(label, &v, (float)min, (float)max, "%1.2f", flags);
+		changed = ImGui::SliderFloat(label, &v, (float)min, (float)max, "%1.2f", flags);
 	}
 	else {
 		size_t visible = labelStr.find("##");
@@ -27,11 +28,13 @@ static void ScaledDragFloat(const char* label, double& f, double scale, double m
 		uint32_t cursorPosX = (int)ImGui::GetCursorPosX();
 		uint32_t roundedPosition = ((cursorPosX + LABEL_CURSOR / 2) / LABEL_CURSOR) * LABEL_CURSOR;
 		ImGui::SetCursorPosX((float)roundedPosition);
-		ImGui::SliderFloat((std::string("##") + label).c_str(), &v, (float)min, (float)max, "%1.2f", flags);
+		changed = ImGui::SliderFloat((std::string("##") + label).c_str(), &v, (float)min, (float)max, "%1.2f", flags);
 		ImGui::PopID();
 	}
 
-	f = v / scale;
+	if (changed) {
+		f = v / scale;
+	}
 }
 
 static void DrawVectorElement(const std::string id, const char* text, double* value, int defaultValue = 0,
@@ -214,7 +217,8 @@ void CCal_DrawSettings()
 			ImGui::Text("Recalibration threshold");
 			ImGui::SameLine();
 			ImGui::PushID("recalibration_threshold");
-			ImGui::SliderFloat("##recalibration_threshold_slider", &CalCtx.continuousCalibrationThreshold, 1.01f, 10.0f, "%1.1f", 0);
+			ImGui::SliderFloat("##recalibration_threshold_slider", &CalCtx.continuousCalibrationThreshold, 1.01f, 10.0f, "%.2f",
+			                   ImGuiSliderFlags_AlwaysClamp);
 			if (ImGui::IsItemHovered(0)) {
 				ImGui::SetTooltip(
 				    "Controls how good the calibration must be before realigning the trackers.\n"
@@ -225,7 +229,8 @@ void CCal_DrawSettings()
 			ImGui::Text("Max relative error threshold");
 			ImGui::SameLine();
 			ImGui::PushID("max_relative_error_threshold");
-			ImGui::SliderFloat("##max_relative_error_threshold_slider", &CalCtx.maxRelativeErrorThreshold, 0.01f, 1.0f, "%1.1f", 0);
+			ImGui::SliderFloat("##max_relative_error_threshold_slider", &CalCtx.maxRelativeErrorThreshold, 0.01f, 1.0f, "%.2f",
+			                   ImGuiSliderFlags_AlwaysClamp);
 			if (ImGui::IsItemHovered(0)) {
 				ImGui::SetTooltip("Controls the maximum acceptable relative error. If the error from the relative calibration is too poor, "
 				                  "the calibration will be discarded.");
