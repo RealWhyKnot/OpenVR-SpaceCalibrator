@@ -13,6 +13,10 @@ jobs:
     uses: RealWhyKnot/workflows/.github/workflows/nightly-beta.yml@v1
     with:
       prerelease-suffix: 'beta'
+      ignore-paths: |
+        lint.ps1
+        .clang-format
+        .clang-tidy
 
   release:
     needs: tag
