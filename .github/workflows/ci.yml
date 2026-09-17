@@ -95,6 +95,32 @@ jobs:
         run: |
           ./.github/scripts/Stage-Package.ps1 -OutDir build/package
 
+      - name: Install NSIS
+        if: matrix.channel == 'release'
+        shell: pwsh
+        run: |
+          $want = 'v3.12'
+          $have = ''
+          $exe = 'C:\Program Files (x86)\NSIS\makensis.exe'
+          if (Test-Path -LiteralPath $exe) { $have = (& $exe /VERSION) }
+          if ($have -ne $want) {
+            choco install nsis --version 3.12.0 --force -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw "choco install nsis failed ($LASTEXITCODE)" }
+          }
+
+      - name: Build installer
+        if: matrix.channel == 'release'
+        shell: pwsh
+        run: |
+          & 'C:\Program Files (x86)\NSIS\makensis.exe' /V2 /WX /DVERSION=0.0.0.0-CI /DVIVERSION=0.0.0.0 "/DPAYLOAD=$PWD\build\package" "/DOUTFILE=$PWD\build\OpenVR-SpaceCalibrator-Setup-0.0.0.0-CI.exe" installer/installer.nsi
+          if ($LASTEXITCODE -ne 0) { throw "makensis failed ($LASTEXITCODE)" }
+
+      - name: Installer smoke test
+        if: matrix.channel == 'release'
+        shell: pwsh
+        run: |
+          ./.github/scripts/Test-Installer.ps1 -Setup build/OpenVR-SpaceCalibrator-Setup-0.0.0.0-CI.exe -Version 0.0.0.0-CI
+
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:

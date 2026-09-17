@@ -22,6 +22,7 @@ if (Test-Path -LiteralPath $OutDir) { Remove-Item -LiteralPath $OutDir -Recurse 
 New-Item -ItemType Directory -Path $OutDir | Out-Null
 $OutDir = (Resolve-Path -LiteralPath $OutDir).Path
 Copy-Item -LiteralPath $driverDir -Destination (Join-Path $OutDir "01spacecalibrator") -Recurse
+Get-ChildItem -LiteralPath (Join-Path $OutDir "01spacecalibrator") -Recurse -File -Filter "*.log" | Remove-Item -Force
 foreach ($name in $overlayFiles) { Copy-Item -LiteralPath (Join-Path $overlayDir $name) -Destination $OutDir }
 Copy-Item -LiteralPath (Join-Path $repo "scripts\install.ps1"), (Join-Path $repo "scripts\uninstall.ps1") -Destination $OutDir
 Copy-Item -LiteralPath (Join-Path $repo "README.md"), (Join-Path $repo "LICENSE"), (Join-Path $repo "NOTICE") -Destination $OutDir
