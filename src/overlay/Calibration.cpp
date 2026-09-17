@@ -166,6 +166,11 @@ bool TryConnectDriver(std::string& error)
 	return true;
 }
 
+spacecal::HandshakeOutcome LastDriverHandshake()
+{
+	return Driver.LastHandshakeOutcome();
+}
+
 void DisconnectDriver()
 {
 	Driver.Disconnect();

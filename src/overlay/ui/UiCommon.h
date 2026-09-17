@@ -34,6 +34,7 @@ void DrawFingerSmoothingPanel(ImVec2 panel_size);
 void CCal_BasicInfo();
 void DrawAutoDetectCard();
 void DrawSteamVRWarning();
+void DrawDriverConflictPanel();
 void DrawLearnPage();
 void DrawAboutPage();
 void DrawBaseStationsPage();

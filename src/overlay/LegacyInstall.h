@@ -12,13 +12,11 @@ struct LegacyInstallInfo
 	std::vector<std::string> registryKeys;
 	bool steamAppInstalled = false;
 
-	bool AnyRemovable() const
-	{
-		return !uninstallExe.empty() || !programFilesDir.empty() || !runtimeDriverDirs.empty() || !registryKeys.empty();
-	}
+	bool AnyRemovable() const { return !uninstallExe.empty() || !programFilesDir.empty() || !runtimeDriverDirs.empty(); }
 };
 
 std::string GetRegistryString(const HKEY hKeyGroup, const char* szRegistryKey, const char* szRegistryPropKey) noexcept;
+bool GetRegistryDword(const HKEY hKeyGroup, const char* szRegistryKey, const char* szRegistryPropKey, DWORD& out) noexcept;
 void CheckGithubVersionInstalledOnSteam();
 bool IsGithubVersionInstalled();
 bool UninstallGithubSpaceCalibrator();

@@ -36,6 +36,8 @@ void IPCClient::Connect()
 {
 	LPCTSTR pipeName = TEXT(OPENVR_SPACECALIBRATOR_PIPE_NAME);
 
+	lastOutcome = spacecal::HandshakeOutcome::Unavailable;
+
 	WaitNamedPipe(pipeName, 1000);
 	pipe = CreateFile(pipeName, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
 
@@ -51,12 +53,24 @@ void IPCClient::Connect()
 		throw std::runtime_error("Couldn't set pipe mode. Error " + std::to_string(lastError) + ": " + LastErrorString(lastError));
 	}
 
-	auto response = SendBlocking(protocol::Request(protocol::RequestHandshake));
-	if (response.type != protocol::ResponseHandshake || response.protocol.version != protocol::Version) {
+	Send(protocol::Request(protocol::RequestHandshake));
+
+	DWORD bytesRead = 0;
+	bool moreData = false;
+	protocol::Response response = ReceiveRaw(bytesRead, moreData);
+
+	const bool wholeResponse = !moreData && bytesRead == sizeof response;
+
+	if (!wholeResponse || response.type != protocol::ResponseHandshake || response.protocol.version != protocol::Version) {
+		lastOutcome = spacecal::HandshakeOutcome::WrongGeneration;
 		Disconnect();
-		throw std::runtime_error("Incorrect driver version installed, try reinstalling Space Calibrator. (Client: " +
-		                         std::to_string(protocol::Version) + ", Driver: " + std::to_string(response.protocol.version) + ")");
+		std::string detail = wholeResponse ? "it speaks protocol " + std::to_string(response.protocol.version)
+		                                   : "it answered with " + std::to_string(bytesRead) + (moreData ? "+" : "") + " bytes where " +
+		                                         std::to_string(sizeof response) + " were expected";
+		throw std::runtime_error("A different version of the Space Calibrator driver is answering SteamVR. This build speaks protocol " +
+		                         std::to_string(protocol::Version) + " and " + detail + ".");
 	}
+	lastOutcome = spacecal::HandshakeOutcome::Ok;
 }
 
 bool IPCClient::TryConnect(std::string& error)
@@ -88,10 +102,11 @@ void IPCClient::Send(const protocol::Request& request)
 	}
 }
 
-protocol::Response IPCClient::Receive()
+protocol::Response IPCClient::ReceiveRaw(DWORD& bytesRead, bool& moreData)
 {
 	protocol::Response response(protocol::ResponseInvalid);
-	DWORD bytesRead;
+	bytesRead = 0;
+	moreData = false;
 
 	BOOL success = ReadFile(pipe, &response, sizeof response, &bytesRead, 0);
 	if (!success) {
@@ -99,10 +114,22 @@ protocol::Response IPCClient::Receive()
 		if (lastError != ERROR_MORE_DATA) {
 			throw std::runtime_error("Error reading IPC response. Error " + std::to_string(lastError) + ": " + LastErrorString(lastError));
 		}
+		moreData = true;
 	}
 
-	if (bytesRead != sizeof response) {
-		throw std::runtime_error("Invalid IPC response. Error SIZE_MISMATCH, got size " + std::to_string(bytesRead));
+	return response;
+}
+
+protocol::Response IPCClient::Receive()
+{
+	DWORD bytesRead = 0;
+	bool moreData = false;
+	protocol::Response response = ReceiveRaw(bytesRead, moreData);
+
+	if (moreData || bytesRead != sizeof response) {
+		throw std::runtime_error("The Space Calibrator driver sent a " + std::to_string(bytesRead) + (moreData ? "+" : "") +
+		                         " byte response where " + std::to_string(sizeof response) +
+		                         " was expected. It is a different version than this overlay.");
 	}
 
 	return response;

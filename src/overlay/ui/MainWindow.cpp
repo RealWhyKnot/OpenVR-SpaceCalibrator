@@ -5,6 +5,7 @@
 #include "Style.h"
 #include "Widgets.h"
 #include "Calibration.h"
+#include "DriverConflictState.h"
 #include "CalibrationMetrics.h"
 #include "Updater.h"
 #include "Version.h"
@@ -72,10 +73,19 @@ void BuildMainWindow(bool runningInOverlay_)
 	ImGui::BeginChild("content", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()), ImGuiChildFlags_AlwaysUseWindowPadding);
 	ImGui::PopStyleVar();
 
+	const bool driverBlocked = DriverConflictCtx.report.tier == spacecal::ConflictTier::Blocking;
+	if (ui::CurrentPage() != ui::Page::Settings) {
+		DrawDriverConflictPanel();
+	}
+
 	switch (ui::CurrentPage()) {
-		case ui::Page::Calibration: DrawCalibrationPage(); break;
+		case ui::Page::Calibration:
+			if (!driverBlocked) DrawCalibrationPage();
+			break;
 		case ui::Page::BaseStations: DrawBaseStationsPage(); break;
-		case ui::Page::Smoothing: DrawSmoothingPage(); break;
+		case ui::Page::Smoothing:
+			if (!driverBlocked) DrawSmoothingPage();
+			break;
 		case ui::Page::Settings: CCal_DrawSettings(); break;
 		case ui::Page::Learn: DrawLearnPage(); break;
 		case ui::Page::About: DrawAboutPage(); break;

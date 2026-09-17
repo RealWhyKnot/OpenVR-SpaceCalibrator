@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "VRSession.h"
 #include "Calibration.h"
+#include "DriverConflictState.h"
 #include "Constants.h"
 
 #include <tlhelp32.h>
@@ -93,10 +94,12 @@ void VRSessionTick(double time)
 			}
 			std::string driverError;
 			if (!TryConnectDriver(driverError)) {
+				DriverConflictCtx.Refresh(LastDriverHandshake());
 				VRSess.statusText = driverError;
 				VRSess.nextAttemptTime = time + 2.0;
 				return;
 			}
+			DriverConflictCtx.Refresh(LastDriverHandshake());
 			VRSess.statusText.clear();
 			VRSess.state = VRConnectionState::Connected;
 			return;

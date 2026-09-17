@@ -34,6 +34,24 @@ std::string GetRegistryString(const HKEY hKeyGroup, const char* szRegistryKey, c
 	return "";
 }
 
+bool GetRegistryDword(const HKEY hKeyGroup, const char* szRegistryKey, const char* szRegistryPropKey, DWORD& out) noexcept
+{
+	DWORD dwType = REG_DWORD;
+	HKEY hKey = 0;
+	DWORD value = 0;
+	DWORD valueSize = sizeof(value);
+	if (RegOpenKeyExA(hKeyGroup, szRegistryKey, 0, KEY_QUERY_VALUE, &hKey) != ERROR_SUCCESS) {
+		return false;
+	}
+	const LSTATUS lResult = RegQueryValueExA(hKey, szRegistryPropKey, NULL, &dwType, (LPBYTE)&value, &valueSize);
+	RegCloseKey(hKey);
+	if (lResult != ERROR_SUCCESS || dwType != REG_DWORD) {
+		return false;
+	}
+	out = value;
+	return true;
+}
+
 bool UninstallGithubSpaceCalibrator()
 {
 	std::string uninstallKeyValue = GetRegistryString(
@@ -131,8 +149,9 @@ LegacyInstallInfo DetectLegacyInstalls()
 		}
 	}
 
-	info.steamAppInstalled = GetRegistryString(HKEY_CURRENT_USER, "Software\\Valve\\Steam\\Apps\\3368750", "Name") != "" ||
-	                         GetRegistryString(HKEY_CURRENT_USER, "Software\\Valve\\Steam\\Apps\\3368750", "Installed") != "";
+	DWORD steamAppInstalled = 0;
+	info.steamAppInstalled = GetRegistryDword(HKEY_CURRENT_USER, "Software\\Valve\\Steam\\Apps\\3368750", "Installed", steamAppInstalled) &&
+	                         steamAppInstalled != 0;
 
 	return info;
 }

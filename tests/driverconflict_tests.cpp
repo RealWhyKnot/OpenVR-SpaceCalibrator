@@ -1,0 +1,244 @@
+#include "DriverConflict.h"
+#include "UnregisterDriverScript.h"
+
+#include <cstdio>
+#include <string>
+#include <vector>
+
+namespace {
+
+	int failures = 0;
+
+#define CHECK(cond)                                                                                                                        \
+	do {                                                                                                                                   \
+		if (!(cond)) {                                                                                                                     \
+			std::printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #cond);                                                                     \
+			++failures;                                                                                                                    \
+		}                                                                                                                                  \
+	} while (0)
+
+	using namespace spacecal;
+
+	const char* kRealVrPath = R"({
+	"config" : [ "C:\\Program Files (x86)\\Steam\\config" ],
+	"external_drivers" :
+	[
+		"C:\\Program Files\\Virtual Desktop Streamer\\OpenVRDriver",
+		"D:\\Github\\OpenVR\\OpenVR-SpaceCalibrator\\build\\01spacecalibrator"
+	],
+	"jsonid" : "vrpathreg",
+	"log" : [ "C:\\Program Files (x86)\\Steam\\logs" ],
+	"runtime" :
+	[
+		"C:\\Program Files (x86)\\Steam\\steamapps\\common\\SteamVR",
+		"C:\\program files (x86)\\steam\\steamapps\\common\\SteamVR"
+	],
+	"version" : 1
+})";
+
+	const char* kOwn = R"(D:\Github\OpenVR\OpenVR-SpaceCalibrator\build\01spacecalibrator)";
+	const char* kOwnOtherCase = R"(d:\github\openvr\openvr-spacecalibrator\BUILD\01SpaceCalibrator)";
+	const char* kRival = R"(C:\Users\me\Downloads\SpaceCalibrator\01spacecalibrator)";
+	const char* kUpstream = R"(C:\Old\000spacecalibrator)";
+	const char* kRuntimeFolder = R"(C:\Program Files (x86)\Steam\steamapps\common\SteamVR\drivers\000spacecalibrator)";
+	const char* kUnrelated = R"(C:\Program Files\Virtual Desktop Streamer\OpenVRDriver)";
+
+	ConflictInputs Inputs(const char* own, std::vector<std::string> external, HandshakeOutcome handshake)
+	{
+		ConflictInputs in;
+		in.ownDriverDir = own ? own : "";
+		in.externalDrivers = std::move(external);
+		in.handshake = handshake;
+		return in;
+	}
+
+	void TestParse()
+	{
+		OpenVRPaths paths;
+		CHECK(ParseOpenVRPaths(kRealVrPath, paths));
+		CHECK(paths.runtimes.size() == 2);
+		CHECK(paths.externalDrivers.size() == 2);
+		CHECK(paths.externalDrivers[0] == kUnrelated);
+		CHECK(paths.externalDrivers[1] == kOwn);
+		CHECK(paths.runtimes[0] != paths.runtimes[1]);
+		CHECK(NormalizePathKey(paths.runtimes[0]) == NormalizePathKey(paths.runtimes[1]));
+
+		OpenVRPaths missing;
+		CHECK(ParseOpenVRPaths(R"({"runtime":["a"]})", missing));
+		CHECK(missing.runtimes.size() == 1);
+		CHECK(missing.externalDrivers.empty());
+
+		OpenVRPaths notArray;
+		CHECK(ParseOpenVRPaths(R"({"external_drivers":"nope"})", notArray));
+		CHECK(notArray.externalDrivers.empty());
+
+		OpenVRPaths mixed;
+		CHECK(ParseOpenVRPaths(R"({"external_drivers":["a",5,null,"b"]})", mixed));
+		CHECK(mixed.externalDrivers.size() == 2);
+		CHECK(mixed.externalDrivers[0] == "a" && mixed.externalDrivers[1] == "b");
+
+		OpenVRPaths broken;
+		CHECK(!ParseOpenVRPaths("not json at all", broken));
+		CHECK(!ParseOpenVRPaths(R"([1,2,3])", broken));
+		CHECK(!ParseOpenVRPaths("", broken));
+	}
+
+	void TestNormalize()
+	{
+		CHECK(NormalizePathKey(R"(C:/Foo/Bar/)") == R"(c:\foo\bar)");
+		CHECK(NormalizePathKey(R"(C:\Foo\\Bar\)") == R"(c:\foo\bar)");
+		CHECK(NormalizePathKey(R"(C:\FOO\bar)") == NormalizePathKey(R"(c:\foo\BAR)"));
+		CHECK(NormalizePathKey("") == "");
+		CHECK(PathLeaf(R"(C:\Old\000SpaceCalibrator\)") == "000spacecalibrator");
+		CHECK(PathLeaf("01spacecalibrator") == "01spacecalibrator");
+	}
+
+	void TestLeaf()
+	{
+		CHECK(IsSpaceCalibratorDriverLeaf("01spacecalibrator"));
+		CHECK(IsSpaceCalibratorDriverLeaf("000spacecalibrator"));
+		CHECK(IsSpaceCalibratorDriverLeaf("driver_01spacecalibrator"));
+		CHECK(IsSpaceCalibratorDriverLeaf("driver_000spacecalibrator"));
+		CHECK(IsSpaceCalibratorDriverLeaf("01SpaceCalibrator"));
+		CHECK(!IsSpaceCalibratorDriverLeaf("OpenVRDriver"));
+		CHECK(!IsSpaceCalibratorDriverLeaf("01spacecalibrator_old"));
+		CHECK(!IsSpaceCalibratorDriverLeaf(""));
+	}
+
+	void TestClassify()
+	{
+		{
+			const ConflictReport r = ClassifyDriverConflict(Inputs(kOwn, {kUnrelated, kOwn}, HandshakeOutcome::Ok));
+			CHECK(r.tier == ConflictTier::None);
+			CHECK(r.rivals.empty());
+			CHECK(r.ownRegistered);
+			CHECK(!r.CanUnregister());
+		}
+		{
+			const ConflictReport r = ClassifyDriverConflict(Inputs(kOwn, {kOwn, kRival}, HandshakeOutcome::Ok));
+			CHECK(r.tier == ConflictTier::Warning);
+			CHECK(r.rivals.size() == 1);
+			CHECK(r.rivals[0].path == kRival);
+			CHECK(r.rivals[0].kind == RivalKind::ExternalDriver);
+			CHECK(r.ownRegistered);
+			CHECK(r.CanUnregister());
+		}
+		{
+			const ConflictReport r = ClassifyDriverConflict(Inputs(kOwn, {kOwn}, HandshakeOutcome::WrongGeneration));
+			CHECK(r.tier == ConflictTier::Blocking);
+			CHECK(r.ownDriverStale);
+			CHECK(r.rivals.empty());
+			CHECK(!r.CanUnregister());
+		}
+		{
+			const ConflictReport r = ClassifyDriverConflict(Inputs(kOwn, {kOwn, kUpstream}, HandshakeOutcome::WrongGeneration));
+			CHECK(r.tier == ConflictTier::Blocking);
+			CHECK(!r.ownDriverStale);
+			CHECK(r.rivals.size() == 1);
+			CHECK(r.rivals[0].path == kUpstream);
+			CHECK(r.CanUnregister());
+		}
+		{
+			const ConflictReport r = ClassifyDriverConflict(Inputs(kOwn, {kRival}, HandshakeOutcome::WrongGeneration));
+			CHECK(r.tier == ConflictTier::Blocking);
+			CHECK(!r.ownRegistered);
+			CHECK(r.rivals.size() == 1);
+		}
+		{
+			const ConflictReport r = ClassifyDriverConflict(Inputs(nullptr, {kRival}, HandshakeOutcome::Ok));
+			CHECK(r.tier == ConflictTier::None);
+			CHECK(r.rivals.empty());
+		}
+		{
+			const ConflictReport r = ClassifyDriverConflict(Inputs(nullptr, {kRival}, HandshakeOutcome::WrongGeneration));
+			CHECK(r.tier == ConflictTier::Blocking);
+			CHECK(r.ownDriverStale);
+			CHECK(r.rivals.empty());
+			CHECK(!r.CanUnregister());
+		}
+		{
+			const ConflictReport r = ClassifyDriverConflict(Inputs(kOwn, {kOwn, kOwnOtherCase}, HandshakeOutcome::Ok));
+			CHECK(r.tier == ConflictTier::None);
+			CHECK(r.rivals.empty());
+		}
+		{
+			const ConflictReport r = ClassifyDriverConflict(Inputs(kOwn, {kRival, kRival}, HandshakeOutcome::Ok));
+			CHECK(r.rivals.size() == 1);
+		}
+		{
+			const ConflictReport r = ClassifyDriverConflict(Inputs(kOwn, {kOwn}, HandshakeOutcome::Unavailable));
+			CHECK(r.tier == ConflictTier::None);
+		}
+		{
+			ConflictInputs in = Inputs(kOwn, {kOwn, kRival}, HandshakeOutcome::Unavailable);
+			const ConflictReport r = ClassifyDriverConflict(in);
+			CHECK(r.tier == ConflictTier::Warning);
+			CHECK(r.rivals.size() == 1);
+		}
+		{
+			ConflictInputs in = Inputs(kOwn, {kOwn}, HandshakeOutcome::Ok);
+			in.runtimeDriverFolders.push_back(kRuntimeFolder);
+			const ConflictReport r = ClassifyDriverConflict(in);
+			CHECK(r.tier == ConflictTier::Warning);
+			CHECK(r.rivals.size() == 1);
+			CHECK(r.rivals[0].kind == RivalKind::RuntimeFolder);
+			CHECK(!r.CanUnregister());
+		}
+	}
+
+	void TestUnregisterScript()
+	{
+		UnregisterDriverParams params;
+		params.vrpathregExe = R"(C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrpathreg.exe)";
+		params.logPath = R"(C:\Users\me\AppData\Local\SpaceCalibrator\unregister-driver.log)";
+		params.driverDirs = {kRival, R"(C:\Users\it's me\01spacecalibrator)"};
+
+		const std::string script = BuildUnregisterDriverScript(params);
+
+		CHECK(script.find("Wait-Process") == std::string::npos);
+
+		const auto vrserver = script.find("Get-Process vrserver");
+		const auto vrmonitor = script.find("Get-Process vrmonitor");
+		const auto firstRemove = script.find("removedriver");
+		CHECK(vrserver != std::string::npos);
+		CHECK(vrmonitor != std::string::npos);
+		CHECK(firstRemove != std::string::npos);
+		CHECK(vrserver < vrmonitor);
+		CHECK(vrmonitor < firstRemove);
+
+		size_t removes = 0;
+		for (size_t at = script.find("removedriver"); at != std::string::npos; at = script.find("removedriver", at + 1))
+			++removes;
+		size_t resets = 0;
+		for (size_t at = script.find("$global:LASTEXITCODE = 0"); at != std::string::npos;
+		     at = script.find("$global:LASTEXITCODE = 0", at + 1))
+			++resets;
+		CHECK(removes == params.driverDirs.size());
+		CHECK(resets == params.driverDirs.size());
+
+		CHECK(script.find(R"('C:\Users\it''s me\01spacecalibrator')") != std::string::npos);
+		CHECK(script.find("$ErrorActionPreference = 'Stop'") == 0);
+
+		UnregisterDriverParams empty;
+		empty.vrpathregExe = params.vrpathregExe;
+		empty.logPath = params.logPath;
+		CHECK(BuildUnregisterDriverScript(empty).find("removedriver") == std::string::npos);
+	}
+
+} // namespace
+
+int main()
+{
+	TestParse();
+	TestNormalize();
+	TestLeaf();
+	TestClassify();
+	TestUnregisterScript();
+
+	if (failures == 0) {
+		std::printf("driverconflict tests passed\n");
+		return 0;
+	}
+	std::printf("%d driverconflict test failure(s)\n", failures);
+	return 1;
+}

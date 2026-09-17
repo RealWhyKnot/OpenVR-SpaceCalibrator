@@ -7,6 +7,7 @@
 #include <vector>
 #include <deque>
 
+#include "HandshakeOutcome.h"
 #include "Protocol.h"
 #include "VRState.h"
 
@@ -221,6 +222,7 @@ struct CalibrationContext
 extern CalibrationContext CalCtx;
 
 bool TryConnectDriver(std::string& error);
+spacecal::HandshakeOutcome LastDriverHandshake();
 void DisconnectDriver();
 const std::vector<KnownDevice>& GetKnownDevices();
 void CalibrationTick(double time);

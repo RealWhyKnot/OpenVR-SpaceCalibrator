@@ -5,9 +5,14 @@ Fork of the 1.5.1 line of Space Calibrator. This fork adds a one euro filter on 
 ## Install a release
 
 Close SteamVR, unzip somewhere you won't move it, and run `install.ps1` from the unzipped folder. It
-registers the driver folder, unregisters any other copy of the `01spacecalibrator` driver it finds
-(the Steam build included), turns on `activateMultipleDrivers`, and registers the overlay so SteamVR
-autolaunches it. Start SteamVR and it's in the dashboard where it always was.
+registers the driver folder, unregisters any other copy of the `01spacecalibrator` or
+`000spacecalibrator` driver it finds (the Steam build and the original upstream one included), turns
+on `activateMultipleDrivers`, and registers the overlay so SteamVR autolaunches it. Start SteamVR and
+it's in the dashboard where it always was.
+
+A driver sitting in `<SteamVR>\drivers\` loads because of where it is rather than because it's
+registered, so nothing can unregister it. `install.ps1` warns if it finds one, and you have to remove
+or rename that folder yourself. The overlay says the same thing on its Settings page.
 
 Don't launch the Steam copy while this one is registered. Both drivers would rewrite the same poses.
 `uninstall.ps1` reverses the registration.

@@ -82,7 +82,14 @@ static void DrawLegacyInstallPanel(ImVec2 panel_size)
 	ImGui::BeginGroupPanel("Old Space Calibrator versions", panel_size);
 
 	if (info.AnyRemovable()) {
-		ImGui::TextWrapped("Leftovers from an old Space Calibrator install were found. They can conflict with this version.");
+		if (info.runtimeDriverDirs.empty()) {
+			ImGui::TextWrapped("An old Space Calibrator install is still on disk. SteamVR doesn't load it, so removing it just frees "
+			                   "space.");
+		}
+		else {
+			ImGui::TextWrapped("An old Space Calibrator driver is installed inside the SteamVR runtime. SteamVR loads it alongside this "
+			                   "one, which breaks calibration.");
+		}
 		if (!info.uninstallExe.empty())
 			ImGui::TextDisabled("Installer: %s", info.uninstallExe.c_str());
 		else if (!info.programFilesDir.empty())
@@ -123,6 +130,8 @@ static void DrawLegacyInstallPanel(ImVec2 panel_size)
 void CCal_DrawSettings()
 {
 	ImVec2 panel_size{ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, 0};
+
+	DrawDriverConflictPanel();
 
 	ImGui::BeginGroupPanel("Tip", panel_size);
 	ImGui::Text("Hover over settings to learn more about them!");

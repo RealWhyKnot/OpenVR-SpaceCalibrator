@@ -29,13 +29,25 @@ if (Test-Path $paths) {
     if ($json.PSObject.Properties['external_drivers']) { $registered = @($json.external_drivers) }
 }
 $resolvedDriver = (Resolve-Path $driverDir).Path
+$rivalLeaves = @('01spacecalibrator', '000spacecalibrator', 'driver_01spacecalibrator', 'driver_000spacecalibrator')
 foreach ($entry in $registered) {
-    $leaf = Split-Path -Leaf $entry
-    if ($leaf -ieq '01spacecalibrator' -or $leaf -ieq 'driver_01spacecalibrator') {
-        if ($entry -ieq $resolvedDriver) { continue }
-        & $vrpathreg removedriver $entry
-        $global:LASTEXITCODE = 0
-        Write-Host "unregistered: $entry"
+    if ($rivalLeaves -notcontains (Split-Path -Leaf $entry).ToLowerInvariant()) { continue }
+    $resolvedEntry = (Resolve-Path -LiteralPath $entry -ErrorAction SilentlyContinue).Path
+    if (-not $resolvedEntry) { $resolvedEntry = $entry }
+    if ($resolvedEntry -ieq $resolvedDriver) { continue }
+    & $vrpathreg removedriver $entry
+    $global:LASTEXITCODE = 0
+    Write-Host "unregistered: $entry"
+}
+
+$runtimeRoot = $null
+if ($json) { $runtimeRoot = @($json.runtime)[0] }
+if ($runtimeRoot) {
+    foreach ($name in $rivalLeaves) {
+        $runtimeDriver = Join-Path $runtimeRoot "drivers\$name"
+        if (Test-Path -LiteralPath $runtimeDriver) {
+            Write-Warning "another Space Calibrator driver lives inside the SteamVR runtime and loads alongside this one: $runtimeDriver - remove or rename that folder"
+        }
     }
 }
 

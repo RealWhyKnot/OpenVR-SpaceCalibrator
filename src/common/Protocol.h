@@ -1,6 +1,7 @@
 #pragma once
 
 #include <windows.h>
+#include <cstddef>
 #include <cstdint>
 #include <atomic>
 #include <stdexcept>
@@ -258,6 +259,9 @@ namespace protocol {
 		Response() : type(ResponseInvalid), protocol({}) {}
 		Response(ResponseType type) : type(type), protocol({}) {}
 	};
+
+	static_assert(sizeof(Response) == 40, "wire size of Response");
+	static_assert(offsetof(Response, protocol.version) == 8, "wire offset of protocol version");
 
 	class DriverPoseShmem
 	{
