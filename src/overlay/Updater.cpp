@@ -233,9 +233,9 @@ void Updater::Update()
 	std::filesystem::create_directories(base, ec);
 	spacecal::UpdateHelperParams params;
 	params.overlayPid = GetCurrentProcessId();
-	params.zipUrl = available.zipUrl;
-	params.shaUrl = available.shaUrl;
-	params.zipName = spacecal::ReleaseZipName(available.tag);
+	params.setupUrl = available.setupUrl;
+	params.shaUrl = available.setupShaUrl;
+	params.setupName = spacecal::ReleaseSetupName(available.tag);
 	params.stagingDir = Narrow((base / L"update").wstring());
 	params.installDir = Narrow(InstallDir().wstring());
 	params.logPath = Narrow((base / L"update.log").wstring());

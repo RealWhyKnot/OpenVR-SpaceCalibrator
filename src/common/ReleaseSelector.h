@@ -39,16 +39,16 @@ namespace spacecal {
 	{
 		std::string tag;
 		std::string htmlUrl;
-		std::string zipUrl;
-		std::string shaUrl;
+		std::string setupUrl;
+		std::string setupShaUrl;
 		bool draft = false;
 		bool prerelease = false;
 	};
 
-	inline std::string ReleaseZipName(const std::string& tag)
+	inline std::string ReleaseSetupName(const std::string& tag)
 	{
 		std::string version = (!tag.empty() && (tag[0] == 'v' || tag[0] == 'V')) ? tag.substr(1) : tag;
-		return "OpenVR-SpaceCalibrator-" + version + ".zip";
+		return "OpenVR-SpaceCalibrator-Setup-" + version + ".exe";
 	}
 
 	inline std::string ParseReleasesJson(const std::string& json, std::vector<GithubRelease>& out)
@@ -81,7 +81,7 @@ namespace spacecal {
 			release.draft = draftIt != obj.end() && draftIt->second.is<bool>() && draftIt->second.get<bool>();
 			auto preIt = obj.find("prerelease");
 			release.prerelease = preIt != obj.end() && preIt->second.is<bool>() && preIt->second.get<bool>();
-			std::string zipName = ReleaseZipName(release.tag);
+			std::string setupName = ReleaseSetupName(release.tag);
 			auto assetsIt = obj.find("assets");
 			if (assetsIt != obj.end() && assetsIt->second.is<picojson::array>()) {
 				for (const auto& asset : assetsIt->second.get<picojson::array>()) {
@@ -96,11 +96,11 @@ namespace spacecal {
 						continue;
 					}
 					const std::string& name = nameIt->second.get<std::string>();
-					if (name == zipName) {
-						release.zipUrl = downloadIt->second.get<std::string>();
+					if (name == setupName) {
+						release.setupUrl = downloadIt->second.get<std::string>();
 					}
-					else if (name == zipName + ".sha256") {
-						release.shaUrl = downloadIt->second.get<std::string>();
+					else if (name == setupName + ".sha256") {
+						release.setupShaUrl = downloadIt->second.get<std::string>();
 					}
 				}
 			}
@@ -121,7 +121,7 @@ namespace spacecal {
 			if (release.draft || (channel == UpdateChannel::Release && release.prerelease)) {
 				continue;
 			}
-			if (release.zipUrl.empty() || release.shaUrl.empty()) {
+			if (release.setupUrl.empty() || release.setupShaUrl.empty()) {
 				continue;
 			}
 			UpdateVersion version;

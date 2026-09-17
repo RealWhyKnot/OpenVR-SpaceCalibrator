@@ -39,10 +39,18 @@ namespace {
 		r.prerelease = prerelease;
 		r.draft = draft;
 		if (assets) {
-			r.zipUrl = "https://example.invalid/" + ReleaseZipName(tag);
-			r.shaUrl = r.zipUrl + ".sha256";
+			r.setupUrl = "https://example.invalid/" + ReleaseSetupName(tag);
+			r.setupShaUrl = r.setupUrl + ".sha256";
 		}
 		return r;
+	}
+
+	void TestSetupName()
+	{
+		CHECK(ReleaseSetupName("v2026.9.2.0-beta") == "OpenVR-SpaceCalibrator-Setup-2026.9.2.0-beta.exe");
+		CHECK(ReleaseSetupName("V2026.9.2.0") == "OpenVR-SpaceCalibrator-Setup-2026.9.2.0.exe");
+		CHECK(ReleaseSetupName("2026.9.2.0") == "OpenVR-SpaceCalibrator-Setup-2026.9.2.0.exe");
+		CHECK(ReleaseSetupName("") == "OpenVR-SpaceCalibrator-Setup-.exe");
 	}
 
 	void TestParse()
@@ -92,16 +100,19 @@ namespace {
 	{
 		const char* json =
 		    "[{\"tag_name\":\"v2026.9.2.0-beta\",\"html_url\":\"https://example.invalid/r\",\"draft\":false,\"prerelease\":true,"
-		    "\"assets\":[{\"name\":\"OpenVR-SpaceCalibrator-2026.9.2.0-beta.zip\",\"browser_download_url\":\"https://example.invalid/z\"},"
-		    "{\"name\":\"OpenVR-SpaceCalibrator-2026.9.2.0-beta.zip.sha256\",\"browser_download_url\":\"https://example.invalid/s\"}]},"
+		    "\"assets\":[{\"name\":\"OpenVR-SpaceCalibrator-Setup-2026.9.2.0-beta.exe\",\"browser_download_url\":\"https://"
+		    "example.invalid/z\"},"
+		    "{\"name\":\"OpenVR-SpaceCalibrator-Setup-2026.9.2.0-beta.exe.sha256\",\"browser_download_url\":\"https://example.invalid/"
+		    "s\"},"
+		    "{\"name\":\"OpenVR-SpaceCalibrator-2026.9.2.0-beta.zip\",\"browser_download_url\":\"https://example.invalid/old\"}]},"
 		    "{\"tag_name\":\"v1.5.1\",\"draft\":false,\"prerelease\":false,\"assets\":[]}]";
 		std::vector<GithubRelease> releases;
 		CHECK(ParseReleasesJson(json, releases).empty());
 		CHECK(releases.size() == 2);
 		CHECK(releases[0].tag == "v2026.9.2.0-beta" && releases[0].prerelease && !releases[0].draft);
-		CHECK(releases[0].zipUrl == "https://example.invalid/z" && releases[0].shaUrl == "https://example.invalid/s");
+		CHECK(releases[0].setupUrl == "https://example.invalid/z" && releases[0].setupShaUrl == "https://example.invalid/s");
 		CHECK(releases[0].htmlUrl == "https://example.invalid/r");
-		CHECK(releases[1].zipUrl.empty());
+		CHECK(releases[1].setupUrl.empty());
 		CHECK(!ParseReleasesJson("{\"message\":\"rate limited\"}", releases).empty());
 		CHECK(!ParseReleasesJson("not json", releases).empty());
 	}
@@ -110,22 +121,26 @@ namespace {
 	{
 		UpdateHelperParams p;
 		p.overlayPid = 4242;
-		p.zipUrl = "https://example.invalid/OpenVR-SpaceCalibrator-2026.9.2.0-beta.zip";
-		p.shaUrl = p.zipUrl + ".sha256";
-		p.zipName = "OpenVR-SpaceCalibrator-2026.9.2.0-beta.zip";
+		p.setupUrl = "https://example.invalid/OpenVR-SpaceCalibrator-Setup-2026.9.2.0-beta.exe";
+		p.shaUrl = p.setupUrl + ".sha256";
+		p.setupName = "OpenVR-SpaceCalibrator-Setup-2026.9.2.0-beta.exe";
 		p.stagingDir = "C:\\Users\\it's me\\AppData\\Local\\SpaceCalibrator\\update";
-		p.installDir = "D:\\VR\\SpaceCal";
+		p.installDir = "D:\\VR\\Space Cal";
 		p.logPath = "C:\\Users\\it's me\\AppData\\Local\\SpaceCalibrator\\update.log";
 		std::string script = BuildUpdateHelperScript(p);
 		CHECK(script.find("Wait-Process -Id 4242") != std::string::npos);
 		CHECK(script.find("Get-Process vrserver") != std::string::npos);
 		CHECK(script.find("Get-FileHash") != std::string::npos);
-		CHECK(script.find("Expand-Archive") != std::string::npos);
 		CHECK(script.find("'C:\\Users\\it''s me\\AppData\\Local\\SpaceCalibrator\\update'") != std::string::npos);
-		CHECK(script.find("-Destination 'D:\\VR\\SpaceCal'") != std::string::npos);
-		CHECK(script.find(p.zipUrl) != std::string::npos);
-		CHECK(script.find("Wait-Process") < script.find("Copy-Item"));
-		CHECK(script.find("Copy-Item") < script.find("Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction"));
+		CHECK(script.find("-ArgumentList ('/S /D=' + 'D:\\VR\\Space Cal') -Wait -PassThru") != std::string::npos);
+		CHECK(script.find("\"/D=") == std::string::npos);
+		CHECK(script.find(p.setupUrl) != std::string::npos);
+		CHECK(script.find("Invoke-WebRequest") < script.find("Get-FileHash"));
+		CHECK(script.find("Get-FileHash") < script.find("Wait-Process"));
+		CHECK(script.find("Wait-Process") < script.find("Start-Process"));
+		CHECK(script.find("Start-Process") < script.find("$run.ExitCode"));
+		CHECK(script.find("$run.ExitCode") < script.find("Log 'installed'"));
+		CHECK(script.find("Log 'installed'") < script.find("Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction"));
 		CHECK(script.find("\r\n") != std::string::npos);
 		for (char c : script) {
 			CHECK(static_cast<unsigned char>(c) < 128);
@@ -177,6 +192,7 @@ int main()
 {
 	TestParse();
 	TestCompare();
+	TestSetupName();
 	TestSelect();
 	TestJson();
 	TestScript();

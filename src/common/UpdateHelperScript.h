@@ -7,9 +7,9 @@ namespace spacecal {
 	struct UpdateHelperParams
 	{
 		unsigned long overlayPid = 0;
-		std::string zipUrl;
+		std::string setupUrl;
 		std::string shaUrl;
-		std::string zipName;
+		std::string setupName;
 		std::string stagingDir;
 		std::string installDir;
 		std::string logPath;
@@ -44,33 +44,21 @@ namespace spacecal {
 		line("    $staging = " + QuotePowerShell(p.stagingDir));
 		line("    if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }");
 		line("    New-Item -ItemType Directory -Path $staging | Out-Null");
-		line("    $zip = Join-Path $staging " + QuotePowerShell(p.zipName));
-		line("    Log ('downloading ' + " + QuotePowerShell(p.zipUrl) + ")");
-		line("    Invoke-WebRequest -Uri " + QuotePowerShell(p.zipUrl) + " -OutFile $zip -UseBasicParsing");
-		line("    Invoke-WebRequest -Uri " + QuotePowerShell(p.shaUrl) + " -OutFile \"$zip.sha256\" -UseBasicParsing");
-		line("    $expected = ((Get-Content -LiteralPath \"$zip.sha256\" -Raw).Trim() -split '\\s+')[0].ToLowerInvariant()");
-		line("    $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()");
+		line("    $setup = Join-Path $staging " + QuotePowerShell(p.setupName));
+		line("    Log ('downloading ' + " + QuotePowerShell(p.setupUrl) + ")");
+		line("    Invoke-WebRequest -Uri " + QuotePowerShell(p.setupUrl) + " -OutFile $setup -UseBasicParsing");
+		line("    Invoke-WebRequest -Uri " + QuotePowerShell(p.shaUrl) + " -OutFile \"$setup.sha256\" -UseBasicParsing");
+		line("    $expected = ((Get-Content -LiteralPath \"$setup.sha256\" -Raw).Trim() -split '\\s+')[0].ToLowerInvariant()");
+		line("    $actual = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()");
 		line("    if ($expected -ne $actual) { throw \"sha256 mismatch: expected $expected got $actual\" }");
 		line("    Log 'verified'");
-		line("    $payload = Join-Path $staging 'payload'");
-		line("    Expand-Archive -LiteralPath $zip -DestinationPath $payload -Force");
-		line("    if (-not (Test-Path -LiteralPath (Join-Path $payload 'SpaceCalibrator.exe'))) { throw 'SpaceCalibrator.exe missing from "
-		     "archive' }");
 		line("    Log 'waiting for overlay " + std::to_string(p.overlayPid) + "'");
 		line("    Wait-Process -Id " + std::to_string(p.overlayPid) + " -ErrorAction SilentlyContinue");
 		line("    Log 'waiting for vrserver'");
 		line("    while (Get-Process vrserver -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 2 }");
-		line("    $attempt = 0");
-		line("    while ($true) {");
-		line("        try {");
-		line("            Copy-Item -Path (Join-Path $payload '*') -Destination " + QuotePowerShell(p.installDir) + " -Recurse -Force");
-		line("            break");
-		line("        } catch {");
-		line("            $attempt++");
-		line("            if ($attempt -ge 10) { throw }");
-		line("            Start-Sleep -Seconds 2");
-		line("        }");
-		line("    }");
+		line("    Log ('running ' + $setup)");
+		line("    $run = Start-Process -FilePath $setup -ArgumentList ('/S /D=' + " + QuotePowerShell(p.installDir) + ") -Wait -PassThru");
+		line("    if ($run.ExitCode -ne 0) { throw ('setup exited with code ' + $run.ExitCode) }");
 		line("    Log 'installed'");
 		line("    Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue");
 		line("} catch {");
