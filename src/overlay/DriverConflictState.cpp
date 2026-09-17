@@ -45,25 +45,6 @@ namespace {
 		return ec ? path : resolved;
 	}
 
-	std::filesystem::path FindOwnDriverDir()
-	{
-		wchar_t buffer[MAX_PATH];
-		const DWORD length = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-		std::filesystem::path dir = std::filesystem::path(std::wstring(buffer, length)).parent_path();
-
-		for (int depth = 0; depth < 3 && !dir.empty(); ++depth) {
-			const std::filesystem::path candidate = dir / "01spacecalibrator";
-			std::error_code ec;
-			if (std::filesystem::is_regular_file(DriverDllIn(candidate), ec)) {
-				return Resolve(candidate);
-			}
-			const std::filesystem::path parent = dir.parent_path();
-			if (parent == dir) break;
-			dir = parent;
-		}
-		return {};
-	}
-
 	bool SameDirectory(const std::filesystem::path& a, const std::filesystem::path& b)
 	{
 		std::error_code ec;
@@ -73,6 +54,25 @@ namespace {
 	}
 
 } // namespace
+
+std::filesystem::path FindOwnDriverDir()
+{
+	wchar_t buffer[MAX_PATH];
+	const DWORD length = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+	std::filesystem::path dir = std::filesystem::path(std::wstring(buffer, length)).parent_path();
+
+	for (int depth = 0; depth < 3 && !dir.empty(); ++depth) {
+		const std::filesystem::path candidate = dir / "01spacecalibrator";
+		std::error_code ec;
+		if (std::filesystem::is_regular_file(DriverDllIn(candidate), ec)) {
+			return Resolve(candidate);
+		}
+		const std::filesystem::path parent = dir.parent_path();
+		if (parent == dir) break;
+		dir = parent;
+	}
+	return {};
+}
 
 void DriverConflictState::Refresh(spacecal::HandshakeOutcome handshake)
 {

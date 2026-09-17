@@ -2,6 +2,7 @@
 
 #include "DriverConflict.h"
 
+#include <filesystem>
 #include <string>
 
 struct DriverConflictState
@@ -21,3 +22,5 @@ struct DriverConflictState
 };
 
 extern DriverConflictState DriverConflictCtx;
+
+std::filesystem::path FindOwnDriverDir();

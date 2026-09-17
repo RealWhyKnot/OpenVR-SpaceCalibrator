@@ -1,4 +1,5 @@
 #include "DriverConflict.h"
+#include "RegistrationPlan.h"
 #include "UnregisterDriverScript.h"
 
 #include <cstdio>
@@ -186,6 +187,74 @@ namespace {
 		}
 	}
 
+	void TestRegistrationPlan()
+	{
+		OpenVRPaths paths;
+		CHECK(ParseOpenVRPaths(kRealVrPath, paths));
+
+		{
+			const RegistrationPlan plan = BuildRegistrationPlan(paths, kOwn);
+			CHECK(plan.alreadyRegistered);
+			CHECK(plan.removeDirs.empty());
+			CHECK(plan.vrpathregCandidates.size() == 1);
+			CHECK(plan.vrpathregCandidates[0] == R"(C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrpathreg.exe)");
+		}
+		{
+			const RegistrationPlan plan = BuildRegistrationPlan(paths, kOwnOtherCase);
+			CHECK(plan.alreadyRegistered);
+			CHECK(plan.removeDirs.empty());
+		}
+		{
+			const RegistrationPlan plan = BuildRegistrationPlan(paths, kRival);
+			CHECK(!plan.alreadyRegistered);
+			CHECK(plan.removeDirs.size() == 1);
+			CHECK(plan.removeDirs[0] == kOwn);
+		}
+		{
+			OpenVRPaths dupes;
+			dupes.externalDrivers = {kRival, kRival, kUpstream, kUnrelated};
+			dupes.runtimes = {R"(C:\SteamVR\)", R"(c:\steamvr)"};
+			const RegistrationPlan plan = BuildRegistrationPlan(dupes, kOwn);
+			CHECK(!plan.alreadyRegistered);
+			CHECK(plan.removeDirs.size() == 2);
+			CHECK(plan.removeDirs[0] == kRival);
+			CHECK(plan.removeDirs[1] == kUpstream);
+			CHECK(plan.vrpathregCandidates.size() == 1);
+			CHECK(plan.vrpathregCandidates[0] == R"(C:\SteamVR\bin\win64\vrpathreg.exe)");
+		}
+		{
+			const RegistrationPlan plan = BuildRegistrationPlan(OpenVRPaths{}, kOwn);
+			CHECK(!plan.alreadyRegistered);
+			CHECK(plan.removeDirs.empty());
+			CHECK(plan.vrpathregCandidates.empty());
+		}
+		{
+			OpenVRPaths noOwn;
+			noOwn.externalDrivers = {kRival};
+			const RegistrationPlan plan = BuildRegistrationPlan(noOwn, "");
+			CHECK(!plan.alreadyRegistered);
+			CHECK(plan.removeDirs.size() == 1);
+		}
+	}
+
+	void TestOwnRegisteredDirs()
+	{
+		OpenVRPaths paths;
+		CHECK(ParseOpenVRPaths(kRealVrPath, paths));
+		{
+			const std::vector<std::string> dirs = OwnRegisteredDirs(paths, kOwn);
+			CHECK(dirs.size() == 1);
+			CHECK(dirs[0] == kOwn);
+		}
+		{
+			const std::vector<std::string> dirs = OwnRegisteredDirs(paths, kOwnOtherCase);
+			CHECK(dirs.size() == 1);
+			CHECK(dirs[0] == kOwn);
+		}
+		CHECK(OwnRegisteredDirs(paths, kRival).empty());
+		CHECK(OwnRegisteredDirs(paths, "").empty());
+	}
+
 	void TestUnregisterScript()
 	{
 		UnregisterDriverParams params;
@@ -233,6 +302,8 @@ int main()
 	TestNormalize();
 	TestLeaf();
 	TestClassify();
+	TestRegistrationPlan();
+	TestOwnRegisteredDirs();
 	TestUnregisterScript();
 
 	if (failures == 0) {

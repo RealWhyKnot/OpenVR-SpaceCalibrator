@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "CommandLine.h"
 #include "Constants.h"
+#include "Registration.h"
 #include "VRSession.h"
 
 #include <openvr.h>
@@ -99,6 +100,12 @@ void HandleCommandLine(LPWSTR lpCmdLine)
 		fprintf(stderr, "Failed to initialize OpenVR: %s\n", vr::VR_GetVRInitErrorAsEnglishDescription(vrErr));
 		vr::VR_Shutdown();
 		exit(-2);
+	}
+	else if (lstrcmp(lpCmdLine, L"-register") == 0) {
+		exit(RunRegister());
+	}
+	else if (lstrcmp(lpCmdLine, L"-unregister") == 0) {
+		exit(RunUnregister());
 	}
 	else if (lstrcmp(lpCmdLine, L"-activatemultipledrivers") == 0) {
 		int ret = -2;
