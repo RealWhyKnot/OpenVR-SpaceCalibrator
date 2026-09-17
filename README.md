@@ -4,11 +4,15 @@ Fork of Space Calibrator 1.5.1. I added a one euro filter on the calibrated trac
 
 ## Install
 
-Close SteamVR, unzip somewhere permanent, run `install.ps1`. It registers this driver, unregisters any other `01spacecalibrator` or `000spacecalibrator` copy (Steam build included), turns on `activateMultipleDrivers`, and sets the overlay to autolaunch. `uninstall.ps1` undoes it.
+Grab `OpenVR-SpaceCalibrator-Setup-<version>.exe` from Releases and run it. No admin prompt: it installs per-user, registers the driver, unregisters any other `01spacecalibrator` or `000spacecalibrator` copy (Steam build included), turns on `activateMultipleDrivers`, and sets the overlay to autolaunch. If SteamVR isn't running during setup, the app finishes its SteamVR registration the next time SteamVR starts.
 
-Two things it won't fix: a driver folder inside `<SteamVR>\drivers\` loads regardless of registration, so remove or rename that one yourself (the installer warns you, and the overlay's Settings page has a removal panel). And don't launch the Steam copy while this one is registered: both drivers rewrite the same poses.
+Uninstall from Windows Apps & features. That removes the driver registration, the app, and all of its settings and logs, calibration included. It leaves `activateMultipleDrivers` on and doesn't re-enable the Steam copy's autolaunch.
 
-The overlay checks GitHub for updates on start and asks before touching anything. The toggle and a "Check now" button are on the Settings tab.
+Prefer a portable copy? The zip is still on every release: close SteamVR, unzip somewhere permanent, run `install.ps1`. `uninstall.ps1` unregisters it but leaves the files and settings behind.
+
+Two things setup won't fix: a driver folder inside `<SteamVR>\drivers\` loads regardless of registration, so remove or rename that one yourself (the overlay's Settings page has a removal panel). And don't launch the Steam copy while this one is registered: both drivers rewrite the same poses.
+
+The overlay checks GitHub for updates on start and installs them after SteamVR closes. The toggles and a "Check now" button are on the Settings tab.
 
 ## Build
 
