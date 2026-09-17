@@ -10,8 +10,6 @@ Uninstall from Windows Apps & features. That removes the driver registration, th
 
 Prefer a portable copy? The zip is still on every release: close SteamVR, unzip somewhere permanent, run `install.ps1`. `uninstall.ps1` unregisters it but leaves the files and settings behind.
 
-Two things setup won't fix: a driver folder inside `<SteamVR>\drivers\` loads regardless of registration, so remove or rename that one yourself (the overlay's Settings page has a removal panel). And don't launch the Steam copy while this one is registered: both drivers rewrite the same poses.
-
 The overlay checks GitHub for updates on start and installs them after SteamVR closes. The toggles and a "Check now" button are on the Settings tab.
 
 ## Build
