@@ -100,6 +100,7 @@ void VRSessionTick(double time)
 				return;
 			}
 			DriverConflictCtx.Refresh(LastDriverHandshake());
+			DriverConflictCtx.QueueRegisterOwn();
 			VRSess.statusText.clear();
 			VRSess.state = VRConnectionState::Connected;
 			return;

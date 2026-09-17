@@ -11,6 +11,7 @@ namespace spacecal {
 	{
 		std::string vrpathregExe;
 		std::vector<std::string> driverDirs;
+		std::string addDriverDir;
 		std::string logPath;
 	};
 
@@ -31,6 +32,11 @@ namespace spacecal {
 			line("    Log ('unregistering ' + " + QuotePowerShell(dir) + ")");
 			line("    & " + QuotePowerShell(p.vrpathregExe) + " removedriver " + QuotePowerShell(dir));
 			line("    $global:LASTEXITCODE = 0");
+		}
+		if (!p.addDriverDir.empty()) {
+			line("    Log ('registering ' + " + QuotePowerShell(p.addDriverDir) + ")");
+			line("    & " + QuotePowerShell(p.vrpathregExe) + " adddriver " + QuotePowerShell(p.addDriverDir));
+			line("    if ($LASTEXITCODE -ne 0) { throw ('adddriver exited with code ' + $LASTEXITCODE) }");
 		}
 		line("    Log 'done'");
 		line("} catch {");

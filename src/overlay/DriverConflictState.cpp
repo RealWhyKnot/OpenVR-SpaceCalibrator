@@ -1,6 +1,5 @@
 #include "stdafx.h"
 #include "DriverConflictState.h"
-#include "UnregisterDriverScript.h"
 
 #include <shlobj.h>
 
@@ -137,19 +136,8 @@ std::string DriverConflictState::OwnDriverDllStamp() const
 	return std::format("{:%Y-%m-%d %H:%M}", std::chrono::floor<std::chrono::minutes>(system));
 }
 
-bool DriverConflictState::QueueUnregister()
+bool DriverConflictState::StartDriverScript(spacecal::UnregisterDriverParams params, const char* baseName)
 {
-	fixError.clear();
-
-	spacecal::UnregisterDriverParams params;
-	params.vrpathregExe = vrpathregExe;
-	for (const spacecal::RivalDriver& rival : report.rivals) {
-		if (rival.kind == spacecal::RivalKind::ExternalDriver) params.driverDirs.push_back(rival.path);
-	}
-	if (params.driverDirs.empty()) {
-		fixError = "there is no registered driver to unregister";
-		return false;
-	}
 	if (params.vrpathregExe.empty()) {
 		fixError = "could not find vrpathreg.exe in the SteamVR runtime";
 		return false;
@@ -163,9 +151,9 @@ bool DriverConflictState::QueueUnregister()
 	const std::filesystem::path base = localAppData / "SpaceCalibrator";
 	std::error_code ec;
 	std::filesystem::create_directories(base, ec);
-	params.logPath = (base / "unregister-driver.log").string();
+	params.logPath = (base / (std::string(baseName) + ".log")).string();
 
-	const std::filesystem::path scriptPath = base / "unregister-driver.ps1";
+	const std::filesystem::path scriptPath = base / (std::string(baseName) + ".ps1");
 	{
 		std::ofstream script(scriptPath, std::ios::binary | std::ios::trunc);
 		if (!script) {
@@ -188,6 +176,38 @@ bool DriverConflictState::QueueUnregister()
 	CloseHandle(process.hProcess);
 
 	fixQueued = true;
-	std::cout << "driver conflict: unregister helper started, log " << params.logPath << '\n';
+	std::cout << "driver setup: " << baseName << " helper started, log " << params.logPath << '\n';
+	return true;
+}
+
+bool DriverConflictState::QueueUnregister()
+{
+	fixError.clear();
+
+	spacecal::UnregisterDriverParams params;
+	params.vrpathregExe = vrpathregExe;
+	for (const spacecal::RivalDriver& rival : report.rivals) {
+		if (rival.kind == spacecal::RivalKind::ExternalDriver) params.driverDirs.push_back(rival.path);
+	}
+	if (params.driverDirs.empty()) {
+		fixError = "there is no registered driver to unregister";
+		return false;
+	}
+	return StartDriverScript(std::move(params), "unregister-driver");
+}
+
+bool DriverConflictState::QueueRegisterOwn()
+{
+	if (fixQueued || ownDriverDir.empty() || report.ownRegistered || !report.rivals.empty()) {
+		return false;
+	}
+	fixError.clear();
+	spacecal::UnregisterDriverParams params;
+	params.vrpathregExe = vrpathregExe;
+	params.addDriverDir = ownDriverDir;
+	if (!StartDriverScript(std::move(params), "register-driver")) {
+		std::cerr << "driver setup: could not queue registration: " << fixError << '\n';
+		return false;
+	}
 	return true;
 }

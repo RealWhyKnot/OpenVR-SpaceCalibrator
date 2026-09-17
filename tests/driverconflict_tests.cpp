@@ -292,6 +292,22 @@ namespace {
 		empty.vrpathregExe = params.vrpathregExe;
 		empty.logPath = params.logPath;
 		CHECK(BuildUnregisterDriverScript(empty).find("removedriver") == std::string::npos);
+		CHECK(BuildUnregisterDriverScript(empty).find("adddriver") == std::string::npos);
+
+		UnregisterDriverParams reg;
+		reg.vrpathregExe = params.vrpathregExe;
+		reg.logPath = params.logPath;
+		reg.driverDirs = {kRival};
+		reg.addDriverDir = kOwn;
+		const std::string regScript = BuildUnregisterDriverScript(reg);
+		const auto remove = regScript.find("removedriver");
+		const auto add = regScript.find("adddriver");
+		CHECK(remove != std::string::npos);
+		CHECK(add != std::string::npos);
+		CHECK(remove < add);
+		CHECK(regScript.find("Get-Process vrserver") < remove);
+		CHECK(regScript.find("adddriver exited with code") != std::string::npos);
+		CHECK(regScript.find(std::string("adddriver '") + kOwn + "'") != std::string::npos);
 	}
 
 } // namespace

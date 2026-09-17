@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DriverConflict.h"
+#include "UnregisterDriverScript.h"
 
 #include <filesystem>
 #include <string>
@@ -16,6 +17,8 @@ struct DriverConflictState
 
 	void Refresh(spacecal::HandshakeOutcome handshake);
 	bool QueueUnregister();
+	bool QueueRegisterOwn();
+	bool StartDriverScript(spacecal::UnregisterDriverParams params, const char* baseName);
 
 	std::string OwnDriverDllPath() const;
 	std::string OwnDriverDllStamp() const;
