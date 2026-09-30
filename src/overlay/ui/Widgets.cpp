@@ -55,11 +55,12 @@ namespace ui {
 	{
 		bool changed = ImGui::Checkbox(label, value);
 		if (description && description[0]) {
-			ImGui::Indent(28.0f);
+			const float indent = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x;
+			ImGui::Indent(indent);
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 			ImGui::TextWrapped("%s", description);
 			ImGui::PopStyleColor();
-			ImGui::Unindent(28.0f);
+			ImGui::Unindent(indent);
 		}
 		return changed;
 	}

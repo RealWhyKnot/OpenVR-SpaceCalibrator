@@ -22,9 +22,9 @@ void BuildSystemSelection(const VRState& state)
 	ImGuiStyle& style = ImGui::GetStyle();
 	float paneWidth = ImGui::GetWindowContentRegionWidth() / 2 - style.FramePadding.x;
 
-	TextWithWidth("ReferenceSystemLabel", "Reference Space", paneWidth);
+	TextWithWidth("ReferenceSystemLabel", "Reference space", paneWidth);
 	ImGui::SameLine();
-	TextWithWidth("TargetSystemLabel", "Target Space", paneWidth);
+	TextWithWidth("TargetSystemLabel", "Target space", paneWidth);
 
 	int currentReferenceSystem = -1;
 	int currentTargetSystem = -1;
@@ -86,9 +86,11 @@ void BuildSystemSelection(const VRState& state)
 	}
 
 	ImGui::SameLine();
-	ImGui::Combo("##TargetTrackingSystem", &currentTargetSystem, &targetSystemsUi[0], (int)targetSystemsUi.size());
+	if (!targetSystemsUi.empty()) {
+		ImGui::Combo("##TargetTrackingSystem", &currentTargetSystem, targetSystemsUi.data(), (int)targetSystemsUi.size());
+	}
 
-	if (currentTargetSystem != -1 && currentTargetSystem < targetSystems.size()) {
+	if (currentTargetSystem != -1 && currentTargetSystem < (int)targetSystems.size()) {
 		CalCtx.targetTrackingSystem = std::string(targetSystems[currentTargetSystem]);
 	}
 
@@ -242,7 +244,8 @@ void BuildDeviceSelections(const VRState& state)
 	BuildDeviceSelection(state, CalCtx.targetID, CalCtx.targetTrackingSystem, CalCtx.targetStandby);
 	ImGui::EndChild();
 
-	if (ImGui::Button("Identify selected devices (blinks LED or vibrates)",
+	ImGui::BeginDisabled(VRSess.state != VRConnectionState::Connected);
+	if (ImGui::Button("Identify selected devices (vibrates)",
 	                  ImVec2(ImGui::GetWindowContentRegionWidth(), ImGui::GetTextLineHeightWithSpacing() + 4.0f))) {
 		for (unsigned i = 0; i < 100; ++i) {
 			vr::VRSystem()->TriggerHapticPulse(CalCtx.targetID, 0, 2000);
@@ -250,15 +253,18 @@ void BuildDeviceSelections(const VRState& state)
 			std::this_thread::sleep_for(std::chrono::milliseconds(5));
 		}
 	}
+	ImGui::EndDisabled();
 }
 
 VRState LoadVRState()
 {
 	VRState state = VRState::Load();
+	std::erase_if(state.devices, [](const VRDevice& device) { return device.deviceClass == vr::TrackedDeviceClass_DisplayRedirect; });
 	auto& trackingSystems = state.trackingSystems;
 
 	if (VRSess.state != VRConnectionState::Connected) {
 		for (const auto& known : GetKnownDevices()) {
+			if (known.deviceClass == vr::TrackedDeviceClass_DisplayRedirect) continue;
 			auto existing = std::find(trackingSystems.begin(), trackingSystems.end(), known.trackingSystem);
 			if (existing == trackingSystems.end()) {
 				trackingSystems.push_back(known.trackingSystem);

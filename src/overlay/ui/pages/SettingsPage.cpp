@@ -42,13 +42,13 @@ static void DrawVectorElement(const std::string id, const char* text, double* va
 {
 	constexpr float CONTINUOUS_CALIBRATION_TRACKER_OFFSET_DELTA = 0.01f;
 
-	ImGui::Text(text);
+	ImGui::TextUnformatted(text);
 
 	ImGui::SameLine();
 
 	ImGui::PushID((id + text + "_btn_reset").c_str());
 	if (ImGui::Button(defaultValueStr)) {
-		*value *= defaultValue;
+		*value = defaultValue;
 	}
 	ImGui::PopID();
 	ImGui::SameLine();
@@ -148,20 +148,20 @@ void CCal_DrawSettings()
 		ImGui::PopStyleColor();
 
 		{
-			ImGui::BeginGroupPanel("Calibration speed", panel_size);
+			ImGui::BeginGroupPanel("Calibration speed", ImVec2(-FLT_MIN, 0));
 
 			auto speed = CalCtx.calibrationSpeed;
 
 			ImGui::Columns(3, nullptr, false);
-			if (ImGui::RadioButton(" Fast          ", speed == CalibrationContext::FAST)) {
+			if (ImGui::RadioButton("Fast", speed == CalibrationContext::FAST)) {
 				CalCtx.calibrationSpeed = CalibrationContext::FAST;
 			}
 			ImGui::NextColumn();
-			if (ImGui::RadioButton(" Slow          ", speed == CalibrationContext::SLOW)) {
+			if (ImGui::RadioButton("Slow", speed == CalibrationContext::SLOW)) {
 				CalCtx.calibrationSpeed = CalibrationContext::SLOW;
 			}
 			ImGui::NextColumn();
-			if (ImGui::RadioButton(" Very Slow     ", speed == CalibrationContext::VERY_SLOW)) {
+			if (ImGui::RadioButton("Very slow", speed == CalibrationContext::VERY_SLOW)) {
 				CalCtx.calibrationSpeed = CalibrationContext::VERY_SLOW;
 			}
 			ImGui::Columns(1);
@@ -222,9 +222,11 @@ void CCal_DrawSettings()
 
 	{
 		ImGui::BeginGroupPanel("Continuous calibration", panel_size);
+		const float sliderLabelWidth = ImGui::CalcTextSize("Max relative error threshold").x + ImGui::GetStyle().ItemSpacing.x * 2.0f;
 		{
 			ImGui::Text("Recalibration threshold");
-			ImGui::SameLine();
+			ImGui::SameLine(sliderLabelWidth);
+			ImGui::SetNextItemWidth(-FLT_MIN);
 			ImGui::PushID("recalibration_threshold");
 			ImGui::SliderFloat("##recalibration_threshold_slider", &CalCtx.continuousCalibrationThreshold, 1.01f, 10.0f, "%.2f",
 			                   ImGuiSliderFlags_AlwaysClamp);
@@ -236,9 +238,10 @@ void CCal_DrawSettings()
 			ImGui::PopID();
 
 			ImGui::Text("Max relative error threshold");
-			ImGui::SameLine();
+			ImGui::SameLine(sliderLabelWidth);
+			ImGui::SetNextItemWidth(-FLT_MIN);
 			ImGui::PushID("max_relative_error_threshold");
-			ImGui::SliderFloat("##max_relative_error_threshold_slider", &CalCtx.maxRelativeErrorThreshold, 0.01f, 1.0f, "%.2f",
+			ImGui::SliderFloat("##max_relative_error_threshold_slider", &CalCtx.maxRelativeErrorThreshold, 0.001f, 1.0f, "%.3f",
 			                   ImGuiSliderFlags_AlwaysClamp);
 			if (ImGui::IsItemHovered(0)) {
 				ImGui::SetTooltip("Controls the maximum acceptable relative error. If the error from the relative calibration is too poor, "
@@ -247,8 +250,9 @@ void CCal_DrawSettings()
 			ImGui::PopID();
 
 			ImGui::Text("Jitter threshold");
-			ImGui::SameLine();
-			ImGui::PushID("jtter_threshold");
+			ImGui::SameLine(sliderLabelWidth);
+			ImGui::SetNextItemWidth(-FLT_MIN);
+			ImGui::PushID("jitter_threshold");
 			ImGui::SliderFloat("##jitter_threshold_slider", &CalCtx.jitterThreshold, 0.1f, 10.0f, "%1.1f", 0);
 			if (ImGui::IsItemHovered(0)) {
 				ImGui::SetTooltip("Controls how much jitter will be allowed for calibration.\n"
@@ -259,16 +263,10 @@ void CCal_DrawSettings()
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 			ImGui::TextWrapped("Controls how often SpaceCalibrator synchronises playspaces.");
 			ImGui::PopStyleColor();
-			if (ImGui::IsItemHovered(0)) {
-				ImGui::SetTooltip(
-				    "Controls how good the calibration must be before realigning the trackers.\n"
-				    "Higher values cause calibration to happen less often, and may be useful for system with lots of tracking drift.");
-			}
 		}
 
 		{
-			ImVec2 panel_size_inner{panel_size.x - 11 * 2, 0};
-			ImGui::BeginGroupPanel("Tracker offset", panel_size_inner);
+			ImGui::BeginGroupPanel("Tracker offset", ImVec2(-FLT_MIN, 0));
 			DrawVectorElement("cc_tracker_offset", "X", &CalCtx.continuousCalibrationOffset.x());
 			DrawVectorElement("cc_tracker_offset", "Y", &CalCtx.continuousCalibrationOffset.y());
 			DrawVectorElement("cc_tracker_offset", "Z", &CalCtx.continuousCalibrationOffset.z());
@@ -276,9 +274,8 @@ void CCal_DrawSettings()
 		}
 
 		{
-			ImVec2 panel_size_inner{panel_size.x - 11 * 2, 0};
-			ImGui::BeginGroupPanel("Playspace scale", panel_size_inner);
-			DrawVectorElement("cc_playspace_scale", "PLayspace Scale", &CalCtx.calibratedScale, 1, " 1 ");
+			ImGui::BeginGroupPanel("Playspace scale", ImVec2(-FLT_MIN, 0));
+			DrawVectorElement("cc_playspace_scale", "Playspace scale", &CalCtx.calibratedScale, 1, " 1 ");
 			ImGui::EndGroupPanel();
 		}
 

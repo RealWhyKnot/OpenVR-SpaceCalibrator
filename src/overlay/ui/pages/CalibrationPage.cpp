@@ -83,11 +83,11 @@ void CCal_BasicInfo()
 		const char* status;
 		if (CalCtx.referenceID < 0) {
 			ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, 0xFF000080);
-			status = "NOT FOUND";
+			status = "Not found";
 		}
 		else if (!CalCtx.ReferencePoseIsValidSimple()) {
 			ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, 0xFFFF0080);
-			status = "NOT TRACKING";
+			status = "Not tracking";
 		}
 		else {
 			status = "OK";
@@ -100,11 +100,11 @@ void CCal_BasicInfo()
 		ImGui::Text("%s / %s / %s", targetTrackingSystem, CalCtx.targetStandby.model.c_str(), CalCtx.targetStandby.serial.c_str());
 		if (CalCtx.targetID < 0) {
 			ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, 0xFF000080);
-			status = "NOT FOUND";
+			status = "Not found";
 		}
 		else if (!CalCtx.TargetPoseIsValidSimple()) {
 			ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, 0xFFFF0080);
-			status = "NOT TRACKING";
+			status = "Not tracking";
 		}
 		else {
 			status = "OK";
@@ -117,19 +117,19 @@ void CCal_BasicInfo()
 
 	float width = ImGui::GetWindowContentRegionWidth(), scale = 1.0f;
 
-	if (ImGui::BeginTable("##CCal_Cancel", Metrics::enableLogs ? 3 : 2, 0, ImVec2(width * scale, ImGui::GetTextLineHeight() * 2))) {
+	if (ImGui::BeginTable("##CCal_Cancel", Metrics::enableLogs ? 3 : 1, 0, ImVec2(width * scale, ImGui::GetTextLineHeight() * 2))) {
 		ImGui::TableNextRow();
 		ImGui::TableSetColumnIndex(0);
-		if (ImGui::Button("Cancel Continuous Calibration", ImVec2(-FLT_MIN, 0.0f))) {
+		if (ImGui::Button("Cancel continuous calibration", ImVec2(-FLT_MIN, 0.0f))) {
 			EndContinuousCalibration();
 		}
 
-		ImGui::TableSetColumnIndex(1);
-		if (ImGui::Button("Debug: Force break calibration", ImVec2(-FLT_MIN, 0.0f))) {
-			DebugApplyRandomOffset();
-		}
-
 		if (Metrics::enableLogs) {
+			ImGui::TableSetColumnIndex(1);
+			if (ImGui::Button("Debug: Force break calibration", ImVec2(-FLT_MIN, 0.0f))) {
+				DebugApplyRandomOffset();
+			}
+
 			ImGui::TableSetColumnIndex(2);
 			if (ImGui::Button("Debug: Mark logs", ImVec2(-FLT_MIN, 0.0f))) {
 				Metrics::WriteLogAnnotation("MARK LOGS");
@@ -176,57 +176,51 @@ void BuildMenu(bool runningInOverlay)
 			ImGui::Text("");
 		}
 
-		float width = ImGui::GetWindowContentRegionWidth(), scale = 1.0f;
-		if (CalCtx.validProfile) {
-			width -= style.FramePadding.x * 4.0f;
-			scale = 1.0f / 4.0f;
-		}
+		const float avail = ImGui::GetContentRegionAvail().x;
+		const int mainCount = CalCtx.validProfile ? 4 : 2;
+		const float mainWidth = (avail - (mainCount - 1) * style.ItemSpacing.x) / mainCount;
 
 		ImGui::BeginDisabled(VRSess.state != VRConnectionState::Connected);
 
-		if (ImGui::Button("Start Calibration", ImVec2(width * scale, ImGui::GetTextLineHeight() * 2))) {
-			ImGui::OpenPopup("Calibration Progress");
+		if (ImGui::Button("Start calibration", ImVec2(mainWidth, ImGui::GetTextLineHeight() * 2))) {
+			ImGui::OpenPopup("Calibration progress");
 			StartCalibration();
 		}
 
 		ImGui::SameLine();
-		if (ImGui::Button("Continuous Calibration", ImVec2(width * scale, ImGui::GetTextLineHeight() * 2))) {
+		if (ImGui::Button("Continuous calibration", ImVec2(mainWidth, ImGui::GetTextLineHeight() * 2))) {
 			StartContinuousCalibration();
 		}
 
 		if (CalCtx.validProfile) {
 			ImGui::SameLine();
-			if (ImGui::Button("Edit Calibration", ImVec2(width * scale, ImGui::GetTextLineHeight() * 2))) {
+			if (ImGui::Button("Edit calibration", ImVec2(mainWidth, ImGui::GetTextLineHeight() * 2))) {
 				CalCtx.state = CalibrationState::Editing;
 			}
 
 			ImGui::SameLine();
-			if (ImGui::Button("Clear Calibration", ImVec2(width * scale, ImGui::GetTextLineHeight() * 2))) {
+			if (ImGui::Button("Clear calibration", ImVec2(mainWidth, ImGui::GetTextLineHeight() * 2))) {
 				CalCtx.Clear();
 				SaveProfile(CalCtx);
 			}
 		}
 
-		width = ImGui::GetWindowContentRegionWidth();
-		scale = 1.0f;
-		if (CalCtx.chaperone.valid) {
-			width -= style.FramePadding.x * 2.0f;
-			scale = 0.5;
-		}
+		const int chaperoneCount = CalCtx.chaperone.valid ? 2 : 1;
+		const float chaperoneWidth = (avail - (chaperoneCount - 1) * style.ItemSpacing.x) / chaperoneCount;
 
 		ImGui::Text("");
-		if (ImGui::Button("Copy Chaperone Bounds to profile", ImVec2(width * scale, ImGui::GetTextLineHeight() * 2))) {
+		if (ImGui::Button("Copy chaperone bounds to profile", ImVec2(chaperoneWidth, ImGui::GetTextLineHeight() * 2))) {
 			LoadChaperoneBounds();
 			SaveProfile(CalCtx);
 		}
 
 		if (CalCtx.chaperone.valid) {
 			ImGui::SameLine();
-			if (ImGui::Button("Paste Chaperone Bounds", ImVec2(width * scale, ImGui::GetTextLineHeight() * 2))) {
+			if (ImGui::Button("Paste chaperone bounds", ImVec2(chaperoneWidth, ImGui::GetTextLineHeight() * 2))) {
 				ApplyChaperoneBounds();
 			}
 
-			if (ImGui::Checkbox(" Paste Chaperone Bounds automatically when geometry resets", &CalCtx.chaperone.autoApply)) {
+			if (ImGui::Checkbox("Paste chaperone bounds automatically when geometry resets", &CalCtx.chaperone.autoApply)) {
 				SaveProfile(CalCtx);
 			}
 		}
@@ -237,16 +231,16 @@ void BuildMenu(bool runningInOverlay)
 		auto speed = CalCtx.calibrationSpeed;
 
 		ImGui::Columns(4, nullptr, false);
-		ImGui::Text("Calibration Speed");
+		ImGui::Text("Calibration speed");
 
 		ImGui::NextColumn();
-		if (ImGui::RadioButton(" Fast          ", speed == CalibrationContext::FAST)) CalCtx.calibrationSpeed = CalibrationContext::FAST;
+		if (ImGui::RadioButton("Fast", speed == CalibrationContext::FAST)) CalCtx.calibrationSpeed = CalibrationContext::FAST;
 
 		ImGui::NextColumn();
-		if (ImGui::RadioButton(" Slow          ", speed == CalibrationContext::SLOW)) CalCtx.calibrationSpeed = CalibrationContext::SLOW;
+		if (ImGui::RadioButton("Slow", speed == CalibrationContext::SLOW)) CalCtx.calibrationSpeed = CalibrationContext::SLOW;
 
 		ImGui::NextColumn();
-		if (ImGui::RadioButton(" Very Slow     ", speed == CalibrationContext::VERY_SLOW))
+		if (ImGui::RadioButton("Very slow", speed == CalibrationContext::VERY_SLOW))
 			CalCtx.calibrationSpeed = CalibrationContext::VERY_SLOW;
 
 		ImGui::Columns(1);
@@ -257,7 +251,7 @@ void BuildMenu(bool runningInOverlay)
 	else if (CalCtx.state == CalibrationState::Editing) {
 		BuildProfileEditor();
 
-		if (ImGui::Button("Save Profile", ImVec2(ImGui::GetWindowContentRegionWidth(), ImGui::GetTextLineHeight() * 2))) {
+		if (ImGui::Button("Save profile", ImVec2(ImGui::GetWindowContentRegionWidth(), ImGui::GetTextLineHeight() * 2))) {
 			SaveProfile(CalCtx);
 			CalCtx.state = CalibrationState::None;
 		}
@@ -268,11 +262,11 @@ void BuildMenu(bool runningInOverlay)
 
 	ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
 	ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x - 40.0f, io.DisplaySize.y - 40.0f), ImGuiCond_Always);
-	if (ImGui::BeginPopupModal("Calibration Progress", nullptr, bareWindowFlags)) {
+	if (ImGui::BeginPopupModal("Calibration progress", nullptr, bareWindowFlags)) {
 		ImGui::PushStyleColor(ImGuiCol_FrameBg, (ImVec4)ImVec4(0, 0, 0, 1));
 		for (auto& message : CalCtx.messages) {
 			switch (message.type) {
-				case CalibrationContext::Message::String: ImGui::TextWrapped(message.str.c_str()); break;
+				case CalibrationContext::Message::String: ImGui::TextWrapped("%s", message.str.c_str()); break;
 				case CalibrationContext::Message::Progress:
 					float fraction = (float)message.progress / (float)message.target;
 					ImGui::Text("");

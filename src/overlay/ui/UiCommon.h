@@ -21,7 +21,7 @@ inline const char* GetPrettyTrackingSystemName(const std::string& value)
 inline void TextWithWidth(const char* label, const char* text, float width)
 {
 	ImGui::BeginChild(label, ImVec2(width, ImGui::GetTextLineHeightWithSpacing()));
-	ImGui::Text(text);
+	ImGui::TextUnformatted(text);
 	ImGui::EndChild();
 }
 

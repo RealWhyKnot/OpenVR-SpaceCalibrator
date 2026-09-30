@@ -73,7 +73,9 @@ void DrawSmoothingPanel(ImVec2 panel_size)
 			lastRefresh = now;
 		}
 		if (rows.empty()) {
-			ImGui::TextDisabled("No smoothed devices yet. Smoothing follows the calibrated target space, so a profile must be active.");
+			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+			ImGui::TextWrapped("No smoothed devices yet. Smoothing follows the calibrated target space, so a profile must be active.");
+			ImGui::PopStyleColor();
 		}
 		else if (ImGui::BeginTable("SmoothingStats", 4, ImGuiTableFlags_SizingStretchProp)) {
 			ImGui::TableSetupColumn("Device");
@@ -108,7 +110,9 @@ void DrawFingerSmoothingPanel(ImVec2 panel_size)
 
 	ImGui::BeginGroupPanel("Finger smoothing", panel_size);
 
-	ImGui::TextDisabled("Index Knuckles only. Every finger bone is slerped toward the incoming pose before it reaches the game.");
+	ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+	ImGui::TextWrapped("Valve Index controllers only. Finger movement is smoothed before it reaches the game.");
+	ImGui::PopStyleColor();
 
 	bool dirty = false;
 
@@ -117,7 +121,7 @@ void DrawFingerSmoothingPanel(ImVec2 panel_size)
 	dirty |= ImGui::IsItemDeactivatedAfterEdit();
 	SmoothingTooltip("0 = no smoothing (each frame snaps to the incoming bones).\n"
 	                 "50 = moderate, a good starting point.\n"
-	                 "100 = heavy lag (slerp factor 0.05 per frame). Never fully freezes.\n"
+	                 "100 = heaviest smoothing. Fingers lag noticeably but never fully freeze.\n"
 	                 "Applied to every enabled finger below; per-finger values override it.");
 	CalCtx.fingerSmoothing.strength = (uint8_t)strength;
 

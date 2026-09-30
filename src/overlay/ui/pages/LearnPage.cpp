@@ -112,7 +112,6 @@ void DrawLearnPage()
 	if (currentArticle != LearnArticle::Home) {
 		if (ui::IconButton(ICON_MI_ARROW_BACK, "Back")) {
 			currentArticle = LearnArticle::Home;
-			return;
 		}
 		ImGui::Spacing();
 	}

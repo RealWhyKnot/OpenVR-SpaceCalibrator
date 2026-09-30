@@ -35,9 +35,7 @@ void DrawUpdatePrompt()
 	ImGui::Spacing();
 	ImGui::Separator();
 	ImGui::Spacing();
-	const ImVec2 button(175.0f, 0.0f);
-	float total = button.x * 3.0f + style.ItemSpacing.x * 2.0f;
-	ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - total);
+	const ImVec2 button((ImGui::GetContentRegionAvail().x - style.ItemSpacing.x * 2.0f) / 3.0f, 0.0f);
 	if (ImGui::Button("Later", button)) {
 		UpdaterCtx.Later();
 		ImGui::CloseCurrentPopup();
