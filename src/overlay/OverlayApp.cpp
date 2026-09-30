@@ -3,6 +3,8 @@
 #include "AppWindow.h"
 #include "AutoDetectController.h"
 #include "Calibration.h"
+#include "CalibrationMetrics.h"
+#include "DashboardPointer.h"
 #include "LegacyInstall.h"
 #include "Updater.h"
 #include "UserInterface.h"
@@ -24,6 +26,7 @@
 
 static char textBuf[0x400] = {};
 static const float MINIMIZED_MAX_FPS = 60.0f;
+static DashboardPointer dashboardPointer;
 
 static void DrawGithubConflictPopup()
 {
@@ -116,7 +119,7 @@ void RunLoop()
 			vr::VREvent_t vrEvent;
 			while (!vrQuit && vr::VROverlay()->PollNextOverlayEvent(VRSess.overlayMainHandle, &vrEvent, sizeof(vrEvent))) {
 				switch (vrEvent.eventType) {
-					case vr::VREvent_MouseMove: io.AddMousePosEvent(vrEvent.data.mouse.x, vrEvent.data.mouse.y); break;
+					case vr::VREvent_MouseMove: dashboardPointer.Move(io, vrEvent.data.mouse.x, vrEvent.data.mouse.y); break;
 					case vr::VREvent_MouseButtonDown:
 						io.AddMouseButtonEvent((vrEvent.data.mouse.button & vr::VRMouseButton_Left) == vr::VRMouseButton_Left ? 0 : 1,
 						                       true);
@@ -164,6 +167,17 @@ void RunLoop()
 			// These change state now, so we must execute these before doing our own modifications to the io state for VR
 			ImGui_ImplOpenGL3_NewFrame();
 			ImGui_ImplGlfw_NewFrame();
+
+			static bool desktopFocusedInDashboard = false;
+			const bool focusedNow = dashboardVisible && glfwGetWindowAttrib(AppWindow.window, GLFW_FOCUSED) != 0;
+			if (focusedNow != desktopFocusedInDashboard) {
+				desktopFocusedInDashboard = focusedNow;
+				Metrics::WriteLogAnnotation(focusedNow ? "dashboard pointer: desktop window focused while dashboard open"
+				                                       : "dashboard pointer: desktop focus conflict cleared");
+			}
+			if (dashboardVisible) {
+				dashboardPointer.Reassert(io);
+			}
 
 			io.DisplaySize = ImVec2((float)AppWindow.fboWidth, (float)AppWindow.fboHeight);
 			io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
