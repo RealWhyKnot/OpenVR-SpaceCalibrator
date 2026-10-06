@@ -38,3 +38,8 @@ target_include_directories(dashboard_pointer_tests PRIVATE ${CMAKE_SOURCE_DIR}/s
 target_link_libraries(dashboard_pointer_tests PRIVATE imgui)
 set_target_properties(dashboard_pointer_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
 add_test(NAME dashboard_pointer COMMAND dashboard_pointer_tests)
+
+add_executable(posehook_tests posehook_tests.cpp)
+target_include_directories(posehook_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/driver ${CMAKE_SOURCE_DIR}/lib/openvr/headers)
+set_target_properties(posehook_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
+add_test(NAME posehook COMMAND posehook_tests)

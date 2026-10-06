@@ -1,6 +1,7 @@
 #include "Logging.h"
 #include "Hooking.h"
 #include "InterfaceHookInjector.h"
+#include "PoseHookGuard.h"
 #include "ServerTrackedDeviceProvider.h"
 #include "SkeletalHook.h"
 
@@ -11,44 +12,38 @@ static ServerTrackedDeviceProvider* Driver = nullptr;
 static Hook<void* (*)(vr::IVRDriverContext*, const char*, vr::EVRInitError*)>
     GetGenericInterfaceHook("IVRDriverContext::GetGenericInterface");
 
-static Hook<void (*)(vr::IVRServerDriverHost*, uint32_t, const vr::DriverPose_t&, uint32_t)>
-    TrackedDevicePoseUpdatedHook005("IVRServerDriverHost005::TrackedDevicePoseUpdated");
+using TrackedDevicePoseUpdatedFn = void (*)(vr::IVRServerDriverHost*, uint32_t, const vr::DriverPose_t*, uint32_t);
 
-static Hook<void (*)(vr::IVRServerDriverHost*, uint32_t, const vr::DriverPose_t&, uint32_t)>
-    TrackedDevicePoseUpdatedHook006("IVRServerDriverHost006::TrackedDevicePoseUpdated");
+static Hook<TrackedDevicePoseUpdatedFn> TrackedDevicePoseUpdatedHook005("IVRServerDriverHost005::TrackedDevicePoseUpdated");
 
-static void DetourTrackedDevicePoseUpdated005(vr::IVRServerDriverHost* _this, uint32_t unWhichDevice, const vr::DriverPose_t& newPose,
-                                              uint32_t unPoseStructSize)
+static Hook<TrackedDevicePoseUpdatedFn> TrackedDevicePoseUpdatedHook006("IVRServerDriverHost006::TrackedDevicePoseUpdated");
+
+static void HandleTrackedDevicePoseUpdated(Hook<TrackedDevicePoseUpdatedFn>& hook, vr::IVRServerDriverHost* _this, uint32_t unWhichDevice,
+                                           const vr::DriverPose_t* newPose, uint32_t unPoseStructSize)
 {
-	// TRACE("ServerTrackedDeviceProvider::DetourTrackedDevicePoseUpdated(%d)", unWhichDevice);
-	const vr::DriverPose_t* pNewPose = &newPose; // somehow newPose is nullptr sometimes??????
-	if (pNewPose && unPoseStructSize == sizeof(vr::DriverPose_t)) {
-		auto pose = newPose;
-		if (Driver->HandleDevicePoseUpdated(unWhichDevice, pose)) {
-			TrackedDevicePoseUpdatedHook005.originalFunc(_this, unWhichDevice, pose, unPoseStructSize);
+	switch (spacecal::ClassifyPoseUpdate(newPose, unPoseStructSize)) {
+		case spacecal::PoseHookAction::Drop: return;
+		case spacecal::PoseHookAction::Forward: hook.originalFunc(_this, unWhichDevice, newPose, unPoseStructSize); return;
+		case spacecal::PoseHookAction::Process: {
+			vr::DriverPose_t pose = *newPose;
+			if (Driver->HandleDevicePoseUpdated(unWhichDevice, pose)) {
+				hook.originalFunc(_this, unWhichDevice, &pose, unPoseStructSize);
+			}
+			return;
 		}
-	}
-	else {
-		// i think this would also cause issues
-		TrackedDevicePoseUpdatedHook005.originalFunc(_this, unWhichDevice, newPose, unPoseStructSize);
 	}
 }
 
-static void DetourTrackedDevicePoseUpdated006(vr::IVRServerDriverHost* _this, uint32_t unWhichDevice, const vr::DriverPose_t& newPose,
+static void DetourTrackedDevicePoseUpdated005(vr::IVRServerDriverHost* _this, uint32_t unWhichDevice, const vr::DriverPose_t* newPose,
                                               uint32_t unPoseStructSize)
 {
-	// TRACE("ServerTrackedDeviceProvider::DetourTrackedDevicePoseUpdated(%d)", unWhichDevice);
-	const vr::DriverPose_t* pNewPose = &newPose; // somehow newPose is nullptr sometimes??????
-	if (pNewPose && unPoseStructSize == sizeof(vr::DriverPose_t)) {
-		auto pose = newPose;
-		if (Driver->HandleDevicePoseUpdated(unWhichDevice, pose)) {
-			TrackedDevicePoseUpdatedHook006.originalFunc(_this, unWhichDevice, pose, unPoseStructSize);
-		}
-	}
-	else {
-		// i think this would also cause issues in steamvr tho
-		TrackedDevicePoseUpdatedHook006.originalFunc(_this, unWhichDevice, newPose, unPoseStructSize);
-	}
+	HandleTrackedDevicePoseUpdated(TrackedDevicePoseUpdatedHook005, _this, unWhichDevice, newPose, unPoseStructSize);
+}
+
+static void DetourTrackedDevicePoseUpdated006(vr::IVRServerDriverHost* _this, uint32_t unWhichDevice, const vr::DriverPose_t* newPose,
+                                              uint32_t unPoseStructSize)
+{
+	HandleTrackedDevicePoseUpdated(TrackedDevicePoseUpdatedHook006, _this, unWhichDevice, newPose, unPoseStructSize);
 }
 
 static void* DetourGetGenericInterface(vr::IVRDriverContext* _this, const char* pchInterfaceVersion, vr::EVRInitError* peError)
