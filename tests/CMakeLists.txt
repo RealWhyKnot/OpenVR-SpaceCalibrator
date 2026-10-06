@@ -39,6 +39,11 @@ target_link_libraries(dashboard_pointer_tests PRIVATE imgui)
 set_target_properties(dashboard_pointer_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
 add_test(NAME dashboard_pointer COMMAND dashboard_pointer_tests)
 
+add_executable(posehealth_tests posehealth_tests.cpp)
+target_include_directories(posehealth_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/overlay ${CMAKE_SOURCE_DIR}/lib/openvr/headers)
+set_target_properties(posehealth_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
+add_test(NAME posehealth COMMAND posehealth_tests)
+
 add_executable(posehook_tests posehook_tests.cpp)
 target_include_directories(posehook_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/driver ${CMAKE_SOURCE_DIR}/lib/openvr/headers)
 set_target_properties(posehook_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")

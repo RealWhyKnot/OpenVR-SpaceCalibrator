@@ -5,6 +5,7 @@
 #include "IPCClient.h"
 #include "CalibrationCalc.h"
 #include "CalibrationMath.h"
+#include "PoseHealth.h"
 #include "TrackingSystemFixups.h"
 #include "VRSession.h"
 #include "VRState.h"
@@ -42,31 +43,46 @@ namespace {
 		return Pose(xform);
 	}
 
+	void AnnotatePoseHealth(const char* role, spacecal::SampleVerdict& previous, spacecal::SampleVerdict current,
+	                        const vr::DriverPose_t& pose)
+	{
+		if (current == previous) return;
+		previous = current;
+		char buf[160];
+		snprintf(buf, sizeof buf, "pose health: %s %s (valid %d, connected %d, result %d)", role, spacecal::SampleVerdictName(current),
+		         (int)pose.poseIsValid, (int)pose.deviceIsConnected, (int)pose.result);
+		Metrics::WriteLogAnnotation(buf);
+	}
+
 	bool CollectSample(const CalibrationContext& ctx)
 	{
-		vr::DriverPose_t reference, target;
-		reference.poseIsValid = false;
-		reference.result = vr::ETrackingResult::TrackingResult_Uninitialized;
-		target.poseIsValid = false;
-		target.result = vr::ETrackingResult::TrackingResult_Uninitialized;
+		vr::DriverPose_t reference = ctx.devicePoses[ctx.referenceID];
+		vr::DriverPose_t target = ctx.devicePoses[ctx.targetID];
 
-		reference = ctx.devicePoses[ctx.referenceID];
-		target = ctx.devicePoses[ctx.targetID];
+		static spacecal::SampleVerdict lastReferenceVerdict = spacecal::SampleVerdict::Use;
+		static spacecal::SampleVerdict lastTargetVerdict = spacecal::SampleVerdict::Use;
+		const spacecal::SampleVerdict referenceVerdict = spacecal::ClassifySamplePose(reference);
+		const spacecal::SampleVerdict targetVerdict = spacecal::ClassifySamplePose(target);
+		AnnotatePoseHealth("reference", lastReferenceVerdict, referenceVerdict, reference);
+		AnnotatePoseHealth("target", lastTargetVerdict, targetVerdict, target);
 
-		bool ok = true;
-		if (!reference.poseIsValid && reference.result != vr::ETrackingResult::TrackingResult_Running_OK) {
+		bool lost = false;
+		if (referenceVerdict == spacecal::SampleVerdict::Lost) {
 			CalCtx.Log("Reference device is not tracking\n");
-			ok = false;
+			lost = true;
 		}
-		if (!target.poseIsValid && target.result != vr::ETrackingResult::TrackingResult_Running_OK) {
+		if (targetVerdict == spacecal::SampleVerdict::Lost) {
 			CalCtx.Log("Target device is not tracking\n");
-			ok = false;
+			lost = true;
 		}
-		if (!ok) {
+		if (lost) {
 			if (CalCtx.state != CalibrationState::Continuous) {
 				CalCtx.Log("Aborting calibration!\n");
 				CalCtx.state = CalibrationState::None;
 			}
+			return false;
+		}
+		if (referenceVerdict != spacecal::SampleVerdict::Use || targetVerdict != spacecal::SampleVerdict::Use) {
 			return false;
 		}
 
