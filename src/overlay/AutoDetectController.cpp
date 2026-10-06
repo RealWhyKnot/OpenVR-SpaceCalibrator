@@ -87,6 +87,7 @@ void AutoDetectController::Tick(double time)
 		lastStateRefresh_ = time;
 		if (VRSess.state == VRConnectionState::Connected) {
 			cachedState_ = VRState::Load();
+			cachedState_.DropIgnoredTrackingSystems();
 		}
 		else {
 			cachedState_ = VRState{};

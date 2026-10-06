@@ -260,11 +260,13 @@ VRState LoadVRState()
 {
 	VRState state = VRState::Load();
 	std::erase_if(state.devices, [](const VRDevice& device) { return device.deviceClass == vr::TrackedDeviceClass_DisplayRedirect; });
+	state.DropIgnoredTrackingSystems();
 	auto& trackingSystems = state.trackingSystems;
 
 	if (VRSess.state != VRConnectionState::Connected) {
 		for (const auto& known : GetKnownDevices()) {
 			if (known.deviceClass == vr::TrackedDeviceClass_DisplayRedirect) continue;
+			if (IsIgnoredTrackingSystem(known.trackingSystem)) continue;
 			auto existing = std::find(trackingSystems.begin(), trackingSystems.end(), known.trackingSystem);
 			if (existing == trackingSystems.end()) {
 				trackingSystems.push_back(known.trackingSystem);

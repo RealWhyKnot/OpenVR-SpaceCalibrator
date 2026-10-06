@@ -1,4 +1,5 @@
 #include "TrackingSystemFixups.h"
+#include "VRState.h"
 
 #include <cstdio>
 #include <cstring>
@@ -57,6 +58,41 @@ namespace {
 		CHECK(std::strcmp(kPimaxCrystalControllerSystem, "Pimax Crystal Controllers") == 0);
 	}
 
+	void TestPrettyNames()
+	{
+		CHECK(std::strcmp(GetPrettyTrackingSystemName("lighthouse"), "SteamVR Tracking") == 0);
+		CHECK(std::strcmp(GetPrettyTrackingSystemName("aapvr"), "SteamVR Tracking") == 0);
+		CHECK(std::strcmp(GetPrettyTrackingSystemName("cv"), "Steam Frame") == 0);
+		CHECK(std::strcmp(GetPrettyTrackingSystemName("vrlink"), "Steam Link") == 0);
+		const std::string oculus = "oculus";
+		CHECK(std::strcmp(GetPrettyTrackingSystemName(oculus), "oculus") == 0);
+	}
+
+	void TestIgnoredSystems()
+	{
+		CHECK(IsIgnoredTrackingSystem("null"));
+		CHECK(IsIgnoredTrackingSystem("standable"));
+		CHECK(!IsIgnoredTrackingSystem("lighthouse"));
+		CHECK(!IsIgnoredTrackingSystem("nullable"));
+
+		VRState state;
+		state.trackingSystems = {"oculus", "null", "lighthouse", "standable"};
+		VRDevice hmd;
+		hmd.trackingSystem = "oculus";
+		VRDevice tracker;
+		tracker.trackingSystem = "lighthouse";
+		VRDevice virtualTracker;
+		virtualTracker.trackingSystem = "standable";
+		VRDevice nullHmd;
+		nullHmd.trackingSystem = "null";
+		state.devices = {hmd, virtualTracker, tracker, nullHmd};
+
+		state.DropIgnoredTrackingSystems();
+		CHECK((state.trackingSystems == std::vector<std::string>{"oculus", "lighthouse"}));
+		CHECK(state.devices.size() == 2);
+		CHECK(state.devices[0].trackingSystem == "oculus" && state.devices[1].trackingSystem == "lighthouse");
+	}
+
 }
 
 int main()
@@ -64,6 +100,8 @@ int main()
 	TestCrystalHmdMatrix();
 	TestCrystalControllerNames();
 	TestFixupSystemNames();
+	TestPrettyNames();
+	TestIgnoredSystems();
 
 	if (failures == 0) {
 		std::printf("fixup_tests: all tests passed\n");

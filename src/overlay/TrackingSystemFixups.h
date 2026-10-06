@@ -6,6 +6,26 @@
 inline constexpr const char* kPimaxCrystalHmdSystem = "Pimax Crystal HMD";
 inline constexpr const char* kPimaxCrystalControllerSystem = "Pimax Crystal Controllers";
 
+inline bool IsIgnoredTrackingSystem(const std::string& trackingSystem)
+{
+	return trackingSystem == "null" || trackingSystem == "standable";
+}
+
+inline const char* GetPrettyTrackingSystemName(const std::string& value)
+{
+	// To comply with SteamVR branding guidelines (page 29), we rename devices under lighthouse tracking to SteamVR Tracking.
+	if (value == "lighthouse" || value == "aapvr") {
+		return "SteamVR Tracking";
+	}
+	if (value == "cv") {
+		return "Steam Frame";
+	}
+	if (value == "vrlink") {
+		return "Steam Link";
+	}
+	return value.c_str();
+}
+
 // Crystal's projection matrix is constant 0s or 1s except for [0][3], which stores the IPD offset from the nose
 inline bool IsPimaxCrystalEyeToHead(const vr::HmdMatrix34_t& m)
 {
