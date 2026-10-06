@@ -221,7 +221,8 @@ namespace spacecal::basestations {
 					for (const std::vector<uint8_t>& payload : request.writes) {
 						winrt_streams::DataWriter writer;
 						writer.WriteBytes(payload);
-						const auto status = characteristic.WriteValueAsync(writer.DetachBuffer()).get();
+						const auto status =
+						    characteristic.WriteValueAsync(writer.DetachBuffer(), winrt_gatt::GattWriteOption::WriteWithResponse).get();
 						if (status != winrt_gatt::GattCommunicationStatus::Success) {
 							allOk = false;
 							break;
