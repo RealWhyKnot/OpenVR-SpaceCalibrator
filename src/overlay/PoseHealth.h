@@ -6,6 +6,8 @@
 
 namespace spacecal {
 
+	inline constexpr double kStalePoseSec = 1.0;
+
 	enum class SampleVerdict
 	{
 		Use,
@@ -29,6 +31,22 @@ namespace spacecal {
 			case SampleVerdict::Lost: return "lost";
 		}
 		return "unknown";
+	}
+
+	inline void ApplyRuntimePoseState(vr::DriverPose_t& pose, bool runtimeConnected, bool runtimePoseValid,
+	                                  vr::ETrackingResult runtimeResult)
+	{
+		if (runtimeConnected && runtimePoseValid) return;
+		pose.deviceIsConnected = runtimeConnected;
+		pose.poseIsValid = false;
+		pose.result = runtimeResult;
+	}
+
+	inline void MarkPoseIfStale(vr::DriverPose_t& pose, double lastSampleSec, double nowSec)
+	{
+		if (nowSec - lastSampleSec <= kStalePoseSec) return;
+		pose.poseIsValid = false;
+		if (pose.result == vr::TrackingResult_Running_OK) pose.result = vr::TrackingResult_Running_OutOfRange;
 	}
 
 }

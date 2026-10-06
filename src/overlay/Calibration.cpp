@@ -131,6 +131,21 @@ namespace {
 static std::vector<KnownDevice> knownDevices;
 static bool knownDevicesLoaded = false;
 static double timeLastDeviceScan = 0.0;
+static double lastPoseReadTime[vr::k_unMaxTrackedDeviceCount] = {};
+
+static void RefreshPoseHealth(CalibrationContext& ctx, double time)
+{
+	vr::TrackedDevicePose_t runtimePoses[vr::k_unMaxTrackedDeviceCount] = {};
+	vr::VRSystem()->GetDeviceToAbsoluteTrackingPose(vr::TrackingUniverseRawAndUncalibrated, 0.0f, runtimePoses,
+	                                                vr::k_unMaxTrackedDeviceCount);
+	for (const int id : {ctx.referenceID, ctx.targetID}) {
+		if (id < 0 || id >= (int)vr::k_unMaxTrackedDeviceCount) continue;
+		vr::DriverPose_t& pose = ctx.devicePoses[id];
+		const vr::TrackedDevicePose_t& runtime = runtimePoses[id];
+		spacecal::ApplyRuntimePoseState(pose, runtime.bDeviceIsConnected, runtime.bPoseIsValid, runtime.eTrackingResult);
+		spacecal::MarkPoseIfStale(pose, lastPoseReadTime[id], time);
+	}
+}
 
 const std::vector<KnownDevice>& GetKnownDevices()
 {
@@ -383,10 +398,12 @@ void CalibrationTick(double time)
 	ctx.timeLastTick = time;
 	MaintainKnownDevices(time);
 	shmem.ReadNewPoses([&](const protocol::DriverPoseShmem::AugmentedPose& augmented_pose) {
-		if (augmented_pose.deviceId >= 0 && augmented_pose.deviceId <= vr::k_unMaxTrackedDeviceCount) {
+		if (augmented_pose.deviceId >= 0 && augmented_pose.deviceId < vr::k_unMaxTrackedDeviceCount) {
 			ctx.devicePoses[augmented_pose.deviceId] = augmented_pose.pose;
+			lastPoseReadTime[augmented_pose.deviceId] = time;
 		}
 	});
+	RefreshPoseHealth(ctx, time);
 
 	// check for non-updating headset tracking space (caused by quest out of bounds or taken off head for example) and abort everything for
 	// this tick
