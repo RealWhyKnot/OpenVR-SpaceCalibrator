@@ -230,6 +230,30 @@ namespace {
 		CHECK(EvaluateAutomation(fresh, true, false, noWake) == AutomationAction::None);
 	}
 
+	void TestStartupWake()
+	{
+		const Station first = MakeStation("LHB-AAAA1111", StationKind::V2, 1, PowerState::Sleeping);
+		const Station late = MakeStation("LHB-BBBB2222", StationKind::V2, 2, PowerState::Sleeping);
+		const Station v1 = MakeStation("HTC BS 814DA4", StationKind::V1);
+		Station unseen = MakeStation("LHB-CCCC3333", StationKind::V2, 3, PowerState::Sleeping);
+		unseen.seenByBle = false;
+
+		AutomationState state;
+		CHECK(!ShouldWakeAtStartup(state, first, true, 100.0));
+
+		BeginStartupWake(state, 100.0);
+		CHECK(!ShouldWakeAtStartup(state, unseen, true, 100.5));
+		CHECK(ShouldWakeAtStartup(state, first, true, 101.0));
+		CHECK(!ShouldWakeAtStartup(state, first, true, 102.0));
+		CHECK(ShouldWakeAtStartup(state, late, true, 130.0));
+		CHECK(!ShouldWakeAtStartup(state, v1, false, 131.0));
+		CHECK(!ShouldWakeAtStartup(state, v1, true, 100.0 + kStartupWakeWindowSec));
+
+		BeginStartupWake(state, 500.0);
+		CHECK(ShouldWakeAtStartup(state, first, true, 500.0));
+		CHECK(ShouldWakeAtStartup(state, v1, true, 501.0));
+	}
+
 	void TestSettingsRoundTrip()
 	{
 		BaseStationsSettings settings;
@@ -266,6 +290,7 @@ int main()
 	TestNicknames();
 	TestIntents();
 	TestAutomation();
+	TestStartupWake();
 	TestSettingsRoundTrip();
 
 	if (failures == 0) {

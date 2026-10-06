@@ -297,10 +297,27 @@ namespace spacecal::basestations {
 		SleepAll
 	};
 
+	inline constexpr double kStartupWakeWindowSec = 60.0;
+
 	struct AutomationState
 	{
 		bool wakeFiredThisSession = false;
+		double startupWakeUntilSec = 0.0;
+		std::set<std::string> startupWakeSent;
 	};
+
+	inline void BeginStartupWake(AutomationState& state, double nowSec)
+	{
+		state.startupWakeUntilSec = nowSec + kStartupWakeWindowSec;
+		state.startupWakeSent.clear();
+	}
+
+	inline bool ShouldWakeAtStartup(AutomationState& state, const Station& station, bool vrConnected, double nowSec)
+	{
+		if (!vrConnected || nowSec >= state.startupWakeUntilSec) return false;
+		if (!station.seenByBle) return false;
+		return state.startupWakeSent.insert(station.serial).second;
+	}
 
 	inline AutomationAction EvaluateAutomation(AutomationState& state, bool prevVrConnected, bool vrConnected,
 	                                           const AutomationSettings& settings)

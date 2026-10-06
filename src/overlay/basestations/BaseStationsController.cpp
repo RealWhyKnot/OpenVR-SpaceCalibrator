@@ -79,14 +79,22 @@ namespace spacecal::basestations {
 		RebuildStations();
 		TickIntents();
 
+		const double nowSec = std::chrono::duration<double>(now.time_since_epoch()).count();
 		const AutomationAction action = EvaluateAutomation(automationState_, prevVrConnected_, vrConnected, settings_.automation);
 		prevVrConnected_ = vrConnected;
-		if (action != AutomationAction::None) {
-			const PowerCommand command = action == AutomationAction::WakeAll      ? PowerCommand::Wake
-			                             : action == AutomationAction::StandbyAll ? PowerCommand::Standby
-			                                                                      : PowerCommand::Sleep;
+		if (action == AutomationAction::WakeAll) {
+			BeginStartupWake(automationState_, nowSec);
+		}
+		else if (action != AutomationAction::None) {
+			const PowerCommand command = action == AutomationAction::StandbyAll ? PowerCommand::Standby : PowerCommand::Sleep;
 			for (const Station& station : stations_) {
 				RequestPower(station, command);
+			}
+		}
+
+		for (const Station& station : stations_) {
+			if (ShouldWakeAtStartup(automationState_, station, vrConnected, nowSec)) {
+				RequestPower(station, PowerCommand::Wake);
 			}
 		}
 	}
