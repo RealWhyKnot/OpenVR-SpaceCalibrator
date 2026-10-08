@@ -5,6 +5,7 @@
 #include "IPCClient.h"
 #include "CalibrationCalc.h"
 #include "CalibrationMath.h"
+#include "DriverRequestCache.h"
 #include "PoseHealth.h"
 #include "TrackingSystemFixups.h"
 #include "VRSession.h"
@@ -21,6 +22,9 @@
 CalibrationContext CalCtx;
 IPCClient Driver;
 static protocol::DriverPoseShmem shmem;
+static spacecal::DriverRequestCache driverState;
+static double lastFullProfileApply = -1.0e9;
+static constexpr double kFullProfileApplySeconds = 30.0;
 
 namespace {
 	CalibrationCalc calibration;
@@ -194,6 +198,7 @@ bool TryConnectDriver(std::string& error)
 		Driver.Disconnect();
 		return false;
 	}
+	driverState.Clear();
 	return true;
 }
 
@@ -206,6 +211,12 @@ void DisconnectDriver()
 {
 	Driver.Disconnect();
 	shmem.Close();
+	driverState.Clear();
+}
+
+static void SendDriverState(const protocol::Request& request)
+{
+	if (driverState.ShouldSend(request)) Driver.SendBlocking(request);
 }
 
 void ResetAndDisableOffsets(uint32_t id)
@@ -221,7 +232,7 @@ void ResetAndDisableOffsets(uint32_t id)
 
 	protocol::Request req(protocol::RequestSetDeviceTransform);
 	req.setDeviceTransform = {id, false, zeroV, zeroQ, 1.0};
-	Driver.SendBlocking(req);
+	SendDriverState(req);
 }
 
 static_assert(vr::k_unTrackedDeviceIndex_Hmd == 0, "HMD index expected to be 0");
@@ -234,19 +245,19 @@ static void ScanAndApplyProfileImpl(CalibrationContext& ctx)
 
 	protocol::Request setParamsReq(protocol::RequestSetAlignmentSpeedParams);
 	setParamsReq.setAlignmentSpeedParams = ctx.alignmentSpeedParams;
-	Driver.SendBlocking(setParamsReq);
+	SendDriverState(setParamsReq);
 
 	protocol::Request setSmoothingReq(protocol::RequestSetSmoothingParams);
 	setSmoothingReq.setSmoothingParams = ctx.smoothingParams;
-	Driver.SendBlocking(setSmoothingReq);
+	SendDriverState(setSmoothingReq);
 
 	protocol::Request setFingerReq(protocol::RequestSetFingerSmoothing);
 	setFingerReq.setFingerSmoothing = ctx.fingerSmoothing;
-	Driver.SendBlocking(setFingerReq);
+	SendDriverState(setFingerReq);
 
 	protocol::Request setStickReq(protocol::RequestSetStickSmoothing);
 	setStickReq.setStickSmoothing = ctx.stickSmoothing;
-	Driver.SendBlocking(setStickReq);
+	SendDriverState(setStickReq);
 
 	for (uint32_t id = 0; id < vr::k_unMaxTrackedDeviceCount; ++id) {
 		auto deviceClass = vr::VRSystem()->GetTrackedDeviceClass(id);
@@ -295,7 +306,7 @@ static void ScanAndApplyProfileImpl(CalibrationContext& ctx)
 		req.setDeviceTransform.smooth = deviceClass == vr::TrackedDeviceClass_GenericTracker ||
 		                                (ctx.smoothControllers && deviceClass == vr::TrackedDeviceClass_Controller);
 
-		Driver.SendBlocking(req);
+		SendDriverState(req);
 	}
 
 	if (ctx.enabled && ctx.chaperone.valid && ctx.chaperone.autoApply) {
@@ -313,6 +324,11 @@ static void ScanAndApplyProfileImpl(CalibrationContext& ctx)
 void ScanAndApplyProfile(CalibrationContext& ctx)
 {
 	if (!vr::VRSystem() || !Driver.IsConnected()) return;
+	const double now = glfwGetTime();
+	if (now - lastFullProfileApply >= kFullProfileApplySeconds) {
+		driverState.Clear();
+		lastFullProfileApply = now;
+	}
 	try {
 		ScanAndApplyProfileImpl(ctx);
 	}

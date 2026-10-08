@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "Configuration.h"
 #include "basestations/BaseStationsSettings.h"
+#include "WriteFilter.h"
 
 #include <picojson.h>
 
@@ -423,8 +424,12 @@ static std::string ReadRegistryKey(const char* valueName)
 	return str;
 }
 
+static spacecal::LastWriteFilter registryWrites;
+
 static void WriteRegistryKey(const char* valueName, const std::string& str)
 {
+	if (registryWrites.Unchanged(valueName, str)) return;
+
 	HKEY hkey;
 	auto result = RegCreateKeyExA(HKEY_CURRENT_USER_LOCAL_SETTINGS, RegistryKey, 0, REG_NONE, 0, KEY_ALL_ACCESS, 0, &hkey, 0);
 	if (result != ERROR_SUCCESS) {
@@ -437,6 +442,9 @@ static void WriteRegistryKey(const char* valueName, const std::string& str)
 	result = RegSetValueExA(hkey, valueName, 0, REG_SZ, reinterpret_cast<const BYTE*>(str.c_str()), size);
 	if (result != ERROR_SUCCESS) {
 		LogRegistryResult(result);
+	}
+	else {
+		registryWrites.Record(valueName, str);
 	}
 
 	RegCloseKey(hkey);

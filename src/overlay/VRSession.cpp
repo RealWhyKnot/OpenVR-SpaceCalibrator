@@ -3,8 +3,7 @@
 #include "Calibration.h"
 #include "DriverConflictState.h"
 #include "Constants.h"
-
-#include <tlhelp32.h>
+#include "ProcessWatch.h"
 
 #include <cstdio>
 #include <format>
@@ -14,24 +13,11 @@
 
 VRSessionState VRSess;
 
+static spacecal::ProcessWatch vrServerWatch(L"vrserver.exe");
+
 bool IsVRServerRunning()
 {
-	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-	if (snapshot == INVALID_HANDLE_VALUE) return false;
-
-	bool found = false;
-	PROCESSENTRY32W entry = {};
-	entry.dwSize = sizeof(entry);
-	if (Process32FirstW(snapshot, &entry)) {
-		do {
-			if (_wcsicmp(entry.szExeFile, L"vrserver.exe") == 0) {
-				found = true;
-				break;
-			}
-		} while (Process32NextW(snapshot, &entry));
-	}
-	CloseHandle(snapshot);
-	return found;
+	return spacecal::FindProcessId(L"vrserver.exe") != 0;
 }
 
 static void CheckInterfaceVersions()
@@ -51,7 +37,7 @@ void VRSessionTick(double time)
 {
 	if (VRSess.state != VRConnectionState::Disconnected && time >= VRSess.nextServerCheckTime) {
 		VRSess.nextServerCheckTime = time + 2.0;
-		if (!IsVRServerRunning()) {
+		if (!vrServerWatch.Running()) {
 			VRSessionHandleLost(time);
 			return;
 		}
@@ -118,6 +104,7 @@ void VRSessionHandleLost(double time)
 	VRSess.overlayThumbnailHandle = 0;
 	VRSess.state = VRConnectionState::Disconnected;
 	VRSess.quitRequested = true;
+	vrServerWatch.Release();
 }
 
 void VRSessionDriverLost(double time, const std::string& why)

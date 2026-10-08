@@ -24,6 +24,7 @@ public:
 	const std::string& ResultTargetLabel() const { return resultTargetLabel_; }
 
 private:
+	bool Eligible() const;
 	bool ShouldRun() const;
 	void ApplyResult(int refId, int targetId, const VRState& state);
 

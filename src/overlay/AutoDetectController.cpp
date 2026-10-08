@@ -14,13 +14,17 @@ AutoDetectController& AutoDetectController::Get()
 	return instance;
 }
 
-bool AutoDetectController::ShouldRun() const
+bool AutoDetectController::Eligible() const
 {
 	if (cancelled_) return false;
 	if (VRSess.state != VRConnectionState::Connected) return false;
 	if (CalCtx.validProfile) return false;
-	if (CalCtx.state != CalibrationState::None) return false;
-	return cachedState_.trackingSystems.size() >= 2;
+	return CalCtx.state == CalibrationState::None;
+}
+
+bool AutoDetectController::ShouldRun() const
+{
+	return Eligible() && cachedState_.trackingSystems.size() >= 2;
 }
 
 void AutoDetectController::Cancel()
@@ -83,15 +87,10 @@ void AutoDetectController::Tick(double time)
 	const double dt = lastTickTime_ > 0.0 ? time - lastTickTime_ : 0.0;
 	lastTickTime_ = time;
 
-	if (time - lastStateRefresh_ >= 2.0) {
+	if (Eligible() && time - lastStateRefresh_ >= 2.0) {
 		lastStateRefresh_ = time;
-		if (VRSess.state == VRConnectionState::Connected) {
-			cachedState_ = VRState::Load();
-			cachedState_.DropIgnoredTrackingSystems();
-		}
-		else {
-			cachedState_ = VRState{};
-		}
+		cachedState_ = VRState::Load();
+		cachedState_.DropIgnoredTrackingSystems();
 	}
 
 	if (!ShouldRun()) {

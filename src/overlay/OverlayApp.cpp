@@ -6,6 +6,7 @@
 #include "CalibrationMetrics.h"
 #include "DashboardPointer.h"
 #include "LegacyInstall.h"
+#include "LoopPacing.h"
 #include "Updater.h"
 #include "UserInterface.h"
 #include "VRSession.h"
@@ -227,16 +228,9 @@ void RunLoop()
 			}
 		}
 
-		const double dashboardInterval = 1.0 / 90.0;
-		double waitEventsTimeout = std::max(CalCtx.wantedUpdateInterval, dashboardInterval);
-
-		if (dashboardVisible && waitEventsTimeout > dashboardInterval) waitEventsTimeout = dashboardInterval;
-
-		if (ConsumeImmediateRedraw()) {
-			waitEventsTimeout = 0;
-		}
-
-		glfwWaitEventsTimeout(waitEventsTimeout);
+		const bool immediateRedraw = ConsumeImmediateRedraw();
+		glfwWaitEventsTimeout(spacecal::pacing::WaitSeconds(glfwGetTime(), CalCtx.timeLastTick, CalCtx.wantedUpdateInterval,
+		                                                    dashboardVisible, immediateRedraw));
 
 		// If we're minimized rendering won't limit our frame rate so we need to do it ourselves.
 		if (glfwGetWindowAttrib(AppWindow.window, GLFW_ICONIFIED)) {
