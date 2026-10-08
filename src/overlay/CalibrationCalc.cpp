@@ -21,52 +21,83 @@ void CalibrationCalc::Clear()
 	m_relativePosCalibrated = false;
 }
 
+namespace {
+	class StreamingLeastSquares3
+	{
+	public:
+		StreamingLeastSquares3() : block_(kHeaderRows + kBlockRows, 4), qr_(kHeaderRows + kBlockRows, 4) { block_.setZero(); }
+
+		void AddRows(const Eigen::Matrix3d& coefficients, const Eigen::Vector3d& constants)
+		{
+			block_.block<3, 3>(kHeaderRows + used_, 0) = coefficients;
+			block_.block<3, 1>(kHeaderRows + used_, 3) = constants;
+			used_ += 3;
+			if (used_ == kBlockRows) Fold();
+		}
+
+		Eigen::Vector3d Solve()
+		{
+			Fold();
+			const Eigen::Matrix3d r = block_.topLeftCorner<3, 3>().triangularView<Eigen::Upper>();
+			const Eigen::Vector3d c = block_.block<3, 1>(0, 3);
+			return Eigen::JacobiSVD<Eigen::Matrix3d>(r, Eigen::ComputeFullU | Eigen::ComputeFullV).solve(c);
+		}
+
+	private:
+		static constexpr int kHeaderRows = 4;
+		static constexpr int kBlockRows = 384;
+
+		void Fold()
+		{
+			if (used_ == 0) return;
+			qr_.compute(block_);
+			block_.topRows<kHeaderRows>() = qr_.matrixQR().topRows<kHeaderRows>().triangularView<Eigen::Upper>();
+			block_.bottomRows(kBlockRows).setZero();
+			used_ = 0;
+		}
+
+		Eigen::Matrix<double, Eigen::Dynamic, 4> block_;
+		Eigen::HouseholderQR<Eigen::Matrix<double, Eigen::Dynamic, 4>> qr_;
+		int used_ = 0;
+	};
+
+	struct TranslationTerms
+	{
+		Eigen::Matrix3d refInverse, targetInverse;
+		Eigen::Vector3d refOffset, targetOffset;
+	};
+}
+
 Eigen::Vector3d CalibrationCalc::CalibrateRotation(const bool ignoreOutliers) const
 {
-	std::vector<DSample> deltas;
-	std::vector<bool> valids = DetectOutliers();
+	std::vector<bool> valids;
+	if (ignoreOutliers) valids = DetectOutliers();
+
+	// Kabsch algorithm
+	Eigen::Vector2d refCentroid(0, 0), targetCentroid(0, 0);
+	Eigen::Matrix2d crossCV = Eigen::Matrix2d::Zero();
+	double count = 0.0;
 
 	for (size_t i = 0; i < m_samples.size(); i++) {
 		for (size_t j = 0; j < i; j++) {
 			if (ignoreOutliers && (!valids[i] || !valids[j])) {
 				continue;
 			}
-			auto delta = DeltaRotationSamples(m_samples[i], m_samples[j]);
-			if (delta.valid) {
-				deltas.push_back(delta);
-			}
+			const auto delta = DeltaRotationSamples(m_samples[i], m_samples[j]);
+			if (!delta.valid) continue;
+
+			const Eigen::Vector2d ref(delta.ref[0], delta.ref[2]);
+			const Eigen::Vector2d target(delta.target[0], delta.target[2]);
+			count += 1.0;
+			const Eigen::Vector2d refStep = ref - refCentroid;
+			refCentroid += refStep / count;
+			targetCentroid += (target - targetCentroid) / count;
+			crossCV += refStep * (target - targetCentroid).transpose();
 		}
 	}
 
-	// Kabsch algorithm
-
-	// Initialize 2D points and centroids
-	Eigen::MatrixXd refPoints(deltas.size(), 2), targetPoints(deltas.size(), 2);
-	Eigen::Vector2d refCentroid(0, 0), targetCentroid(0, 0);
-
-	// Fill matrices and calculate centroids
-	for (size_t i = 0; i < deltas.size(); i++) {
-		refPoints.row(i) << deltas[i].ref[0], deltas[i].ref[2]; // Take only the x and z components
-		refCentroid += refPoints.row(i);
-
-		targetPoints.row(i) << deltas[i].target[0], deltas[i].target[2]; // Take only the x and z components
-		targetCentroid += targetPoints.row(i);
-	}
-
-	refCentroid /= (double)deltas.size();
-	targetCentroid /= (double)deltas.size();
-
-	// Center the points
-	for (size_t i = 0; i < deltas.size(); i++) {
-		refPoints.row(i) -= refCentroid;
-		targetPoints.row(i) -= targetCentroid;
-	}
-
-	// Calculate cross-covariance matrix
-	auto crossCV = refPoints.transpose() * targetPoints;
-
 	// Singular Value Decomposition (SVD)
-	Eigen::JacobiSVD<Eigen::MatrixXd> svd(crossCV, Eigen::ComputeThinU | Eigen::ComputeThinV);
+	Eigen::JacobiSVD<Eigen::Matrix2d> svd(crossCV, Eigen::ComputeFullU | Eigen::ComputeFullV);
 
 	// Calculate 2D rotation matrix
 	Eigen::Matrix2d i = Eigen::Matrix2d::Identity();
@@ -83,45 +114,25 @@ Eigen::Vector3d CalibrationCalc::CalibrateRotation(const bool ignoreOutliers) co
 
 Eigen::Vector3d CalibrationCalc::CalibrateTranslation(const Eigen::Matrix3d& rotation) const
 {
-	std::vector<std::pair<Eigen::Vector3d, Eigen::Matrix3d>> deltas;
+	std::vector<TranslationTerms> terms;
+	terms.reserve(m_samples.size());
+	for (const Sample& sample : m_samples) {
+		const Eigen::Vector3d targetTrans = rotation * sample.target.trans;
+		const Eigen::Matrix3d refInverse = sample.ref.rot.transpose();
+		const Eigen::Matrix3d targetInverse = (rotation * sample.target.rot).transpose();
+		const Eigen::Vector3d offset = sample.ref.trans - targetTrans;
+		terms.push_back({refInverse, targetInverse, refInverse * offset, targetInverse * offset});
+	}
 
-	for (size_t i = 0; i < m_samples.size(); i++) {
-		Sample s_i = m_samples[i];
-		s_i.target.rot = rotation * s_i.target.rot;
-		s_i.target.trans = rotation * s_i.target.trans;
-
+	StreamingLeastSquares3 solver;
+	for (size_t i = 0; i < terms.size(); i++) {
 		for (size_t j = 0; j < i; j++) {
-			Sample s_j = m_samples[j];
-			s_j.target.rot = rotation * s_j.target.rot;
-			s_j.target.trans = rotation * s_j.target.trans;
-
-			auto QAi = s_i.ref.rot.transpose();
-			auto QAj = s_j.ref.rot.transpose();
-			auto dQA = QAj - QAi;
-			auto CA = QAj * (s_j.ref.trans - s_j.target.trans) - QAi * (s_i.ref.trans - s_i.target.trans);
-			deltas.push_back(std::make_pair(CA, dQA));
-
-			auto QBi = s_i.target.rot.transpose();
-			auto QBj = s_j.target.rot.transpose();
-			auto dQB = QBj - QBi;
-			auto CB = QBj * (s_j.ref.trans - s_j.target.trans) - QBi * (s_i.ref.trans - s_i.target.trans);
-			deltas.push_back(std::make_pair(CB, dQB));
+			solver.AddRows(terms[j].refInverse - terms[i].refInverse, terms[j].refOffset - terms[i].refOffset);
+			solver.AddRows(terms[j].targetInverse - terms[i].targetInverse, terms[j].targetOffset - terms[i].targetOffset);
 		}
 	}
 
-	Eigen::VectorXd constants(deltas.size() * 3);
-	Eigen::MatrixXd coefficients(deltas.size() * 3, 3);
-
-	for (size_t i = 0; i < deltas.size(); i++) {
-		for (int axis = 0; axis < 3; axis++) {
-			constants(i * 3 + axis) = deltas[i].first(axis);
-			coefficients.row(i * 3 + axis) = deltas[i].second.row(axis);
-		}
-	}
-
-	Eigen::Vector3d trans = coefficients.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(constants);
-
-	return trans;
+	return solver.Solve();
 }
 
 Eigen::AffineCompact3d CalibrationCalc::ComputeCalibration(const bool ignoreOutliers) const
