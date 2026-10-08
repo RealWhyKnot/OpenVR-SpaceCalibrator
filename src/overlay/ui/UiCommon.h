@@ -22,6 +22,7 @@ void DrawUpdatePrompt();
 void DrawUpdatesPanel(ImVec2 panel_size);
 void DrawSmoothingPanel(ImVec2 panel_size);
 void DrawFingerSmoothingPanel(ImVec2 panel_size);
+void DrawStickSmoothingPanel(ImVec2 panel_size);
 void CCal_BasicInfo();
 void DrawAutoDetectCard();
 void DrawSteamVRWarning();

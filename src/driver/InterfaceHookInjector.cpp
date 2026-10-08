@@ -4,6 +4,7 @@
 #include "PoseHookGuard.h"
 #include "ServerTrackedDeviceProvider.h"
 #include "SkeletalHook.h"
+#include "StickHook.h"
 
 #include <cstring>
 
@@ -57,6 +58,7 @@ static void* DetourGetGenericInterface(vr::IVRDriverContext* _this, const char* 
 
 	if (std::strstr(pchInterfaceVersion, "IVRDriverInput_") != nullptr && std::strstr(pchInterfaceVersion, "Internal") == nullptr) {
 		spacecal::skeletal_hook::TryInstallPublicHooks(originalInterface);
+		spacecal::stick_hook::TryInstallPublicHooks(originalInterface);
 	}
 
 	std::string iface(pchInterfaceVersion);

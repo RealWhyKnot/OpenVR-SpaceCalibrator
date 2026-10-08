@@ -1,6 +1,7 @@
 #include "IPCServer.h"
 #include "Logging.h"
 #include "ServerTrackedDeviceProvider.h"
+#include "StickHook.h"
 
 void IPCServer::HandleRequest(const protocol::Request& request, protocol::Response& response)
 {
@@ -37,6 +38,11 @@ void IPCServer::HandleRequest(const protocol::Request& request, protocol::Respon
 
 		case protocol::RequestSetFingerSmoothing:
 			driver->SetFingerSmoothingConfig(request.setFingerSmoothing);
+			response.type = protocol::ResponseSuccess;
+			break;
+
+		case protocol::RequestSetStickSmoothing:
+			spacecal::stick_hook::SetConfig(request.setStickSmoothing);
 			response.type = protocol::ResponseSuccess;
 			break;
 

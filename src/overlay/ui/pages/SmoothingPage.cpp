@@ -2,6 +2,7 @@
 #include "ui/UiCommon.h"
 #include "Calibration.h"
 #include "PoseFilter.h"
+#include "StickSmoothingMath.h"
 
 #include <imgui/imgui.h>
 #include "imgui_extensions.h"
@@ -98,6 +99,44 @@ void DrawSmoothingPanel(ImVec2 panel_size)
 			SmoothingTooltip("Frame-to-frame movement, raw -> smoothed, averaged over the last second.\n"
 			                 "Reseeds count gaps and jumps where the filter restarted from the raw pose.");
 		}
+	}
+
+	ImGui::EndGroupPanel();
+}
+
+static bool StickRampSlider(const char* label, uint8_t& strength, const char* tooltip)
+{
+	int value = strength;
+	char format[32] = "off";
+	if (value > 0) {
+		snprintf(format, sizeof format, "%%d%%%% (%.2f s)", spacecal::stick::RampSecondsFromStrength((uint8_t)value));
+	}
+	ImGui::SliderInt(label, &value, 0, 100, format, ImGuiSliderFlags_AlwaysClamp);
+	const bool changed = ImGui::IsItemDeactivatedAfterEdit();
+	SmoothingTooltip(tooltip);
+	strength = (uint8_t)value;
+	return changed;
+}
+
+void DrawStickSmoothingPanel(ImVec2 panel_size)
+{
+	ImGui::BeginGroupPanel("Joystick acceleration", panel_size);
+
+	ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+	ImGui::TextWrapped("Speed builds up and winds down gradually instead of jumping. Useful for filming.");
+	ImGui::PopStyleColor();
+
+	bool dirty = StickRampSlider("Left stick (movement)", CalCtx.stickSmoothing.strength[0],
+	                             "How gradually the left stick speeds up when pushed and slows down when let go.\n"
+	                             "0 = off. 100% takes about 1.5 s to reach full speed.\n"
+	                             "Applies to every app, including SteamVR menus.");
+	dirty |= StickRampSlider("Right stick (turning)", CalCtx.stickSmoothing.strength[1],
+	                         "How gradually the right stick speeds up when pushed and slows down when let go.\n"
+	                         "0 = off. 100% takes about 1.5 s to reach full speed.\n"
+	                         "With snap turning, each snap fires later instead of turning more smoothly.");
+
+	if (dirty) {
+		ApplySmoothingSettings();
 	}
 
 	ImGui::EndGroupPanel();

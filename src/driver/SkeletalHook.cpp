@@ -1,4 +1,5 @@
 #include "SkeletalHook.h"
+#include "DriverInputVTable.h"
 #include "Hooking.h"
 #include "Logging.h"
 #include "ServerTrackedDeviceProvider.h"
@@ -62,18 +63,6 @@ namespace spacecal::skeletal_hook {
 		std::atomic<bool> g_firstUnknownHandleLogged{false};
 		std::atomic<bool> g_firstCreateSkeletonLogged{false};
 		std::atomic<bool> g_lastAnySmoothing[2] = {{false}, {false}};
-
-		bool IsReadableMemoryRange(const void* address, size_t bytes)
-		{
-			if (!address) return false;
-			MEMORY_BASIC_INFORMATION info = {};
-			if (VirtualQuery(address, &info, sizeof(info)) == 0) return false;
-			if (info.State != MEM_COMMIT) return false;
-			if (info.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
-			const uintptr_t start = reinterpret_cast<uintptr_t>(address);
-			const uintptr_t regionEnd = reinterpret_cast<uintptr_t>(info.BaseAddress) + info.RegionSize;
-			return start + bytes <= regionEnd;
-		}
 
 		void SkeletalContainmentFault(const char* what)
 		{
@@ -408,22 +397,7 @@ namespace spacecal::skeletal_hook {
 		bool updateAlready = IHook::Exists(PublicUpdateSkeletonHook.name);
 		if (createAlready && updateAlready) return;
 
-		if (!IsReadableMemoryRange(iface, sizeof(void*))) {
-			LOG("[skeletal] iface %p not readable; aborting install", iface);
-			return;
-		}
-		void** vtable = *((void***)iface);
-		if (!IsReadableMemoryRange(vtable, sizeof(void*) * 7)) {
-			LOG("[skeletal] vtable %p not readable for 7 slots; aborting install (iface=%p)", (void*)vtable, iface);
-			return;
-		}
-		intptr_t spread = (intptr_t)vtable[6] - (intptr_t)vtable[0];
-		if (spread < 0) spread = -spread;
-		if (spread > 0x10000) {
-			LOG("[skeletal] vtable spread |slot6 - slot0| = 0x%llx bytes (>64KB); refusing to install (iface=%p)",
-			    (unsigned long long)spread, iface);
-			return;
-		}
+		if (!IsDriverInputVTableSane(iface, "skeletal")) return;
 
 		if (!createAlready) {
 			PublicCreateSkeletonHook.CreateHookInObjectVTable(iface, 5, &DetourPublicCreateSkeletonComponent);

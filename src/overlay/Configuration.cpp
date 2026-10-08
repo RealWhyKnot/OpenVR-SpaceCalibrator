@@ -144,6 +144,16 @@ static void LoadSmoothingParams(CalibrationContext& ctx, picojson::value& value)
 			}
 		}
 	}
+
+	if (obj["sticks"].is<picojson::object>()) {
+		auto sticks = obj["sticks"].get<picojson::object>();
+		if (sticks["left"].is<double>()) {
+			ctx.stickSmoothing.strength[0] = ClampStrength(sticks["left"].get<double>());
+		}
+		if (sticks["right"].is<double>()) {
+			ctx.stickSmoothing.strength[1] = ClampStrength(sticks["right"].get<double>());
+		}
+	}
 }
 
 static picojson::object SaveSmoothingParams(CalibrationContext& ctx)
@@ -165,6 +175,13 @@ static picojson::object SaveSmoothingParams(CalibrationContext& ctx)
 	}
 	fingers["per_finger"].set<picojson::array>(perFinger);
 	obj["fingers"].set<picojson::object>(fingers);
+
+	picojson::object sticks;
+	const double leftStick = ctx.stickSmoothing.strength[0];
+	sticks["left"].set<double>(leftStick);
+	const double rightStick = ctx.stickSmoothing.strength[1];
+	sticks["right"].set<double>(rightStick);
+	obj["sticks"].set<picojson::object>(sticks);
 
 	return obj;
 }

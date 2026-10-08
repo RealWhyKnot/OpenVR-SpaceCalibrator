@@ -3,6 +3,7 @@
 #include "InterfaceHookInjector.h"
 #include "IsometryTransform.h"
 #include "SkeletalHook.h"
+#include "StickHook.h"
 
 #include <random>
 
@@ -27,6 +28,7 @@ vr::EVRInitError ServerTrackedDeviceProvider::Init(vr::IVRDriverContext* pDriver
 	alignmentSpeedParams.align_speed_large = 2.0f;
 
 	spacecal::skeletal_hook::Init(this);
+	spacecal::stick_hook::Init();
 	InjectHooks(this, pDriverContext);
 	server.Run();
 	shmem.Create(OPENVR_SPACECALIBRATOR_SHMEM_NAME);
@@ -43,6 +45,7 @@ void ServerTrackedDeviceProvider::Cleanup()
 	server.Stop();
 	shmem.Close();
 	spacecal::skeletal_hook::Shutdown();
+	spacecal::stick_hook::Shutdown();
 	DisableHooks();
 	VR_CLEANUP_SERVER_DRIVER_CONTEXT();
 }
@@ -264,6 +267,11 @@ void ServerTrackedDeviceProvider::SetFingerSmoothingConfig(const protocol::Finge
 	spacecal::skeletal_hook::MarkFingersNeedReseed(reseedBits);
 	LOG("finger smoothing strength=%u mask=0x%04x reseed=0x%04x", (unsigned)clamped.strength, (unsigned)clamped.fingerMask,
 	    (unsigned)reseedBits);
+}
+
+void ServerTrackedDeviceProvider::RunFrame()
+{
+	spacecal::stick_hook::Pump();
 }
 
 void ServerTrackedDeviceProvider::HandleGetSmoothingStats(const protocol::SmoothingStatsRequest& request, protocol::SmoothingStats& stats)

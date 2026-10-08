@@ -92,7 +92,7 @@ namespace vr {
 #endif
 
 namespace protocol {
-	const uint32_t Version = 7;
+	const uint32_t Version = 8;
 
 	enum RequestType
 	{
@@ -103,7 +103,8 @@ namespace protocol {
 		RequestDebugOffset,
 		RequestSetSmoothingParams,
 		RequestGetSmoothingStats,
-		RequestSetFingerSmoothing
+		RequestSetFingerSmoothing,
+		RequestSetStickSmoothing
 	};
 
 	enum ResponseType
@@ -132,6 +133,11 @@ namespace protocol {
 		uint8_t perFinger[10];
 		uint8_t _pad;
 		uint16_t fingerMask;
+	};
+
+	struct StickSmoothingConfig
+	{
+		uint8_t strength[2];
 	};
 
 	struct SmoothingStatsRequest
@@ -239,6 +245,7 @@ namespace protocol {
 			SmoothingParams setSmoothingParams;
 			SmoothingStatsRequest getSmoothingStats;
 			FingerSmoothingConfig setFingerSmoothing;
+			StickSmoothingConfig setStickSmoothing;
 		};
 
 		Request() : type(RequestInvalid), setAlignmentSpeedParams({}) {}

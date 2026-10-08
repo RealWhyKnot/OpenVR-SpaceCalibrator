@@ -30,7 +30,7 @@ public:
 	virtual const char* const* GetInterfaceVersions() { return vr::k_InterfaceVersions; }
 
 	/** Allows the driver do to some work in the main loop of the server. */
-	virtual void RunFrame() {}
+	virtual void RunFrame() override;
 
 	/** Returns true if the driver wants to block Standby mode. */
 	virtual bool ShouldBlockStandbyMode() { return false; }

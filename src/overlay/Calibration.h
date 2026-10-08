@@ -67,6 +67,7 @@ struct CalibrationContext
 	protocol::AlignmentSpeedParams alignmentSpeedParams;
 	protocol::SmoothingParams smoothingParams;
 	protocol::FingerSmoothingConfig fingerSmoothing;
+	protocol::StickSmoothingConfig stickSmoothing{};
 	bool smoothControllers = false;
 	bool enableStaticRecalibration;
 	bool lockRelativePosition = false;
@@ -121,6 +122,7 @@ struct CalibrationContext
 		smoothControllers = false;
 		fingerSmoothing = protocol::FingerSmoothingConfig{};
 		fingerSmoothing.fingerMask = protocol::kAllFingersMask;
+		stickSmoothing = protocol::StickSmoothingConfig{};
 	}
 
 	struct Chaperone

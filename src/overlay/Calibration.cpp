@@ -244,6 +244,10 @@ static void ScanAndApplyProfileImpl(CalibrationContext& ctx)
 	setFingerReq.setFingerSmoothing = ctx.fingerSmoothing;
 	Driver.SendBlocking(setFingerReq);
 
+	protocol::Request setStickReq(protocol::RequestSetStickSmoothing);
+	setStickReq.setStickSmoothing = ctx.stickSmoothing;
+	Driver.SendBlocking(setStickReq);
+
 	for (uint32_t id = 0; id < vr::k_unMaxTrackedDeviceCount; ++id) {
 		auto deviceClass = vr::VRSystem()->GetTrackedDeviceClass(id);
 		if (deviceClass == vr::TrackedDeviceClass_Invalid) continue;
