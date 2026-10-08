@@ -260,13 +260,17 @@ void ServerTrackedDeviceProvider::SetFingerSmoothingConfig(const protocol::Finge
 	clamped.fingerMask &= protocol::kAllFingersMask;
 
 	const protocol::FingerSmoothingConfig previous = GetFingerSmoothingConfig();
-	fingerCfgLowPacked.exchange(spacecal::skeletal::PackFingerLow(clamped), std::memory_order_acq_rel);
-	fingerCfgHeaderPacked.exchange(spacecal::skeletal::PackFingerHeader(clamped), std::memory_order_acq_rel);
+	const uint64_t low = spacecal::skeletal::PackFingerLow(clamped);
+	const uint64_t header = spacecal::skeletal::PackFingerHeader(clamped);
+	const bool lowChanged = fingerCfgLowPacked.exchange(low, std::memory_order_acq_rel) != low;
+	const bool headerChanged = fingerCfgHeaderPacked.exchange(header, std::memory_order_acq_rel) != header;
 
 	const uint16_t reseedBits = spacecal::skeletal::ComputeFingerSmoothingReseedBits(previous, clamped);
 	spacecal::skeletal_hook::MarkFingersNeedReseed(reseedBits);
-	LOG("finger smoothing strength=%u mask=0x%04x reseed=0x%04x", (unsigned)clamped.strength, (unsigned)clamped.fingerMask,
-	    (unsigned)reseedBits);
+	if (lowChanged || headerChanged) {
+		LOG("finger smoothing strength=%u mask=0x%04x reseed=0x%04x", (unsigned)clamped.strength, (unsigned)clamped.fingerMask,
+		    (unsigned)reseedBits);
+	}
 }
 
 void ServerTrackedDeviceProvider::RunFrame()

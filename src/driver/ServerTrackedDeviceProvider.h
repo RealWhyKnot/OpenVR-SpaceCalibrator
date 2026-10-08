@@ -90,8 +90,8 @@ private:
 	};
 
 	DeviceTransform transforms[vr::k_unMaxTrackedDeviceCount];
-	Eigen::Vector3d debugTransform;
-	Eigen::Quaterniond debugRotation;
+	Eigen::Vector3d debugTransform = Eigen::Vector3d::Zero();
+	Eigen::Quaterniond debugRotation = Eigen::Quaterniond::Identity();
 
 	DeltaSize currentDeltaSpeed[vr::k_unMaxTrackedDeviceCount];
 
