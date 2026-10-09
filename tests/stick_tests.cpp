@@ -20,12 +20,12 @@ namespace {
 
 	Ramp Legacy(uint8_t strength)
 	{
-		return RampFromSettings(LegacyPushMs(strength), LegacyReleaseMs(strength), 100);
+		return RampFromSettings(LegacyPushMs(strength), LegacyReleaseMs(strength), 100, 0);
 	}
 
-	Ramp Custom(double pushSeconds, double heldBack, double releaseSeconds)
+	Ramp Custom(double pushSeconds, double heldBack, double releaseSeconds, double delaySeconds = 0.0)
 	{
-		return {pushSeconds, releaseSeconds, heldBack};
+		return {pushSeconds, releaseSeconds, heldBack, delaySeconds};
 	}
 
 	const Ramp kFull = Legacy(100);
@@ -55,18 +55,21 @@ namespace {
 
 	void TestSettingsMapping()
 	{
-		const Ramp ramp = RampFromSettings(2400, 900, 60);
+		const Ramp ramp = RampFromSettings(2400, 900, 60, 350);
 		CHECK(std::fabs(ramp.pushSeconds - 2.4) < 1e-12);
 		CHECK(std::fabs(ramp.releaseSeconds - 0.9) < 1e-12);
 		CHECK(std::fabs(ramp.heldBack - 0.6) < 1e-12);
-		const Ramp capped = RampFromSettings(65535, 65535, 255);
+		CHECK(std::fabs(ramp.delaySeconds - 0.35) < 1e-12);
+		const Ramp capped = RampFromSettings(65535, 65535, 255, 65535);
 		CHECK(capped.pushSeconds == kMaxRampSeconds);
 		CHECK(capped.releaseSeconds == kMaxRampSeconds);
 		CHECK(capped.heldBack == 1.0);
-		CHECK(IsOff(RampFromSettings(0, 0, 100)));
-		CHECK(IsOff(RampFromSettings(3000, 0, 0)));
-		CHECK(!IsOff(RampFromSettings(0, 900, 100)));
-		CHECK(!IsOff(RampFromSettings(3000, 0, 100)));
+		CHECK(capped.delaySeconds == kMaxDelaySeconds);
+		CHECK(IsOff(RampFromSettings(0, 0, 100, 0)));
+		CHECK(IsOff(RampFromSettings(3000, 0, 0, 500)));
+		CHECK(IsOff(RampFromSettings(0, 0, 100, 500)));
+		CHECK(!IsOff(RampFromSettings(0, 900, 100, 0)));
+		CHECK(!IsOff(RampFromSettings(3000, 0, 100, 0)));
 	}
 
 	void TestLegacySliderKeepsItsFeel()
@@ -406,7 +409,8 @@ namespace {
 		std::uniform_real_distribution<double> target(-1.0, 1.0);
 		std::uniform_real_distribution<double> dt(0.0005, 0.05);
 		std::uniform_int_distribution<int> hold(1, 60);
-		const Ramp ramps[] = {Custom(3.0, 0.6, 1.0), Custom(0.0, 1.0, 2.0), Custom(6.0, 0.25, 0.0), Custom(1.0, 0.0, 0.5)};
+		const Ramp ramps[] = {Custom(3.0, 0.6, 1.0), Custom(0.0, 1.0, 2.0),      Custom(6.0, 0.25, 0.0),
+		                      Custom(1.0, 0.0, 0.5), Custom(2.0, 0.7, 1.0, 0.4), Custom(4.0, 1.0, 0.0, 2.0)};
 		for (const Ramp& ramp : ramps) {
 			AxisFilter filter;
 			bool outside = false;
@@ -421,6 +425,85 @@ namespace {
 			OnDriverSample(filter, -0.75, 0.01, ramp);
 			CHECK(Run(filter, -0.75, 15.0, 0.01, ramp) == -0.75);
 			CHECK(IsSettled(filter));
+		}
+	}
+
+	void TestDelayHoldsTheStartSpeedThenRampsOnTime()
+	{
+		const Ramp ramp = Custom(3.0, 0.6, 1.0, 0.5);
+		for (double p : {0.25, 0.5, 0.81, 0.99}) {
+			AxisFilter filter;
+			CHECK(std::fabs(OnDriverSample(filter, 1.0, 0.0, ramp) - 0.4) < 1e-12);
+			CHECK(std::fabs(Run(filter, 1.0, 0.5, 0.005, ramp) - 0.4) < 1e-12);
+			const double out = Run(filter, 1.0, p * 3.0, 3.0 / 1000.0, ramp);
+			CHECK(std::fabs(out - (0.4 + 0.6 * PushCurve(p))) < 1e-9);
+		}
+		AxisFilter full;
+		OnDriverSample(full, 1.0, 0.0, ramp);
+		CHECK(Run(full, 1.0, 3.5, 0.005, ramp) == 1.0);
+		CHECK(IsSettled(full));
+	}
+
+	void TestQuickTapStaysAtTheStartSpeed()
+	{
+		const Ramp ramp = Custom(3.0, 0.7, 1.0, 0.4);
+		AxisFilter filter;
+		CHECK(std::fabs(OnDriverSample(filter, -1.0, 0.0, ramp) + 0.3) < 1e-12);
+		for (int i = 0; i < 30; ++i) {
+			CHECK(std::fabs(OnDriverSample(filter, -1.0, 0.011, ramp) + 0.3) < 1e-12);
+		}
+		CHECK(std::fabs(OnDriverSample(filter, 0.0, 0.011, ramp) + 0.3) < 1e-12);
+		const double released = OnDriverSample(filter, 0.0, 0.011, ramp);
+		CHECK(released > -0.3);
+		CHECK(released < 0.0);
+		CHECK(Run(filter, 0.0, 3.0, 0.011, ramp) == 0.0);
+	}
+
+	void TestDelayStartsOverForEachPush()
+	{
+		const Ramp ramp = Custom(2.0, 0.5, 0.5, 0.3);
+		AxisFilter filter;
+		OnDriverSample(filter, 1.0, 0.0, ramp);
+		Run(filter, 1.0, 2.5, 0.01, ramp);
+		CHECK(filter.stage2 == 1.0);
+		Run(filter, 0.0, 2.0, 0.01, ramp);
+		CHECK(filter.stage2 == 0.0);
+		OnDriverSample(filter, 1.0, 0.01, ramp);
+		CHECK(std::fabs(Run(filter, 1.0, 0.25, 0.01, ramp) - 0.5) < 1e-12);
+
+		Run(filter, 1.0, 2.5, 0.01, ramp);
+		CHECK(filter.stage2 == 1.0);
+		double out = 1.0;
+		for (int i = 0; i < 400 && out > 0.0; ++i) {
+			out = OnDriverSample(filter, -1.0, 0.01, ramp);
+		}
+		CHECK(std::fabs(out + 0.5) < 1e-12);
+		CHECK(std::fabs(Run(filter, -1.0, 0.25, 0.01, ramp) + 0.5) < 1e-12);
+		CHECK(Run(filter, -1.0, 0.2, 0.01, ramp) < -0.5);
+	}
+
+	void TestDelayDoesNotRestartMidRamp()
+	{
+		const Ramp ramp = Custom(3.0, 1.0, 1.0, 0.3);
+		AxisFilter filter;
+		OnDriverSample(filter, 1.0, 0.0, ramp);
+		Run(filter, 1.0, 1.5, 0.01, ramp);
+		const double before = filter.stage2;
+		CHECK(before > 0.0);
+		CHECK(OnDriverSample(filter, 0.9, 0.01, ramp) > before);
+		CHECK(Step(filter, 0.9, 0.01, ramp) > before);
+	}
+
+	void TestDelayDoesNotDependOnUpdateRate()
+	{
+		const Ramp ramp = Custom(2.0, 0.8, 1.0, 0.45);
+		for (double seconds : {0.15, 0.45, 1.35}) {
+			AxisFilter fast, slow, single;
+			const double atFast = Run(fast, 1.0, seconds, 0.001, ramp);
+			const double atSlow = Run(slow, 1.0, seconds, 0.015, ramp);
+			const double atOnce = Step(single, 1.0, seconds, ramp);
+			CHECK(std::fabs(atFast - atSlow) < 1e-9);
+			CHECK(std::fabs(atFast - atOnce) < 1e-9);
 		}
 	}
 
@@ -470,6 +553,11 @@ int main()
 	TestInstantStopStillRampsThePush();
 	TestInstantStopReversesStraightIntoTheNewPush();
 	TestRandomInputStaysInRangeForEverySetting();
+	TestDelayHoldsTheStartSpeedThenRampsOnTime();
+	TestQuickTapStaysAtTheStartSpeed();
+	TestDelayStartsOverForEachPush();
+	TestDelayDoesNotRestartMidRamp();
+	TestDelayDoesNotDependOnUpdateRate();
 	TestStickPaths();
 
 	if (failures == 0) {

@@ -154,8 +154,9 @@ namespace spacecal::stick_hook {
 			state.lastStepQpc = now;
 			if (!state.loggedFirstUpdate) {
 				state.loggedFirstUpdate = true;
-				LOG("[stick] first update handle=%llu hand=%s value=%.3f push=%.2fs held_back=%.2f release=%.2fs",
-				    (unsigned long long)handle, HandName(state.hand), value, ramp.pushSeconds, ramp.heldBack, ramp.releaseSeconds);
+				LOG("[stick] first update handle=%llu hand=%s value=%.3f push=%.2fs held_back=%.2f delay=%.2fs release=%.2fs",
+				    (unsigned long long)handle, HandName(state.hand), value, ramp.pushSeconds, ramp.heldBack, ramp.delaySeconds,
+				    ramp.releaseSeconds);
 			}
 			return (float)math::OnDriverSample(state.filter, value, dt, ramp);
 		}
@@ -252,16 +253,19 @@ namespace spacecal::stick_hook {
 			for (int hand = 0; hand < math::kHandCount; ++hand) {
 				const protocol::StickRampConfig& stick = config.sticks[hand];
 				const protocol::StickRampConfig& previous = g_config.sticks[hand];
-				changed |= stick.pushMs != previous.pushMs || stick.releaseMs != previous.releaseMs || stick.strength != previous.strength;
-				g_ramps[hand] = math::RampFromSettings(stick.pushMs, stick.releaseMs, stick.strength);
+				changed |= stick.pushMs != previous.pushMs || stick.releaseMs != previous.releaseMs || stick.delayMs != previous.delayMs ||
+				           stick.strength != previous.strength;
+				g_ramps[hand] = math::RampFromSettings(stick.pushMs, stick.releaseMs, stick.strength, stick.delayMs);
 				ramps[hand] = g_ramps[hand];
 			}
 			g_config = config;
 		}
 		if (changed) {
-			LOG("[stick] joystick acceleration left: timer=%.2fs strength=%.0f%% stop=%.2fs, right: timer=%.2fs strength=%.0f%% stop=%.2fs",
-			    ramps[0].pushSeconds, ramps[0].heldBack * 100.0, ramps[0].releaseSeconds, ramps[1].pushSeconds, ramps[1].heldBack * 100.0,
-			    ramps[1].releaseSeconds);
+			LOG("[stick] joystick acceleration left: timer=%.2fs strength=%.0f%% delay=%.2fs stop=%.2fs, right: timer=%.2fs "
+			    "strength=%.0f%% "
+			    "delay=%.2fs stop=%.2fs",
+			    ramps[0].pushSeconds, ramps[0].heldBack * 100.0, ramps[0].delaySeconds, ramps[0].releaseSeconds, ramps[1].pushSeconds,
+			    ramps[1].heldBack * 100.0, ramps[1].delaySeconds, ramps[1].releaseSeconds);
 		}
 	}
 

@@ -15,9 +15,9 @@ namespace spacecal::stick_profile {
 		return (uint8_t)(value > 0.0 ? (value < 100.0 ? value : 100.0) : 0.0);
 	}
 
-	inline uint16_t ClampRampMs(double ms)
+	inline uint16_t ClampMs(double ms, double maxSeconds)
 	{
-		return (uint16_t)std::lround(spacecal::stick::ClampRampSeconds(ms / 1000.0) * 1000.0);
+		return (uint16_t)std::lround(spacecal::stick::ClampSeconds(ms / 1000.0, maxSeconds) * 1000.0);
 	}
 
 	inline void Load(protocol::StickRampConfig& stick, picojson::value& value)
@@ -26,6 +26,7 @@ namespace spacecal::stick_profile {
 			const uint8_t legacy = ClampPercent(value.get<double>());
 			stick.pushMs = spacecal::stick::LegacyPushMs(legacy);
 			stick.releaseMs = spacecal::stick::LegacyReleaseMs(legacy);
+			stick.delayMs = 0;
 			stick.strength = 100;
 			return;
 		}
@@ -34,13 +35,16 @@ namespace spacecal::stick_profile {
 		}
 		auto& ramp = value.get<picojson::object>();
 		if (ramp["timer_ms"].is<double>()) {
-			stick.pushMs = ClampRampMs(ramp["timer_ms"].get<double>());
+			stick.pushMs = ClampMs(ramp["timer_ms"].get<double>(), spacecal::stick::kMaxRampSeconds);
 		}
 		if (ramp["strength"].is<double>()) {
 			stick.strength = ClampPercent(ramp["strength"].get<double>());
 		}
+		if (ramp["delay_ms"].is<double>()) {
+			stick.delayMs = ClampMs(ramp["delay_ms"].get<double>(), spacecal::stick::kMaxDelaySeconds);
+		}
 		if (ramp["stop_ms"].is<double>()) {
-			stick.releaseMs = ClampRampMs(ramp["stop_ms"].get<double>());
+			stick.releaseMs = ClampMs(ramp["stop_ms"].get<double>(), spacecal::stick::kMaxRampSeconds);
 		}
 	}
 
@@ -51,6 +55,8 @@ namespace spacecal::stick_profile {
 		ramp["timer_ms"].set<double>(timerMs);
 		const double strength = stick.strength;
 		ramp["strength"].set<double>(strength);
+		const double delayMs = stick.delayMs;
+		ramp["delay_ms"].set<double>(delayMs);
 		const double stopMs = stick.releaseMs;
 		ramp["stop_ms"].set<double>(stopMs);
 		return picojson::value(ramp);

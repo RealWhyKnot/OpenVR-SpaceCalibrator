@@ -199,6 +199,22 @@ namespace {
 		CHECK(g_fakeInput.lastValue[leftY] == 0.0f);
 	}
 
+	void TestDelayHoldsTheStartSpeedThroughTheHook(vr::VRInputComponentHandle_t leftThumbX)
+	{
+		protocol::StickSmoothingConfig config{};
+		config.sticks[0] = {3000, 0, 60, 0, 400};
+		spacecal::stick_hook::SetConfig(config);
+		g_input->UpdateScalarComponent(leftThumbX, 1.0f, 0.0);
+		CHECK(std::fabs(g_fakeInput.lastValue[leftThumbX] - 0.4f) < 1e-6f);
+		SleepMs(100);
+		g_input->UpdateScalarComponent(leftThumbX, 1.0f, 0.0);
+		CHECK(std::fabs(g_fakeInput.lastValue[leftThumbX] - 0.4f) < 1e-6f);
+		SleepMs(450);
+		g_input->UpdateScalarComponent(leftThumbX, 1.0f, 0.0);
+		CHECK(g_fakeInput.lastValue[leftThumbX] > 0.4f);
+		CHECK(g_fakeInput.lastValue[leftThumbX] < 1.0f);
+	}
+
 	void TestPumpKeepsRampingWhenDriverGoesQuiet(vr::VRInputComponentHandle_t rightY)
 	{
 		SetStrengths(0, 50);
@@ -283,6 +299,7 @@ int main()
 
 	const auto leftX = Create(kLeftController, "/input/joystick/x");
 	const auto leftY = Create(kLeftController, "/input/joystick/y");
+	const auto leftThumbX = Create(kLeftController, "/input/thumbstick/x");
 	const auto rightX = Create(kRightController, "/input/thumbstick/x");
 	const auto rightY = Create(kRightController, "/input/thumbstick/y");
 	const auto trigger = Create(kRightController, "/input/trigger/value");
@@ -291,6 +308,7 @@ int main()
 	TestOffForwardsRawValues(leftX);
 	TestEachHandUsesItsOwnSlider(leftX, rightX);
 	TestStrengthSendsTheStartSpeedOnTheFirstSample(leftY);
+	TestDelayHoldsTheStartSpeedThroughTheHook(leftThumbX);
 	TestPumpKeepsRampingWhenDriverGoesQuiet(rightY);
 	TestTurningOffMidRampSnapsToTheStick(rightY);
 	TestOtherAxesAndUnknownDevicesPassThrough(trigger, trackerX);

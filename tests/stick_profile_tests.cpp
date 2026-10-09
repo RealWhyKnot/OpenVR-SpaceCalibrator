@@ -44,14 +44,33 @@ namespace {
 		CHECK(Same(LoadJson("-5"), 0, 0, 100));
 	}
 
+	void TestOldSliderNumberClearsTheDelay()
+	{
+		picojson::value value(60.0);
+		protocol::StickRampConfig stick{0, 0, 100, 0, 500};
+		spacecal::stick_profile::Load(stick, value);
+		CHECK(Same(stick, 2400, 900, 100));
+		CHECK(stick.delayMs == 0);
+	}
+
 	void TestRoundTrip()
 	{
-		const protocol::StickRampConfig saved{3000, 1250, 60, 0};
+		const protocol::StickRampConfig saved{3000, 1250, 60, 0, 350};
 		const std::string text = spacecal::stick_profile::Save(saved).serialize();
 		CHECK(text.find("\"timer_ms\":3000") != std::string::npos);
 		CHECK(text.find("\"stop_ms\":1250") != std::string::npos);
 		CHECK(text.find("\"strength\":60") != std::string::npos);
-		CHECK(Same(LoadJson(text.c_str()), 3000, 1250, 60));
+		CHECK(text.find("\"delay_ms\":350") != std::string::npos);
+		const protocol::StickRampConfig loaded = LoadJson(text.c_str());
+		CHECK(Same(loaded, 3000, 1250, 60));
+		CHECK(loaded.delayMs == 350);
+	}
+
+	void TestDelayIsClampedAndOptional()
+	{
+		CHECK(LoadJson("{\"delay_ms\":99999}").delayMs == 2000);
+		CHECK(LoadJson("{\"delay_ms\":-40}").delayMs == 0);
+		CHECK(LoadJson("{\"timer_ms\":2000}").delayMs == 0);
 	}
 
 	void TestMissingKeysKeepDefaults()
@@ -74,7 +93,9 @@ namespace {
 int main()
 {
 	TestOldSliderNumberKeepsItsFeel();
+	TestOldSliderNumberClearsTheDelay();
 	TestRoundTrip();
+	TestDelayIsClampedAndOptional();
 	TestMissingKeysKeepDefaults();
 	TestOutOfRangeValuesAreClamped();
 

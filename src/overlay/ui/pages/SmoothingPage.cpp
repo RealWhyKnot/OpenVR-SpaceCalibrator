@@ -104,12 +104,11 @@ void DrawSmoothingPanel(ImVec2 panel_size)
 	ImGui::EndGroupPanel();
 }
 
-static bool StickSecondsSlider(const char* id, uint16_t& ms, const char* tooltip)
+static bool StickSecondsSlider(const char* id, uint16_t& ms, double maxSeconds, const char* tooltip)
 {
 	float seconds = ms / 1000.0f;
 	ImGui::SetNextItemWidth(-FLT_MIN);
-	if (ImGui::SliderFloat(id, &seconds, 0.0f, (float)spacecal::stick::kMaxRampSeconds, ms > 0 ? "%.1f s" : "off",
-	                       ImGuiSliderFlags_AlwaysClamp)) {
+	if (ImGui::SliderFloat(id, &seconds, 0.0f, (float)maxSeconds, ms > 0 ? "%.1f s" : "off", ImGuiSliderFlags_AlwaysClamp)) {
 		ms = (uint16_t)(std::lround(seconds * 10.0f) * 100);
 	}
 	const bool changed = ImGui::IsItemDeactivatedAfterEdit();
@@ -144,10 +143,11 @@ void DrawStickSmoothingPanel(ImVec2 panel_size)
 	ImGui::PopStyleColor();
 
 	bool dirty = false;
-	if (ImGui::BeginTable("stick_grid", 4, ImGuiTableFlags_SizingStretchProp)) {
+	if (ImGui::BeginTable("stick_grid", 5, ImGuiTableFlags_SizingStretchProp)) {
 		ImGui::TableSetupColumn("Stick", ImGuiTableColumnFlags_WidthFixed);
 		ImGui::TableSetupColumn("Timer", ImGuiTableColumnFlags_WidthStretch, 1.0f);
 		ImGui::TableSetupColumn("Strength", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		ImGui::TableSetupColumn("Delay", ImGuiTableColumnFlags_WidthStretch, 1.0f);
 		ImGui::TableSetupColumn("Stop", ImGuiTableColumnFlags_WidthStretch, 1.0f);
 		ImGui::TableHeadersRow();
 		for (int hand = 0; hand < 2; ++hand) {
@@ -158,13 +158,22 @@ void DrawStickSmoothingPanel(ImVec2 panel_size)
 			ImGui::TextUnformatted(kStickLabels[hand]);
 			SmoothingTooltip(kStickNotes[hand]);
 			ImGui::TableSetColumnIndex(1);
-			dirty |= StickSecondsSlider("##timer", stick.pushMs, "How long a push takes to build up to full speed.\nOff = no build-up.");
+			dirty |= StickSecondsSlider("##timer", stick.pushMs, spacecal::stick::kMaxRampSeconds,
+			                            "How long a push takes to build up to full speed.\nOff = no build-up.");
 			ImGui::TableSetColumnIndex(2);
 			ImGui::BeginDisabled(stick.pushMs == 0);
 			dirty |= StickStrengthSlider(stick.strength);
 			ImGui::EndDisabled();
 			ImGui::TableSetColumnIndex(3);
-			dirty |= StickSecondsSlider("##stop", stick.releaseMs,
+			ImGui::BeginDisabled(stick.pushMs == 0 || stick.strength == 0);
+			dirty |= StickSecondsSlider("##delay", stick.delayMs, spacecal::stick::kMaxDelaySeconds,
+			                            "How long a push holds the start speed before it builds up.\n"
+			                            "Taps shorter than this stay at the start speed, for small moves while framing a shot.\n"
+			                            "At 100% strength the start speed is zero and a short tap doesn't move at all.\n"
+			                            "Off = builds up right away.");
+			ImGui::EndDisabled();
+			ImGui::TableSetColumnIndex(4);
+			dirty |= StickSecondsSlider("##stop", stick.releaseMs, spacecal::stick::kMaxRampSeconds,
 			                            "How long the stick takes to glide to a stop after you let go.\nOff = stops instantly.");
 			ImGui::PopID();
 		}

@@ -7,6 +7,7 @@ namespace spacecal::stick {
 
 	constexpr int kHandCount = 2;
 	constexpr double kMaxRampSeconds = 6.0;
+	constexpr double kMaxDelaySeconds = 2.0;
 	constexpr double kLegacyFullPushSeconds = 4.0;
 	constexpr double kLegacyFullReleaseSeconds = 1.5;
 	constexpr double kTimeConstantsTo95Percent = 4.7439;
@@ -21,6 +22,7 @@ namespace spacecal::stick {
 		double stage2 = 0.0;
 		double target = 0.0;
 		double velocity = 0.0;
+		double held = 0.0;
 	};
 
 	struct Ramp
@@ -28,16 +30,18 @@ namespace spacecal::stick {
 		double pushSeconds = 0.0;
 		double releaseSeconds = 0.0;
 		double heldBack = 1.0;
+		double delaySeconds = 0.0;
 	};
 
-	inline double ClampRampSeconds(double seconds)
+	inline double ClampSeconds(double seconds, double maxSeconds)
 	{
-		return seconds > 0.0 ? (seconds < kMaxRampSeconds ? seconds : kMaxRampSeconds) : 0.0;
+		return seconds > 0.0 ? (seconds < maxSeconds ? seconds : maxSeconds) : 0.0;
 	}
 
-	inline Ramp RampFromSettings(uint16_t pushMs, uint16_t releaseMs, uint8_t strength)
+	inline Ramp RampFromSettings(uint16_t pushMs, uint16_t releaseMs, uint8_t strength, uint16_t delayMs)
 	{
-		return {ClampRampSeconds(pushMs / 1000.0), ClampRampSeconds(releaseMs / 1000.0), strength > 100 ? 1.0 : strength / 100.0};
+		return {ClampSeconds(pushMs / 1000.0, kMaxRampSeconds), ClampSeconds(releaseMs / 1000.0, kMaxRampSeconds),
+		        strength > 100 ? 1.0 : strength / 100.0, ClampSeconds(delayMs / 1000.0, kMaxDelaySeconds)};
 	}
 
 	inline uint16_t LegacyPushMs(uint8_t strength)
@@ -76,6 +80,7 @@ namespace spacecal::stick {
 		filter.stage1 = filter.target;
 		filter.stage2 = filter.target;
 		filter.velocity = 0.0;
+		filter.held = 0.0;
 	}
 
 	inline bool IsPushing(const AxisFilter& filter)
@@ -102,6 +107,7 @@ namespace spacecal::stick {
 		filter.stage2 = crossing ? 0.0 : filter.target;
 		filter.stage1 = filter.stage2;
 		filter.velocity = 0.0;
+		filter.held = 0.0;
 	}
 
 	inline void ApplyInstantSteps(AxisFilter& filter, const Ramp& ramp)
@@ -120,6 +126,12 @@ namespace spacecal::stick {
 		const double a = 2.0 * (1.0 + 1.0 / kBrakeToAccelRatio) * ramp.heldBack * r / (ramp.pushSeconds * ramp.pushSeconds);
 		const double b = kBrakeToAccelRatio * a;
 		double remaining = dt;
+
+		if (v <= 0.0 && filter.held < ramp.delaySeconds) {
+			const double wait = remaining < ramp.delaySeconds - filter.held ? remaining : ramp.delaySeconds - filter.held;
+			filter.held += wait;
+			remaining -= wait;
+		}
 
 		const double e0 = r - y;
 		if (v * v < 2.0 * b * e0) {
@@ -153,6 +165,7 @@ namespace spacecal::stick {
 	inline void StepRelease(AxisFilter& filter, double dt, double releaseSeconds)
 	{
 		filter.velocity = 0.0;
+		filter.held = 0.0;
 		const bool crossing = filter.target != 0.0 && filter.stage2 != 0.0 && (filter.target > 0.0) != (filter.stage2 > 0.0);
 		const double goal = crossing ? 0.0 : filter.target;
 		const double x = dt * kTimeConstantsTo95Percent / releaseSeconds;

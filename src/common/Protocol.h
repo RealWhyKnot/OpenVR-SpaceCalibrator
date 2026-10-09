@@ -141,6 +141,7 @@ namespace protocol {
 		uint16_t releaseMs;
 		uint8_t strength;
 		uint8_t _pad;
+		uint16_t delayMs;
 	};
 
 	struct StickSmoothingConfig
