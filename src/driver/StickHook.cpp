@@ -149,13 +149,13 @@ namespace spacecal::stick_hook {
 			AxisState& state = it->second;
 			state.iface = iface;
 			state.lastDriverUpdateQpc = now;
-			const double ramp = state.hand < 0 ? 0.0 : math::RampSecondsFromStrength(StrengthFor(strengths, state.hand));
+			const math::Ramp ramp = state.hand < 0 ? math::Ramp{} : math::RampFromStrength(StrengthFor(strengths, state.hand));
 			const double dt = SecondsBetween(state.lastStepQpc, now);
 			state.lastStepQpc = now;
 			if (!state.loggedFirstUpdate) {
 				state.loggedFirstUpdate = true;
-				LOG("[stick] first update handle=%llu hand=%s value=%.3f ramp=%.2fs", (unsigned long long)handle, HandName(state.hand),
-				    value, ramp);
+				LOG("[stick] first update handle=%llu hand=%s value=%.3f push=%.2fs release=%.2fs", (unsigned long long)handle,
+				    HandName(state.hand), value, ramp.pushSeconds, ramp.releaseSeconds);
 			}
 			return (float)math::OnDriverSample(state.filter, value, dt, ramp);
 		}
@@ -199,7 +199,7 @@ namespace spacecal::stick_hook {
 					if (!state.iface || !math::NeedsPump(state.filter, SecondsBetween(state.lastDriverUpdateQpc, now))) {
 						continue;
 					}
-					const double ramp = math::RampSecondsFromStrength(StrengthFor(strengths, state.hand));
+					const math::Ramp ramp = math::RampFromStrength(StrengthFor(strengths, state.hand));
 					const double dt = SecondsBetween(state.lastStepQpc, now);
 					state.lastStepQpc = now;
 					if (!state.loggedFirstPump) {

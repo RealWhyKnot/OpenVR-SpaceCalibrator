@@ -194,7 +194,7 @@ namespace {
 
 		float previous = g_fakeInput.lastValue[rightY];
 		int pumped = 0;
-		for (int i = 0; i < 100; ++i) {
+		for (int i = 0; i < 140; ++i) {
 			SleepMs(25);
 			spacecal::stick_hook::Pump();
 			const float now = g_fakeInput.lastValue[rightY];

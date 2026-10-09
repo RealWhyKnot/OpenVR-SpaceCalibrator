@@ -6,8 +6,11 @@
 namespace spacecal::stick {
 
 	constexpr int kHandCount = 2;
-	constexpr double kFullStrengthRampSeconds = 1.5;
+	constexpr double kFullStrengthPushSeconds = 4.0;
+	constexpr double kFullStrengthReleaseSeconds = 1.5;
 	constexpr double kTimeConstantsTo95Percent = 4.7439;
+	constexpr double kBrakeToAccelRatio = 4.0;
+	constexpr double kReverseHandoff = 0.02;
 	constexpr double kSettleEpsilon = 1e-4;
 	constexpr double kPumpAfterIdleSeconds = 0.02;
 
@@ -16,48 +19,120 @@ namespace spacecal::stick {
 		double stage1 = 0.0;
 		double stage2 = 0.0;
 		double target = 0.0;
+		double velocity = 0.0;
 	};
 
-	inline double RampSecondsFromStrength(uint8_t strength)
+	struct Ramp
+	{
+		double pushSeconds = 0.0;
+		double releaseSeconds = 0.0;
+	};
+
+	inline Ramp RampFromStrength(uint8_t strength)
 	{
 		const double s = strength > 100 ? 1.0 : strength / 100.0;
-		return kFullStrengthRampSeconds * s;
+		return {kFullStrengthPushSeconds * s, kFullStrengthReleaseSeconds * s};
+	}
+
+	inline bool IsOff(const Ramp& ramp)
+	{
+		return !(ramp.pushSeconds > 0.0) || !(ramp.releaseSeconds > 0.0);
 	}
 
 	inline bool IsSettled(const AxisFilter& filter)
 	{
-		return std::fabs(filter.stage1 - filter.target) < kSettleEpsilon && std::fabs(filter.stage2 - filter.target) < kSettleEpsilon;
+		return std::fabs(filter.stage1 - filter.target) < kSettleEpsilon && std::fabs(filter.stage2 - filter.target) < kSettleEpsilon &&
+		       std::fabs(filter.velocity) < kSettleEpsilon;
 	}
 
 	inline void Snap(AxisFilter& filter)
 	{
 		filter.stage1 = filter.target;
 		filter.stage2 = filter.target;
+		filter.velocity = 0.0;
 	}
 
-	inline double Advance(AxisFilter& filter, double dt, double rampSeconds)
+	inline bool IsPushing(const AxisFilter& filter)
 	{
-		if (rampSeconds <= 0.0 || !std::isfinite(dt)) {
+		if (filter.target == 0.0) return false;
+		const double along = filter.target > 0.0 ? filter.stage2 : -filter.stage2;
+		return along >= -kReverseHandoff && along < std::fabs(filter.target);
+	}
+
+	inline void StepPush(AxisFilter& filter, double dt, double pushSeconds)
+	{
+		const double dir = filter.target > 0.0 ? 1.0 : -1.0;
+		const double r = std::fabs(filter.target);
+		double y = dir * filter.stage2;
+		double v = dir * filter.velocity;
+		if (v < 0.0) v = 0.0;
+		const double a = 2.0 * (1.0 + 1.0 / kBrakeToAccelRatio) * r / (pushSeconds * pushSeconds);
+		const double b = kBrakeToAccelRatio * a;
+		double remaining = dt;
+
+		const double e0 = r - y;
+		if (v * v < 2.0 * b * e0) {
+			const double disc = v * v - a * (v * v - 2.0 * b * e0) / (a + b);
+			const double toBrake = (std::sqrt(disc) - v) / a;
+			const double t = remaining < toBrake ? remaining : toBrake;
+			y += v * t + 0.5 * a * t * t;
+			v += a * t;
+			remaining -= t;
+		}
+
+		if (remaining > 0.0) {
+			const double e = r - y;
+			if (e <= 0.0 || v <= 0.0 || remaining >= 2.0 * e / v) {
+				y = r;
+				v = 0.0;
+			}
+			else {
+				const double d = v * v / (2.0 * e);
+				y += v * remaining - 0.5 * d * remaining * remaining;
+				v -= d * remaining;
+			}
+		}
+
+		if (y > r) y = r;
+		filter.stage2 = dir * y;
+		filter.stage1 = filter.stage2;
+		filter.velocity = dir * v;
+	}
+
+	inline void StepRelease(AxisFilter& filter, double dt, double releaseSeconds)
+	{
+		filter.velocity = 0.0;
+		const bool crossing = filter.target != 0.0 && filter.stage2 != 0.0 && (filter.target > 0.0) != (filter.stage2 > 0.0);
+		const double goal = crossing ? 0.0 : filter.target;
+		const double x = dt * kTimeConstantsTo95Percent / releaseSeconds;
+		const double decay = std::exp(-x);
+		const double e1 = filter.stage1 - goal;
+		const double e2 = filter.stage2 - goal;
+		filter.stage2 = goal + (e2 + e1 * x) * decay;
+		filter.stage1 = goal + e1 * decay;
+	}
+
+	inline double Advance(AxisFilter& filter, double dt, const Ramp& ramp)
+	{
+		if (IsOff(ramp) || !std::isfinite(dt)) {
 			Snap(filter);
 			return filter.stage2;
 		}
 		if (dt > 0.0) {
-			const double x = dt * kTimeConstantsTo95Percent / rampSeconds;
-			const double decay = std::exp(-x);
-			const double e1 = filter.stage1 - filter.target;
-			const double e2 = filter.stage2 - filter.target;
-			filter.stage2 = filter.target + (e2 + e1 * x) * decay;
-			filter.stage1 = filter.target + e1 * decay;
+			if (IsPushing(filter))
+				StepPush(filter, dt, ramp.pushSeconds);
+			else
+				StepRelease(filter, dt, ramp.releaseSeconds);
 		}
 		if (IsSettled(filter)) Snap(filter);
 		return filter.stage2;
 	}
 
-	inline double OnDriverSample(AxisFilter& filter, double value, double dtSinceLastStep, double rampSeconds)
+	inline double OnDriverSample(AxisFilter& filter, double value, double dtSinceLastStep, const Ramp& ramp)
 	{
-		Advance(filter, dtSinceLastStep, rampSeconds);
+		Advance(filter, dtSinceLastStep, ramp);
 		filter.target = value;
-		if (rampSeconds <= 0.0) Snap(filter);
+		if (IsOff(ramp)) Snap(filter);
 		return filter.stage2;
 	}
 

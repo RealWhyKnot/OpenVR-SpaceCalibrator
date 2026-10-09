@@ -109,7 +109,7 @@ static bool StickRampSlider(const char* label, uint8_t& strength, const char* to
 	int value = strength;
 	char format[32] = "off";
 	if (value > 0) {
-		snprintf(format, sizeof format, "%%d%%%% (%.2f s)", spacecal::stick::RampSecondsFromStrength((uint8_t)value));
+		snprintf(format, sizeof format, "%%d%%%% (%.1f s)", spacecal::stick::RampFromStrength((uint8_t)value).pushSeconds);
 	}
 	ImGui::SliderInt(label, &value, 0, 100, format, ImGuiSliderFlags_AlwaysClamp);
 	const bool changed = ImGui::IsItemDeactivatedAfterEdit();
@@ -128,11 +128,13 @@ void DrawStickSmoothingPanel(ImVec2 panel_size)
 
 	bool dirty = StickRampSlider("Left stick (movement)", CalCtx.stickSmoothing.strength[0],
 	                             "How gradually the left stick speeds up when pushed and slows down when let go.\n"
-	                             "0 = off. 100% takes about 1.5 s to reach full speed.\n"
+	                             "Starts slow and speeds up faster the longer you hold it.\n"
+	                             "0 = off. 100% takes 4 s to reach full speed and about 1.5 s to stop.\n"
 	                             "Applies to every app, including SteamVR menus.");
 	dirty |= StickRampSlider("Right stick (turning)", CalCtx.stickSmoothing.strength[1],
 	                         "How gradually the right stick speeds up when pushed and slows down when let go.\n"
-	                         "0 = off. 100% takes about 1.5 s to reach full speed.\n"
+	                         "Starts slow and speeds up faster the longer you hold it.\n"
+	                         "0 = off. 100% takes 4 s to reach full speed and about 1.5 s to stop.\n"
 	                         "With snap turning, each snap fires later instead of turning more smoothly.");
 
 	if (dirty) {
