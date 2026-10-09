@@ -87,8 +87,14 @@ jobs:
       - name: Test
         shell: pwsh
         run: |
-          ctest --test-dir build -C Release --output-on-failure
+          ctest --test-dir build -C Release --output-on-failure -LE perf
           if ($LASTEXITCODE -ne 0) { throw "tests failed ($LASTEXITCODE)" }
+
+      - name: Performance and memory tests
+        shell: pwsh
+        run: |
+          ctest --test-dir build -C Release -L perf -V
+          if ($LASTEXITCODE -ne 0) { throw "performance tests failed ($LASTEXITCODE)" }
 
       - name: Stage package
         shell: pwsh
