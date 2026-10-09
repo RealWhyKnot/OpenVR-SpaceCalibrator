@@ -349,7 +349,7 @@ namespace {
 			update(i);
 		perf::Budget("stick hook: off (ns/axis update)", 1e9 * perf::BestSecondsPerOp(7, 50000, update), 1000.0, "ns");
 
-		protocol::StickSmoothingConfig on{{60, 60}};
+		protocol::StickSmoothingConfig on{{{2400, 900, 100, 0}, {2400, 900, 100, 0}}};
 		spacecal::stick_hook::SetConfig(on);
 		for (int i = 0; i < 100; ++i)
 			update(i);
@@ -372,7 +372,7 @@ namespace {
 		protocol::SmoothingParams smoothing{40};
 		g_provider.HandleSetSmoothingParams(smoothing);
 		g_provider.SetFingerSmoothingConfig(FingerConfig(30));
-		protocol::StickSmoothingConfig sticks{{20, 0}};
+		protocol::StickSmoothingConfig sticks{{{800, 300, 100, 0}, {}}};
 		spacecal::stick_hook::SetConfig(sticks);
 		for (uint32_t id = 1; id <= kDevices; ++id)
 			g_provider.SetDeviceTransform(CalibratedTransform(id, true));

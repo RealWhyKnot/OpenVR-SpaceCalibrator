@@ -6,8 +6,9 @@
 namespace spacecal::stick {
 
 	constexpr int kHandCount = 2;
-	constexpr double kFullStrengthPushSeconds = 4.0;
-	constexpr double kFullStrengthReleaseSeconds = 1.5;
+	constexpr double kMaxRampSeconds = 6.0;
+	constexpr double kLegacyFullPushSeconds = 4.0;
+	constexpr double kLegacyFullReleaseSeconds = 1.5;
 	constexpr double kTimeConstantsTo95Percent = 4.7439;
 	constexpr double kBrakeToAccelRatio = 4.0;
 	constexpr double kReverseHandoff = 0.02;
@@ -26,17 +27,42 @@ namespace spacecal::stick {
 	{
 		double pushSeconds = 0.0;
 		double releaseSeconds = 0.0;
+		double heldBack = 1.0;
 	};
 
-	inline Ramp RampFromStrength(uint8_t strength)
+	inline double ClampRampSeconds(double seconds)
 	{
-		const double s = strength > 100 ? 1.0 : strength / 100.0;
-		return {kFullStrengthPushSeconds * s, kFullStrengthReleaseSeconds * s};
+		return seconds > 0.0 ? (seconds < kMaxRampSeconds ? seconds : kMaxRampSeconds) : 0.0;
+	}
+
+	inline Ramp RampFromSettings(uint16_t pushMs, uint16_t releaseMs, uint8_t strength)
+	{
+		return {ClampRampSeconds(pushMs / 1000.0), ClampRampSeconds(releaseMs / 1000.0), strength > 100 ? 1.0 : strength / 100.0};
+	}
+
+	inline uint16_t LegacyPushMs(uint8_t strength)
+	{
+		return (uint16_t)std::lround(kLegacyFullPushSeconds * 1000.0 * (strength > 100 ? 100 : strength) / 100.0);
+	}
+
+	inline uint16_t LegacyReleaseMs(uint8_t strength)
+	{
+		return (uint16_t)std::lround(kLegacyFullReleaseSeconds * 1000.0 * (strength > 100 ? 100 : strength) / 100.0);
+	}
+
+	inline bool PushIsInstant(const Ramp& ramp)
+	{
+		return !(ramp.pushSeconds > 0.0) || !(ramp.heldBack > 0.0);
+	}
+
+	inline bool ReleaseIsInstant(const Ramp& ramp)
+	{
+		return !(ramp.releaseSeconds > 0.0);
 	}
 
 	inline bool IsOff(const Ramp& ramp)
 	{
-		return !(ramp.pushSeconds > 0.0) || !(ramp.releaseSeconds > 0.0);
+		return PushIsInstant(ramp) && ReleaseIsInstant(ramp);
 	}
 
 	inline bool IsSettled(const AxisFilter& filter)
@@ -59,14 +85,39 @@ namespace spacecal::stick {
 		return along >= -kReverseHandoff && along < std::fabs(filter.target);
 	}
 
-	inline void StepPush(AxisFilter& filter, double dt, double pushSeconds)
+	inline void LiftToPushFloor(AxisFilter& filter, const Ramp& ramp)
+	{
+		const double dir = filter.target > 0.0 ? 1.0 : -1.0;
+		const double r = std::fabs(filter.target);
+		const double floor = PushIsInstant(ramp) ? r : (1.0 - ramp.heldBack) * r;
+		if (!(floor > 0.0) || dir * filter.stage2 >= floor) return;
+		filter.stage2 = dir * floor;
+		filter.stage1 = filter.stage2;
+		if (floor >= r) filter.velocity = 0.0;
+	}
+
+	inline void DropToReleaseGoal(AxisFilter& filter)
+	{
+		const bool crossing = filter.target != 0.0 && filter.stage2 != 0.0 && (filter.target > 0.0) != (filter.stage2 > 0.0);
+		filter.stage2 = crossing ? 0.0 : filter.target;
+		filter.stage1 = filter.stage2;
+		filter.velocity = 0.0;
+	}
+
+	inline void ApplyInstantSteps(AxisFilter& filter, const Ramp& ramp)
+	{
+		if (!IsPushing(filter) && ReleaseIsInstant(ramp)) DropToReleaseGoal(filter);
+		if (IsPushing(filter)) LiftToPushFloor(filter, ramp);
+	}
+
+	inline void StepPush(AxisFilter& filter, double dt, const Ramp& ramp)
 	{
 		const double dir = filter.target > 0.0 ? 1.0 : -1.0;
 		const double r = std::fabs(filter.target);
 		double y = dir * filter.stage2;
 		double v = dir * filter.velocity;
 		if (v < 0.0) v = 0.0;
-		const double a = 2.0 * (1.0 + 1.0 / kBrakeToAccelRatio) * r / (pushSeconds * pushSeconds);
+		const double a = 2.0 * (1.0 + 1.0 / kBrakeToAccelRatio) * ramp.heldBack * r / (ramp.pushSeconds * ramp.pushSeconds);
 		const double b = kBrakeToAccelRatio * a;
 		double remaining = dt;
 
@@ -118,10 +169,11 @@ namespace spacecal::stick {
 			Snap(filter);
 			return filter.stage2;
 		}
+		ApplyInstantSteps(filter, ramp);
 		if (dt > 0.0) {
 			if (IsPushing(filter))
-				StepPush(filter, dt, ramp.pushSeconds);
-			else
+				StepPush(filter, dt, ramp);
+			else if (!ReleaseIsInstant(ramp))
 				StepRelease(filter, dt, ramp.releaseSeconds);
 		}
 		if (IsSettled(filter)) Snap(filter);
@@ -132,7 +184,10 @@ namespace spacecal::stick {
 	{
 		Advance(filter, dtSinceLastStep, ramp);
 		filter.target = value;
-		if (IsOff(ramp)) Snap(filter);
+		if (IsOff(ramp))
+			Snap(filter);
+		else
+			ApplyInstantSteps(filter, ramp);
 		return filter.stage2;
 	}
 

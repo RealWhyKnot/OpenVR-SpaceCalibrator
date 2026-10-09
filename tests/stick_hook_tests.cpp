@@ -1,6 +1,7 @@
 #include "Hooking.h"
 #include "Logging.h"
 #include "StickHook.h"
+#include "StickSmoothingMath.h"
 
 #include <MinHook.h>
 
@@ -148,8 +149,8 @@ namespace {
 	void SetStrengths(uint8_t left, uint8_t right)
 	{
 		protocol::StickSmoothingConfig config{};
-		config.strength[0] = left;
-		config.strength[1] = right;
+		config.sticks[0] = {spacecal::stick::LegacyPushMs(left), spacecal::stick::LegacyReleaseMs(left), 100, 0};
+		config.sticks[1] = {spacecal::stick::LegacyPushMs(right), spacecal::stick::LegacyReleaseMs(right), 100, 0};
 		spacecal::stick_hook::SetConfig(config);
 	}
 
@@ -181,6 +182,21 @@ namespace {
 		const float eased = g_fakeInput.lastValue[rightX];
 		CHECK(eased > 0.0f);
 		CHECK(eased < 0.5f);
+	}
+
+	void TestStrengthSendsTheStartSpeedOnTheFirstSample(vr::VRInputComponentHandle_t leftY)
+	{
+		protocol::StickSmoothingConfig config{};
+		config.sticks[0] = {3000, 0, 60, 0};
+		spacecal::stick_hook::SetConfig(config);
+		g_input->UpdateScalarComponent(leftY, -1.0f, 0.0);
+		CHECK(std::fabs(g_fakeInput.lastValue[leftY] + 0.4f) < 1e-6f);
+		SleepMs(60);
+		g_input->UpdateScalarComponent(leftY, -1.0f, 0.0);
+		CHECK(g_fakeInput.lastValue[leftY] < -0.4f);
+		CHECK(g_fakeInput.lastValue[leftY] > -0.5f);
+		g_input->UpdateScalarComponent(leftY, 0.0f, 0.0);
+		CHECK(g_fakeInput.lastValue[leftY] == 0.0f);
 	}
 
 	void TestPumpKeepsRampingWhenDriverGoesQuiet(vr::VRInputComponentHandle_t rightY)
@@ -266,6 +282,7 @@ int main()
 	spacecal::stick_hook::TryInstallPublicHooks(g_input);
 
 	const auto leftX = Create(kLeftController, "/input/joystick/x");
+	const auto leftY = Create(kLeftController, "/input/joystick/y");
 	const auto rightX = Create(kRightController, "/input/thumbstick/x");
 	const auto rightY = Create(kRightController, "/input/thumbstick/y");
 	const auto trigger = Create(kRightController, "/input/trigger/value");
@@ -273,6 +290,7 @@ int main()
 
 	TestOffForwardsRawValues(leftX);
 	TestEachHandUsesItsOwnSlider(leftX, rightX);
+	TestStrengthSendsTheStartSpeedOnTheFirstSample(leftY);
 	TestPumpKeepsRampingWhenDriverGoesQuiet(rightY);
 	TestTurningOffMidRampSnapsToTheStick(rightY);
 	TestOtherAxesAndUnknownDevicesPassThrough(trigger, trackerX);

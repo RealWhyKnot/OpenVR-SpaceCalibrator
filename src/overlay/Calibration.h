@@ -123,6 +123,9 @@ struct CalibrationContext
 		fingerSmoothing = protocol::FingerSmoothingConfig{};
 		fingerSmoothing.fingerMask = protocol::kAllFingersMask;
 		stickSmoothing = protocol::StickSmoothingConfig{};
+		for (auto& stick : stickSmoothing.sticks) {
+			stick.strength = 100;
+		}
 	}
 
 	struct Chaperone

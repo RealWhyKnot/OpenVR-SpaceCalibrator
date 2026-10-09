@@ -104,38 +104,72 @@ void DrawSmoothingPanel(ImVec2 panel_size)
 	ImGui::EndGroupPanel();
 }
 
-static bool StickRampSlider(const char* label, uint8_t& strength, const char* tooltip)
+static bool StickSecondsSlider(const char* id, uint16_t& ms, const char* tooltip)
 {
-	int value = strength;
-	char format[32] = "off";
-	if (value > 0) {
-		snprintf(format, sizeof format, "%%d%%%% (%.1f s)", spacecal::stick::RampFromStrength((uint8_t)value).pushSeconds);
+	float seconds = ms / 1000.0f;
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	if (ImGui::SliderFloat(id, &seconds, 0.0f, (float)spacecal::stick::kMaxRampSeconds, ms > 0 ? "%.1f s" : "off",
+	                       ImGuiSliderFlags_AlwaysClamp)) {
+		ms = (uint16_t)(std::lround(seconds * 10.0f) * 100);
 	}
-	ImGui::SliderInt(label, &value, 0, 100, format, ImGuiSliderFlags_AlwaysClamp);
 	const bool changed = ImGui::IsItemDeactivatedAfterEdit();
 	SmoothingTooltip(tooltip);
-	strength = (uint8_t)value;
+	return changed;
+}
+
+static bool StickStrengthSlider(uint8_t& strength)
+{
+	int value = strength;
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	if (ImGui::SliderInt("##strength", &value, 0, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp)) {
+		strength = (uint8_t)value;
+	}
+	const bool changed = ImGui::IsItemDeactivatedAfterEdit();
+	SmoothingTooltip("How slow a push starts.\n"
+	                 "100% starts from a standstill. 60% starts at 40% speed and builds the rest over the timer.\n"
+	                 "Lower values get past in-game deadzones sooner.");
 	return changed;
 }
 
 void DrawStickSmoothingPanel(ImVec2 panel_size)
 {
+	static const char* kStickLabels[2] = {"Left stick (movement)", "Right stick (turning)"};
+	static const char* kStickNotes[2] = {"Applies to every app, including SteamVR menus.",
+	                                     "With snap turning, each snap fires later instead of turning more smoothly."};
+
 	ImGui::BeginGroupPanel("Joystick acceleration", panel_size);
 
 	ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 	ImGui::TextWrapped("Speed builds up and winds down gradually instead of jumping. Useful for filming.");
 	ImGui::PopStyleColor();
 
-	bool dirty = StickRampSlider("Left stick (movement)", CalCtx.stickSmoothing.strength[0],
-	                             "How gradually the left stick speeds up when pushed and slows down when let go.\n"
-	                             "Starts slow and speeds up faster the longer you hold it.\n"
-	                             "0 = off. 100% takes 4 s to reach full speed and about 1.5 s to stop.\n"
-	                             "Applies to every app, including SteamVR menus.");
-	dirty |= StickRampSlider("Right stick (turning)", CalCtx.stickSmoothing.strength[1],
-	                         "How gradually the right stick speeds up when pushed and slows down when let go.\n"
-	                         "Starts slow and speeds up faster the longer you hold it.\n"
-	                         "0 = off. 100% takes 4 s to reach full speed and about 1.5 s to stop.\n"
-	                         "With snap turning, each snap fires later instead of turning more smoothly.");
+	bool dirty = false;
+	if (ImGui::BeginTable("stick_grid", 4, ImGuiTableFlags_SizingStretchProp)) {
+		ImGui::TableSetupColumn("Stick", ImGuiTableColumnFlags_WidthFixed);
+		ImGui::TableSetupColumn("Timer", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		ImGui::TableSetupColumn("Strength", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		ImGui::TableSetupColumn("Stop", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		ImGui::TableHeadersRow();
+		for (int hand = 0; hand < 2; ++hand) {
+			protocol::StickRampConfig& stick = CalCtx.stickSmoothing.sticks[hand];
+			ImGui::PushID(hand);
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::TextUnformatted(kStickLabels[hand]);
+			SmoothingTooltip(kStickNotes[hand]);
+			ImGui::TableSetColumnIndex(1);
+			dirty |= StickSecondsSlider("##timer", stick.pushMs, "How long a push takes to build up to full speed.\nOff = no build-up.");
+			ImGui::TableSetColumnIndex(2);
+			ImGui::BeginDisabled(stick.pushMs == 0);
+			dirty |= StickStrengthSlider(stick.strength);
+			ImGui::EndDisabled();
+			ImGui::TableSetColumnIndex(3);
+			dirty |= StickSecondsSlider("##stop", stick.releaseMs,
+			                            "How long the stick takes to glide to a stop after you let go.\nOff = stops instantly.");
+			ImGui::PopID();
+		}
+		ImGui::EndTable();
+	}
 
 	if (dirty) {
 		ApplySmoothingSettings();

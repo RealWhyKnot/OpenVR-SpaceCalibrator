@@ -54,7 +54,8 @@ namespace spacecal::stick_hook {
 		Hook<UpdateScalarFn> UpdateScalarHook("IVRDriverInput::UpdateScalarComponent");
 
 		std::atomic<bool> g_armed{false};
-		std::atomic<uint16_t> g_strengthPacked{0};
+		protocol::StickSmoothingConfig g_config{};
+		math::Ramp g_ramps[math::kHandCount]{math::Ramp{}, math::Ramp{}};
 		std::atomic<bool> g_faulted{false};
 		std::unordered_map<vr::VRInputComponentHandle_t, AxisState> g_axes;
 		std::mutex g_axesMutex;
@@ -67,9 +68,9 @@ namespace spacecal::stick_hook {
 			return hand == 0 ? "left" : (hand == 1 ? "right" : "unknown");
 		}
 
-		uint8_t StrengthFor(uint16_t packed, int hand)
+		math::Ramp RampFor(int hand)
 		{
-			return static_cast<uint8_t>(hand == 0 ? (packed & 0xFF) : (packed >> 8));
+			return hand < 0 ? math::Ramp{} : g_ramps[hand];
 		}
 
 		int64_t NowQpc()
@@ -140,7 +141,6 @@ namespace spacecal::stick_hook {
 		float EasedValue(vr::IVRDriverInput* iface, vr::VRInputComponentHandle_t handle, float value)
 		{
 			if (!g_armed.load(std::memory_order_acquire)) return value;
-			const uint16_t strengths = g_strengthPacked.load(std::memory_order_acquire);
 			const int64_t now = NowQpc();
 
 			std::lock_guard<std::mutex> lk(g_axesMutex);
@@ -149,13 +149,13 @@ namespace spacecal::stick_hook {
 			AxisState& state = it->second;
 			state.iface = iface;
 			state.lastDriverUpdateQpc = now;
-			const math::Ramp ramp = state.hand < 0 ? math::Ramp{} : math::RampFromStrength(StrengthFor(strengths, state.hand));
+			const math::Ramp ramp = RampFor(state.hand);
 			const double dt = SecondsBetween(state.lastStepQpc, now);
 			state.lastStepQpc = now;
 			if (!state.loggedFirstUpdate) {
 				state.loggedFirstUpdate = true;
-				LOG("[stick] first update handle=%llu hand=%s value=%.3f push=%.2fs release=%.2fs", (unsigned long long)handle,
-				    HandName(state.hand), value, ramp.pushSeconds, ramp.releaseSeconds);
+				LOG("[stick] first update handle=%llu hand=%s value=%.3f push=%.2fs held_back=%.2f release=%.2fs",
+				    (unsigned long long)handle, HandName(state.hand), value, ramp.pushSeconds, ramp.heldBack, ramp.releaseSeconds);
 			}
 			return (float)math::OnDriverSample(state.filter, value, dt, ramp);
 		}
@@ -182,7 +182,6 @@ namespace spacecal::stick_hook {
 
 		void PumpImpl()
 		{
-			const uint16_t strengths = g_strengthPacked.load(std::memory_order_acquire);
 			const int64_t now = NowQpc();
 			g_pumpUpdates.clear();
 			g_pumpRoleQueries.clear();
@@ -199,7 +198,7 @@ namespace spacecal::stick_hook {
 					if (!state.iface || !math::NeedsPump(state.filter, SecondsBetween(state.lastDriverUpdateQpc, now))) {
 						continue;
 					}
-					const math::Ramp ramp = math::RampFromStrength(StrengthFor(strengths, state.hand));
+					const math::Ramp ramp = RampFor(state.hand);
 					const double dt = SecondsBetween(state.lastStepQpc, now);
 					state.lastStepQpc = now;
 					if (!state.loggedFirstPump) {
@@ -246,11 +245,23 @@ namespace spacecal::stick_hook {
 
 	void SetConfig(const protocol::StickSmoothingConfig& config)
 	{
-		const uint8_t left = config.strength[0] > 100 ? 100 : config.strength[0];
-		const uint8_t right = config.strength[1] > 100 ? 100 : config.strength[1];
-		const uint16_t packed = static_cast<uint16_t>(left | (right << 8));
-		if (g_strengthPacked.exchange(packed, std::memory_order_acq_rel) != packed) {
-			LOG("[stick] joystick acceleration left=%u%% right=%u%%", (unsigned)left, (unsigned)right);
+		math::Ramp ramps[math::kHandCount];
+		bool changed = false;
+		{
+			std::lock_guard<std::mutex> lk(g_axesMutex);
+			for (int hand = 0; hand < math::kHandCount; ++hand) {
+				const protocol::StickRampConfig& stick = config.sticks[hand];
+				const protocol::StickRampConfig& previous = g_config.sticks[hand];
+				changed |= stick.pushMs != previous.pushMs || stick.releaseMs != previous.releaseMs || stick.strength != previous.strength;
+				g_ramps[hand] = math::RampFromSettings(stick.pushMs, stick.releaseMs, stick.strength);
+				ramps[hand] = g_ramps[hand];
+			}
+			g_config = config;
+		}
+		if (changed) {
+			LOG("[stick] joystick acceleration left: timer=%.2fs strength=%.0f%% stop=%.2fs, right: timer=%.2fs strength=%.0f%% stop=%.2fs",
+			    ramps[0].pushSeconds, ramps[0].heldBack * 100.0, ramps[0].releaseSeconds, ramps[1].pushSeconds, ramps[1].heldBack * 100.0,
+			    ramps[1].releaseSeconds);
 		}
 	}
 

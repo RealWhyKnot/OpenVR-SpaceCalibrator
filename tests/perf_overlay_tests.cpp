@@ -479,11 +479,14 @@ namespace {
 		PERF_CHECK(cache.ShouldSend(fingers));
 
 		protocol::Request sticks(protocol::RequestSetStickSmoothing);
-		sticks.setStickSmoothing = protocol::StickSmoothingConfig{{10, 0}};
+		sticks.setStickSmoothing = protocol::StickSmoothingConfig{{{400, 150, 100, 0}, {}}};
 		PERF_CHECK(cache.ShouldSend(sticks));
 		PERF_CHECK(!cache.ShouldSend(sticks));
-		sticks.setStickSmoothing.strength[1] = 5;
+		sticks.setStickSmoothing.sticks[1].strength = 5;
 		PERF_CHECK(cache.ShouldSend(sticks));
+		sticks.setStickSmoothing.sticks[0].releaseMs = 900;
+		PERF_CHECK(cache.ShouldSend(sticks));
+		PERF_CHECK(!cache.ShouldSend(sticks));
 
 		protocol::Request stats(protocol::RequestGetSmoothingStats);
 		PERF_CHECK(cache.ShouldSend(stats));

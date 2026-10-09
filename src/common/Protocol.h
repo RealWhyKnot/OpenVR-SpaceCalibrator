@@ -92,7 +92,7 @@ namespace vr {
 #endif
 
 namespace protocol {
-	const uint32_t Version = 8;
+	const uint32_t Version = 9;
 
 	enum RequestType
 	{
@@ -135,9 +135,17 @@ namespace protocol {
 		uint16_t fingerMask;
 	};
 
+	struct StickRampConfig
+	{
+		uint16_t pushMs;
+		uint16_t releaseMs;
+		uint8_t strength;
+		uint8_t _pad;
+	};
+
 	struct StickSmoothingConfig
 	{
-		uint8_t strength[2];
+		StickRampConfig sticks[2];
 	};
 
 	struct SmoothingStatsRequest

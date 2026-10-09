@@ -54,6 +54,12 @@ target_include_directories(stick_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/common)
 set_target_properties(stick_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
 add_test(NAME stick COMMAND stick_tests)
 
+add_executable(stick_profile_tests stick_profile_tests.cpp)
+target_include_directories(stick_profile_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/overlay ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/lib ${CMAKE_SOURCE_DIR}/lib/openvr/headers)
+target_compile_definitions(stick_profile_tests PRIVATE NOMINMAX)
+set_target_properties(stick_profile_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
+add_test(NAME stick_profile COMMAND stick_profile_tests)
+
 add_executable(stick_hook_tests stick_hook_tests.cpp ${CMAKE_SOURCE_DIR}/src/driver/StickHook.cpp ${CMAKE_SOURCE_DIR}/src/driver/Hooking.cpp ${CMAKE_SOURCE_DIR}/src/driver/Logging.cpp)
 target_include_directories(stick_hook_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/driver ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/lib/openvr/headers ${CMAKE_SOURCE_DIR}/lib/minhook/include)
 target_link_libraries(stick_hook_tests PRIVATE minhook)

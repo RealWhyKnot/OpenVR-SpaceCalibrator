@@ -31,8 +31,7 @@ namespace spacecal {
 				       std::memcmp(a.setFingerSmoothing.perFinger, b.setFingerSmoothing.perFinger, sizeof a.setFingerSmoothing.perFinger) ==
 				           0;
 			case protocol::RequestSetStickSmoothing:
-				return a.setStickSmoothing.strength[0] == b.setStickSmoothing.strength[0] &&
-				       a.setStickSmoothing.strength[1] == b.setStickSmoothing.strength[1];
+				return std::memcmp(&a.setStickSmoothing, &b.setStickSmoothing, sizeof a.setStickSmoothing) == 0;
 			default: return false;
 		}
 	}

@@ -2,6 +2,7 @@
 #include "Configuration.h"
 #include "basestations/BaseStationsSettings.h"
 #include "WriteFilter.h"
+#include "StickProfile.h"
 
 #include <picojson.h>
 
@@ -148,12 +149,8 @@ static void LoadSmoothingParams(CalibrationContext& ctx, picojson::value& value)
 
 	if (obj["sticks"].is<picojson::object>()) {
 		auto sticks = obj["sticks"].get<picojson::object>();
-		if (sticks["left"].is<double>()) {
-			ctx.stickSmoothing.strength[0] = ClampStrength(sticks["left"].get<double>());
-		}
-		if (sticks["right"].is<double>()) {
-			ctx.stickSmoothing.strength[1] = ClampStrength(sticks["right"].get<double>());
-		}
+		spacecal::stick_profile::Load(ctx.stickSmoothing.sticks[0], sticks["left"]);
+		spacecal::stick_profile::Load(ctx.stickSmoothing.sticks[1], sticks["right"]);
 	}
 }
 
@@ -178,10 +175,8 @@ static picojson::object SaveSmoothingParams(CalibrationContext& ctx)
 	obj["fingers"].set<picojson::object>(fingers);
 
 	picojson::object sticks;
-	const double leftStick = ctx.stickSmoothing.strength[0];
-	sticks["left"].set<double>(leftStick);
-	const double rightStick = ctx.stickSmoothing.strength[1];
-	sticks["right"].set<double>(rightStick);
+	sticks["left"] = spacecal::stick_profile::Save(ctx.stickSmoothing.sticks[0]);
+	sticks["right"] = spacecal::stick_profile::Save(ctx.stickSmoothing.sticks[1]);
 	obj["sticks"].set<picojson::object>(sticks);
 
 	return obj;
