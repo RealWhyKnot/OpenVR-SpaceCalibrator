@@ -261,11 +261,10 @@ namespace spacecal::stick_hook {
 			g_config = config;
 		}
 		if (changed) {
-			LOG("[stick] joystick acceleration left: timer=%.2fs strength=%.0f%% delay=%.2fs stop=%.2fs, right: timer=%.2fs "
-			    "strength=%.0f%% "
-			    "delay=%.2fs stop=%.2fs",
-			    ramps[0].pushSeconds, ramps[0].heldBack * 100.0, ramps[0].delaySeconds, ramps[0].releaseSeconds, ramps[1].pushSeconds,
-			    ramps[1].heldBack * 100.0, ramps[1].delaySeconds, ramps[1].releaseSeconds);
+			LOG("[stick] joystick acceleration left: build-up=%.2fs start=%.0f%% delay=%.2fs stop=%.2fs, right: build-up=%.2fs "
+			    "start=%.0f%% delay=%.2fs stop=%.2fs",
+			    ramps[0].pushSeconds, (1.0 - ramps[0].heldBack) * 100.0, ramps[0].delaySeconds, ramps[0].releaseSeconds,
+			    ramps[1].pushSeconds, (1.0 - ramps[1].heldBack) * 100.0, ramps[1].delaySeconds, ramps[1].releaseSeconds);
 		}
 	}
 

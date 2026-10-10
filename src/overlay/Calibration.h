@@ -9,6 +9,7 @@
 
 #include "HandshakeOutcome.h"
 #include "Protocol.h"
+#include "StickSettings.h"
 #include "VRState.h"
 
 enum class CalibrationState
@@ -68,6 +69,7 @@ struct CalibrationContext
 	protocol::SmoothingParams smoothingParams;
 	protocol::FingerSmoothingConfig fingerSmoothing;
 	protocol::StickSmoothingConfig stickSmoothing{};
+	bool stickOn[spacecal::stick::kHandCount] = {};
 	bool smoothControllers = false;
 	bool enableStaticRecalibration;
 	bool lockRelativePosition = false;
@@ -122,9 +124,9 @@ struct CalibrationContext
 		smoothControllers = false;
 		fingerSmoothing = protocol::FingerSmoothingConfig{};
 		fingerSmoothing.fingerMask = protocol::kAllFingersMask;
-		stickSmoothing = protocol::StickSmoothingConfig{};
-		for (auto& stick : stickSmoothing.sticks) {
-			stick.strength = 100;
+		for (int hand = 0; hand < spacecal::stick::kHandCount; ++hand) {
+			stickSmoothing.sticks[hand] = spacecal::stick_settings::DefaultStick();
+			stickOn[hand] = false;
 		}
 	}
 

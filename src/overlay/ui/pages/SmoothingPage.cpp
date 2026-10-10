@@ -2,6 +2,7 @@
 #include "ui/UiCommon.h"
 #include "Calibration.h"
 #include "PoseFilter.h"
+#include "StickSettings.h"
 #include "StickSmoothingMath.h"
 
 #include <imgui/imgui.h>
@@ -104,36 +105,57 @@ void DrawSmoothingPanel(ImVec2 panel_size)
 	ImGui::EndGroupPanel();
 }
 
-static bool StickSecondsSlider(const char* id, uint16_t& ms, double maxSeconds, const char* tooltip)
+static bool StickSecondsSlider(const char* id, uint16_t& ms, double maxSeconds, int stepMs, const char* tooltip)
 {
 	float seconds = ms / 1000.0f;
+	const char* format = ms == 0 ? "off" : (ms % 100 == 0 ? "%.1f s" : "%.2f s");
 	ImGui::SetNextItemWidth(-FLT_MIN);
-	if (ImGui::SliderFloat(id, &seconds, 0.0f, (float)maxSeconds, ms > 0 ? "%.1f s" : "off", ImGuiSliderFlags_AlwaysClamp)) {
-		ms = (uint16_t)(std::lround(seconds * 10.0f) * 100);
+	if (ImGui::SliderFloat(id, &seconds, 0.0f, (float)maxSeconds, format, ImGuiSliderFlags_AlwaysClamp)) {
+		ms = (uint16_t)(std::lround(seconds * 1000.0f / stepMs) * stepMs);
 	}
 	const bool changed = ImGui::IsItemDeactivatedAfterEdit();
 	SmoothingTooltip(tooltip);
 	return changed;
 }
 
-static bool StickStrengthSlider(uint8_t& strength)
+static bool StickStrengthSlider(uint16_t& pushMs)
 {
-	int value = strength;
+	using namespace spacecal::stick_settings;
+	int percent = StrengthForPushMs(pushMs);
 	ImGui::SetNextItemWidth(-FLT_MIN);
-	if (ImGui::SliderInt("##strength", &value, 0, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp)) {
-		strength = (uint8_t)value;
+	if (ImGui::SliderInt("##strength", &percent, kPercentStep, 100, pushMs > 0 ? "%d%%" : "no build-up", ImGuiSliderFlags_AlwaysClamp)) {
+		pushMs = PushMsForStrength(SnapPercent(percent));
 	}
 	const bool changed = ImGui::IsItemDeactivatedAfterEdit();
-	SmoothingTooltip("How slow a push starts.\n"
-	                 "100% starts from a standstill. 60% starts at 40% speed and builds the rest over the timer.\n"
-	                 "Lower values get past in-game deadzones sooner.");
+	if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+		const double fullSeconds = spacecal::stick::kMaxPushSeconds;
+		ImGui::SetTooltip("How gently speed builds up when you push the stick.\n"
+		                  "Higher takes longer to reach full speed: 50%% takes %.0f s, 100%% takes %.0f s.",
+		                  fullSeconds * 0.5, fullSeconds);
+	}
+	return changed;
+}
+
+static bool StickStartSpeedSlider(uint8_t& strength)
+{
+	using namespace spacecal::stick_settings;
+	int start = 100 - ClampPercent(strength);
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	if (ImGui::SliderInt("##start", &start, 0, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp)) {
+		strength = (uint8_t)(100 - SnapPercent(start));
+	}
+	const bool changed = ImGui::IsItemDeactivatedAfterEdit();
+	SmoothingTooltip("How fast a push starts before it builds up.\n"
+	                 "0% starts from a standstill. 40% starts at 40% speed and builds up the rest.\n"
+	                 "Raise it if the start of a push doesn't move you in game.");
 	return changed;
 }
 
 void DrawStickSmoothingPanel(ImVec2 panel_size)
 {
 	static const char* kStickLabels[2] = {"Left stick (movement)", "Right stick (turning)"};
-	static const char* kStickNotes[2] = {"Applies to every app, including SteamVR menus.",
+	static const char* kStickNotes[2] = {"Turns acceleration on for this stick. Applies to every app, including SteamVR menus.",
+	                                     "Turns acceleration on for this stick.\n"
 	                                     "With snap turning, each snap fires later instead of turning more smoothly."};
 
 	ImGui::BeginGroupPanel("Joystick acceleration", panel_size);
@@ -143,41 +165,65 @@ void DrawStickSmoothingPanel(ImVec2 panel_size)
 	ImGui::PopStyleColor();
 
 	bool dirty = false;
-	if (ImGui::BeginTable("stick_grid", 5, ImGuiTableFlags_SizingStretchProp)) {
+	if (ImGui::BeginTable("stick_grid", 2, ImGuiTableFlags_SizingStretchProp)) {
 		ImGui::TableSetupColumn("Stick", ImGuiTableColumnFlags_WidthFixed);
-		ImGui::TableSetupColumn("Timer", ImGuiTableColumnFlags_WidthStretch, 1.0f);
 		ImGui::TableSetupColumn("Strength", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-		ImGui::TableSetupColumn("Delay", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-		ImGui::TableSetupColumn("Stop", ImGuiTableColumnFlags_WidthStretch, 1.0f);
 		ImGui::TableHeadersRow();
 		for (int hand = 0; hand < 2; ++hand) {
 			protocol::StickRampConfig& stick = CalCtx.stickSmoothing.sticks[hand];
 			ImGui::PushID(hand);
 			ImGui::TableNextRow();
 			ImGui::TableSetColumnIndex(0);
-			ImGui::TextUnformatted(kStickLabels[hand]);
+			if (ImGui::Checkbox(kStickLabels[hand], &CalCtx.stickOn[hand])) {
+				if (CalCtx.stickOn[hand]) spacecal::stick_settings::PrepareToTurnOn(stick);
+				dirty = true;
+			}
 			SmoothingTooltip(kStickNotes[hand]);
 			ImGui::TableSetColumnIndex(1);
-			dirty |= StickSecondsSlider("##timer", stick.pushMs, spacecal::stick::kMaxRampSeconds,
-			                            "How long a push takes to build up to full speed.\nOff = no build-up.");
-			ImGui::TableSetColumnIndex(2);
-			ImGui::BeginDisabled(stick.pushMs == 0);
-			dirty |= StickStrengthSlider(stick.strength);
+			ImGui::BeginDisabled(!CalCtx.stickOn[hand]);
+			dirty |= StickStrengthSlider(stick.pushMs);
 			ImGui::EndDisabled();
-			ImGui::TableSetColumnIndex(3);
-			ImGui::BeginDisabled(stick.pushMs == 0 || stick.strength == 0);
-			dirty |= StickSecondsSlider("##delay", stick.delayMs, spacecal::stick::kMaxDelaySeconds,
-			                            "How long a push holds the start speed before it builds up.\n"
-			                            "Taps shorter than this stay at the start speed, for small moves while framing a shot.\n"
-			                            "At 100% strength the start speed is zero and a short tap doesn't move at all.\n"
-			                            "Off = builds up right away.");
-			ImGui::EndDisabled();
-			ImGui::TableSetColumnIndex(4);
-			dirty |= StickSecondsSlider("##stop", stick.releaseMs, spacecal::stick::kMaxRampSeconds,
-			                            "How long the stick takes to glide to a stop after you let go.\nOff = stops instantly.");
 			ImGui::PopID();
 		}
 		ImGui::EndTable();
+	}
+
+	if (ImGui::TreeNodeEx("Fine-tune", ImGuiTreeNodeFlags_SpanAvailWidth)) {
+		if (ImGui::BeginTable("stick_fine", 4, ImGuiTableFlags_SizingStretchProp)) {
+			ImGui::TableSetupColumn("Stick", ImGuiTableColumnFlags_WidthFixed);
+			ImGui::TableSetupColumn("Start speed", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+			ImGui::TableSetupColumn("Delay", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+			ImGui::TableSetupColumn("Stop", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+			ImGui::TableHeadersRow();
+			for (int hand = 0; hand < 2; ++hand) {
+				protocol::StickRampConfig& stick = CalCtx.stickSmoothing.sticks[hand];
+				ImGui::PushID(hand);
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0);
+				ImGui::AlignTextToFramePadding();
+				ImGui::TextUnformatted(kStickLabels[hand]);
+				ImGui::BeginDisabled(!CalCtx.stickOn[hand]);
+				ImGui::TableSetColumnIndex(1);
+				ImGui::BeginDisabled(stick.pushMs == 0);
+				dirty |= StickStartSpeedSlider(stick.strength);
+				ImGui::EndDisabled();
+				ImGui::TableSetColumnIndex(2);
+				ImGui::BeginDisabled(stick.pushMs == 0 || stick.strength == 0);
+				dirty |= StickSecondsSlider("##delay", stick.delayMs, spacecal::stick::kMaxDelaySeconds, 100,
+				                            "How long a push holds the start speed before it builds up.\n"
+				                            "Taps shorter than this stay at the start speed, for small moves while framing a shot.\n"
+				                            "At 0% start speed a short tap doesn't move at all.\n"
+				                            "Off = builds up right away.");
+				ImGui::EndDisabled();
+				ImGui::TableSetColumnIndex(3);
+				dirty |= StickSecondsSlider("##stop", stick.releaseMs, spacecal::stick::kMaxReleaseSeconds, 250,
+				                            "How long the stick takes to glide to a stop after you let go.\nOff = stops instantly.");
+				ImGui::EndDisabled();
+				ImGui::PopID();
+			}
+			ImGui::EndTable();
+		}
+		ImGui::TreePop();
 	}
 
 	if (dirty) {

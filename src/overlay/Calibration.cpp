@@ -256,7 +256,7 @@ static void ScanAndApplyProfileImpl(CalibrationContext& ctx)
 	SendDriverState(setFingerReq);
 
 	protocol::Request setStickReq(protocol::RequestSetStickSmoothing);
-	setStickReq.setStickSmoothing = ctx.stickSmoothing;
+	setStickReq.setStickSmoothing = spacecal::stick_settings::ForDriver(ctx.stickSmoothing, ctx.stickOn);
 	SendDriverState(setStickReq);
 
 	for (uint32_t id = 0; id < vr::k_unMaxTrackedDeviceCount; ++id) {

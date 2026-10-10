@@ -149,8 +149,8 @@ static void LoadSmoothingParams(CalibrationContext& ctx, picojson::value& value)
 
 	if (obj["sticks"].is<picojson::object>()) {
 		auto sticks = obj["sticks"].get<picojson::object>();
-		spacecal::stick_profile::Load(ctx.stickSmoothing.sticks[0], sticks["left"]);
-		spacecal::stick_profile::Load(ctx.stickSmoothing.sticks[1], sticks["right"]);
+		spacecal::stick_profile::Load(ctx.stickSmoothing.sticks[0], ctx.stickOn[0], sticks["left"]);
+		spacecal::stick_profile::Load(ctx.stickSmoothing.sticks[1], ctx.stickOn[1], sticks["right"]);
 	}
 }
 
@@ -175,8 +175,8 @@ static picojson::object SaveSmoothingParams(CalibrationContext& ctx)
 	obj["fingers"].set<picojson::object>(fingers);
 
 	picojson::object sticks;
-	sticks["left"] = spacecal::stick_profile::Save(ctx.stickSmoothing.sticks[0]);
-	sticks["right"] = spacecal::stick_profile::Save(ctx.stickSmoothing.sticks[1]);
+	sticks["left"] = spacecal::stick_profile::Save(ctx.stickSmoothing.sticks[0], ctx.stickOn[0]);
+	sticks["right"] = spacecal::stick_profile::Save(ctx.stickSmoothing.sticks[1], ctx.stickOn[1]);
 	obj["sticks"].set<picojson::object>(sticks);
 
 	return obj;

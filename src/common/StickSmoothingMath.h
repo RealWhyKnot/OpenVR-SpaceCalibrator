@@ -6,7 +6,8 @@
 namespace spacecal::stick {
 
 	constexpr int kHandCount = 2;
-	constexpr double kMaxRampSeconds = 6.0;
+	constexpr double kMaxPushSeconds = 8.0;
+	constexpr double kMaxReleaseSeconds = 6.0;
 	constexpr double kMaxDelaySeconds = 2.0;
 	constexpr double kLegacyFullPushSeconds = 4.0;
 	constexpr double kLegacyFullReleaseSeconds = 1.5;
@@ -40,7 +41,7 @@ namespace spacecal::stick {
 
 	inline Ramp RampFromSettings(uint16_t pushMs, uint16_t releaseMs, uint8_t strength, uint16_t delayMs)
 	{
-		return {ClampSeconds(pushMs / 1000.0, kMaxRampSeconds), ClampSeconds(releaseMs / 1000.0, kMaxRampSeconds),
+		return {ClampSeconds(pushMs / 1000.0, kMaxPushSeconds), ClampSeconds(releaseMs / 1000.0, kMaxReleaseSeconds),
 		        strength > 100 ? 1.0 : strength / 100.0, ClampSeconds(delayMs / 1000.0, kMaxDelaySeconds)};
 	}
 

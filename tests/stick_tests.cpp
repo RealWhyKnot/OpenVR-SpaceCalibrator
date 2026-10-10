@@ -61,8 +61,14 @@ namespace {
 		CHECK(std::fabs(ramp.heldBack - 0.6) < 1e-12);
 		CHECK(std::fabs(ramp.delaySeconds - 0.35) < 1e-12);
 		const Ramp capped = RampFromSettings(65535, 65535, 255, 65535);
-		CHECK(capped.pushSeconds == kMaxRampSeconds);
-		CHECK(capped.releaseSeconds == kMaxRampSeconds);
+		CHECK(capped.pushSeconds == kMaxPushSeconds);
+		CHECK(capped.releaseSeconds == kMaxReleaseSeconds);
+		const Ramp longest = RampFromSettings(8000, 6000, 100, 0);
+		CHECK(longest.pushSeconds == 8.0);
+		CHECK(longest.releaseSeconds == 6.0);
+		const Ramp over = RampFromSettings(8100, 6100, 100, 0);
+		CHECK(over.pushSeconds == 8.0);
+		CHECK(over.releaseSeconds == 6.0);
 		CHECK(capped.heldBack == 1.0);
 		CHECK(capped.delaySeconds == kMaxDelaySeconds);
 		CHECK(IsOff(RampFromSettings(0, 0, 100, 0)));
@@ -132,8 +138,7 @@ namespace {
 
 	void TestFollowsThePushCurveAndLandsAtPushTime()
 	{
-		for (uint8_t strength : {10, 50, 100}) {
-			const Ramp ramp = Legacy(strength);
+		for (const Ramp& ramp : {Legacy(10), Legacy(50), Legacy(100), RampFromSettings(8000, 1500, 100, 0)}) {
 			const double T = ramp.pushSeconds;
 			for (double p : {0.25, 0.5, 0.79, 0.81, 0.9, 0.99}) {
 				AxisFilter filter;
