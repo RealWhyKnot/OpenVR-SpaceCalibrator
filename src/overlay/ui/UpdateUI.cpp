@@ -62,6 +62,7 @@ void DrawUpdatesPanel(ImVec2 panel_size)
 		ImGui::TextDisabled("dev build: update checks are off");
 	}
 	else {
+		ImGui::TextDisabled("installed: v" SPACECAL_VERSION_STRING " (" SPACECAL_CHANNEL ")");
 		if (ImGui::Checkbox("Check for updates when the overlay starts", &UpdaterCtx.settings.checkOnStartup)) {
 			SaveUpdateSettings(UpdaterCtx.settings);
 		}
