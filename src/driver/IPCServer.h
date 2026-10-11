@@ -2,6 +2,7 @@
 
 #include "Protocol.h"
 
+#include <atomic>
 #include <thread>
 #include <set>
 #include <mutex>
@@ -43,11 +44,10 @@ private:
 
 	std::thread mainThread;
 
-	bool running = false;
-	bool stop = false;
+	std::atomic<bool> stop{false};
 
 	std::set<PipeInstance*> pipes;
-	HANDLE connectEvent;
+	HANDLE connectEvent = nullptr;
 
 	ServerTrackedDeviceProvider* driver;
 };

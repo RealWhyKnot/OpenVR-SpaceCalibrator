@@ -5,6 +5,8 @@
 #include "SkeletalHook.h"
 #include "StickHook.h"
 
+#include <cmath>
+#include <limits>
 #include <random>
 
 vr::EVRInitError ServerTrackedDeviceProvider::Init(vr::IVRDriverContext* pDriverContext)
@@ -12,8 +14,21 @@ vr::EVRInitError ServerTrackedDeviceProvider::Init(vr::IVRDriverContext* pDriver
 	TRACE("ServerTrackedDeviceProvider::Init()");
 	VR_INIT_SERVER_DRIVER_CONTEXT(pDriverContext);
 
-	memset(transforms, 0, vr::k_unMaxTrackedDeviceCount * sizeof(DeviceTransform));
-	memset(&alignmentSpeedParams, 0, sizeof alignmentSpeedParams);
+	HMODULE self = nullptr;
+	if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCWSTR>(&InjectHooks),
+	                        &self)) {
+		LOG("could not pin the driver module in memory. Error: %lu", GetLastError());
+	}
+
+	for (uint32_t id = 0; id < vr::k_unMaxTrackedDeviceCount; ++id) {
+		transforms[id] = DeviceTransform{};
+		ipcDesired[id] = DesiredTransform{};
+		ipcRejectLogged[id] = false;
+		desiredLocks[id].Write(ipcDesired[id]);
+	}
+
+	ipcSettings = DriverSettings{};
+	auto& alignmentSpeedParams = ipcSettings.alignment;
 
 	alignmentSpeedParams.thr_rot_tiny = 0.1f * (EIGEN_PI / 180.0f);
 	alignmentSpeedParams.thr_rot_small = 1.0f * (EIGEN_PI / 180.0f);
@@ -27,14 +42,13 @@ vr::EVRInitError ServerTrackedDeviceProvider::Init(vr::IVRDriverContext* pDriver
 	alignmentSpeedParams.align_speed_small = 0.2f;
 	alignmentSpeedParams.align_speed_large = 2.0f;
 
+	settingsLock.Write(ipcSettings);
+
 	spacecal::skeletal_hook::Init(this);
 	spacecal::stick_hook::Init();
+	shmem.Create(OPENVR_SPACECALIBRATOR_SHMEM_NAME);
 	InjectHooks(this, pDriverContext);
 	server.Run();
-	shmem.Create(OPENVR_SPACECALIBRATOR_SHMEM_NAME);
-
-	debugTransform = Eigen::Vector3d::Zero();
-	debugRotation = Eigen::Quaterniond::Identity();
 
 	return vr::VRInitError_None;
 }
@@ -42,11 +56,14 @@ vr::EVRInitError ServerTrackedDeviceProvider::Init(vr::IVRDriverContext* pDriver
 void ServerTrackedDeviceProvider::Cleanup()
 {
 	TRACE("ServerTrackedDeviceProvider::Cleanup()");
-	server.Stop();
-	shmem.Close();
-	spacecal::skeletal_hook::Shutdown();
-	spacecal::stick_hook::Shutdown();
 	DisableHooks();
+	const bool drained = RemoveHooks();
+	if (drained) {
+		spacecal::skeletal_hook::Shutdown();
+		spacecal::stick_hook::Shutdown();
+	}
+	server.Stop();
+	if (drained) shmem.Close();
 	VR_CLEANUP_SERVER_DRIVER_CONTEXT();
 }
 
@@ -106,6 +123,29 @@ namespace {
 
 		return worldXform * IsoTransform(rot, trans);
 	}
+
+	bool Finite(double v)
+	{
+		return std::fabs(v) <= std::numeric_limits<double>::max();
+	}
+
+	bool IsFinite(const IsoTransform& t)
+	{
+		return Finite(t.translation.x()) && Finite(t.translation.y()) && Finite(t.translation.z()) && Finite(t.rotation.w()) &&
+		       Finite(t.rotation.x()) && Finite(t.rotation.y()) && Finite(t.rotation.z());
+	}
+
+	bool IsUsable(const protocol::SetDeviceTransform& t)
+	{
+		if (t.updateTranslation && !(Finite(t.translation.v[0]) && Finite(t.translation.v[1]) && Finite(t.translation.v[2]))) {
+			return false;
+		}
+		if (t.updateRotation && !(Finite(t.rotation.w) && Finite(t.rotation.x) && Finite(t.rotation.y) && Finite(t.rotation.z))) {
+			return false;
+		}
+		if (t.updateScale && !(Finite(t.scale) && t.scale > 0.0)) return false;
+		return true;
+	}
 }
 
 
@@ -113,10 +153,10 @@ namespace {
  * This function heuristically evaluates the amount of drift between the src and target playspace transforms,
  * evaluated centered on the `pose` device transform. This is then used to control the speed of realignment.
  */
-ServerTrackedDeviceProvider::DeltaSize ServerTrackedDeviceProvider::GetTransformDeltaSize(DeltaSize prior_delta,
-                                                                                          const IsoTransform& deviceWorldPose,
-                                                                                          const IsoTransform& src,
-                                                                                          const IsoTransform& target) const
+ServerTrackedDeviceProvider::DeltaSize
+ServerTrackedDeviceProvider::GetTransformDeltaSize(const protocol::AlignmentSpeedParams& alignmentSpeedParams, DeltaSize prior_delta,
+                                                   const IsoTransform& deviceWorldPose, const IsoTransform& src,
+                                                   const IsoTransform& target) const
 {
 	const auto src_pose = src * deviceWorldPose;
 	const auto target_pose = target * deviceWorldPose;
@@ -146,7 +186,7 @@ ServerTrackedDeviceProvider::DeltaSize ServerTrackedDeviceProvider::GetTransform
 		return std::max(prior_delta, std::max(trans_level, rot_level));
 }
 
-double ServerTrackedDeviceProvider::GetTransformRate(DeltaSize delta) const
+double ServerTrackedDeviceProvider::GetTransformRate(const protocol::AlignmentSpeedParams& alignmentSpeedParams, DeltaSize delta) const
 {
 	switch (delta) {
 		case DeltaSize::TINY: return alignmentSpeedParams.align_speed_tiny;
@@ -167,7 +207,7 @@ void ServerTrackedDeviceProvider::BlendTransform(DeviceTransform& device, const 
 	double lerp = (timestamp.QuadPart - device.lastPoll.QuadPart) / (double)freq.QuadPart;
 	device.lastPoll = timestamp;
 
-	lerp *= GetTransformRate(device.currentRate);
+	lerp *= GetTransformRate(device.settings.alignment, device.currentRate);
 	if (lerp > 1.0) lerp = 1.0;
 	if (lerp < 0 || isnan(lerp)) lerp = 0;
 
@@ -207,46 +247,58 @@ void ServerTrackedDeviceProvider::SetDeviceTransform(const protocol::SetDeviceTr
 		return;
 	}
 
-	auto& tf = transforms[newTransform.openVRID];
-	tf.enabled = newTransform.enabled;
+	const uint32_t id = newTransform.openVRID;
+	if (!IsUsable(newTransform)) {
+		if (!ipcRejectLogged[id]) {
+			ipcRejectLogged[id] = true;
+			LOG("ignoring a calibration for device %u with a non-finite value or a scale <= 0", id);
+		}
+		return;
+	}
+
+	DesiredTransform& d = ipcDesired[id];
+	d.enabled = newTransform.enabled;
 
 	if (newTransform.updateTranslation) {
-		tf.targetTransform.translation = convert(newTransform.translation);
-		if (!newTransform.lerp) {
-			tf.transform.translation = tf.targetTransform.translation;
+		for (int i = 0; i < 3; ++i) {
+			d.translation[i] = newTransform.translation.v[i];
 		}
+		if (!newTransform.lerp) ++d.snapTranslationGen;
 	}
 
 	if (newTransform.updateRotation) {
-		tf.targetTransform.rotation = convert(newTransform.rotation);
-
-		if (!newTransform.lerp) {
-			tf.transform.rotation = tf.targetTransform.rotation;
-		}
+		d.rotation[0] = newTransform.rotation.w;
+		d.rotation[1] = newTransform.rotation.x;
+		d.rotation[2] = newTransform.rotation.y;
+		d.rotation[3] = newTransform.rotation.z;
+		if (!newTransform.lerp) ++d.snapRotationGen;
 	}
 
-	if (newTransform.updateScale) tf.scale = newTransform.scale;
+	if (newTransform.updateScale) d.scale = newTransform.scale;
 
-	tf.quash = newTransform.quash;
-	if (tf.smooth != newTransform.smooth) {
-		tf.filter.initialized = false;
-	}
-	tf.smooth = newTransform.smooth;
+	d.quash = newTransform.quash;
+	d.smooth = newTransform.smooth;
+	desiredLocks[id].Write(d);
+}
+
+void ServerTrackedDeviceProvider::HandleSetAlignmentSpeedParams(const protocol::AlignmentSpeedParams params)
+{
+	ipcSettings.alignment = params;
+	settingsLock.Write(ipcSettings);
 }
 
 void ServerTrackedDeviceProvider::HandleSetSmoothingParams(const protocol::SmoothingParams& params)
 {
 	const uint8_t strength = params.strength > 100 ? 100 : params.strength;
-	const bool changed = smoothingStrength != strength;
-	smoothingStrength = strength;
-	smoothingFilter = spacecal::ParamsFromStrength(strength);
-	smoothingPredictionScale = spacecal::PredictionScaleFromStrength(strength);
+	const bool changed = ipcSettings.smoothingStrength != strength;
+	ipcSettings.smoothingStrength = strength;
+	ipcSettings.filter = spacecal::ParamsFromStrength(strength);
+	ipcSettings.predictionScale = spacecal::PredictionScaleFromStrength(strength);
+	if (changed) ++ipcSettings.filterResetGen;
+	settingsLock.Write(ipcSettings);
 	if (changed) {
-		for (auto& tf : transforms) {
-			tf.filter.initialized = false;
-		}
-		LOG("smoothing strength %u%% (cutoff=%.2fHz beta=%.1fHz/mps prediction=%.2f)", (unsigned)strength, smoothingFilter.minCutoffHz,
-		    smoothingFilter.beta, smoothingPredictionScale);
+		LOG("smoothing strength %u%% (cutoff=%.2fHz beta=%.1fHz/mps prediction=%.2f)", (unsigned)strength, ipcSettings.filter.minCutoffHz,
+		    ipcSettings.filter.beta, ipcSettings.predictionScale);
 	}
 }
 
@@ -286,7 +338,7 @@ void ServerTrackedDeviceProvider::HandleGetSmoothingStats(const protocol::Smooth
 		return;
 	}
 	const auto& tf = transforms[request.openVRID];
-	stats.active = smoothingStrength > 0 && tf.smooth && tf.filter.initialized;
+	stats.active = ipcSettings.smoothingStrength > 0 && ipcDesired[request.openVRID].smooth && tf.filter.initialized;
 	stats.lastResult = tf.lastResult;
 	stats.reseeds = tf.reseeds;
 	stats.rawJitterMm = std::sqrt(tf.rawPosJitter2) * 1000.0;
@@ -311,7 +363,7 @@ void ServerTrackedDeviceProvider::ApplySmoothing(DeviceTransform& device, vr::Dr
 	memcpy(prevRawPos, device.filter.prevRawPos, sizeof prevRawPos);
 	memcpy(prevPos, device.filter.pos, sizeof prevPos);
 
-	const auto result = spacecal::Step(device.filter, smoothingFilter, rawPos, dt);
+	const auto result = spacecal::Step(device.filter, device.settings.filter, rawPos, dt);
 	device.lastResult = (uint8_t)result;
 	if (result == spacecal::StepResult::Jump || result == spacecal::StepResult::Gap) {
 		device.reseeds++;
@@ -328,7 +380,7 @@ void ServerTrackedDeviceProvider::ApplySmoothing(DeviceTransform& device, vr::Dr
 		device.smoothPosJitter2 += a * (dSmooth * dSmooth - device.smoothPosJitter2);
 	}
 
-	const double scale = smoothingPredictionScale;
+	const double scale = device.settings.predictionScale;
 	for (int i = 0; i < 3; ++i) {
 		devicePose.vecPosition[i] = device.filter.pos[i];
 		devicePose.vecVelocity[i] *= scale;
@@ -339,16 +391,51 @@ void ServerTrackedDeviceProvider::ApplySmoothing(DeviceTransform& device, vr::Dr
 	devicePose.poseTimeOffset *= scale;
 }
 
+void ServerTrackedDeviceProvider::SyncDeviceState(uint32_t openVRID, DeviceTransform& tf)
+{
+	const uint32_t filterResetGen = tf.settings.filterResetGen;
+	if (settingsLock.ReadIfChanged(tf.settings, tf.settingsSeen) && tf.settings.filterResetGen != filterResetGen) {
+		tf.filter.initialized = false;
+	}
+
+	if (!desiredLocks[openVRID].ReadIfChanged(tf.desired, tf.desiredSeen)) return;
+
+	const DesiredTransform& d = tf.desired;
+	tf.enabled = d.enabled;
+	tf.quash = d.quash;
+	tf.scale = d.scale;
+	tf.targetTransform.translation = convert(d.translation);
+	tf.targetTransform.rotation = Eigen::Quaterniond(d.rotation[0], d.rotation[1], d.rotation[2], d.rotation[3]);
+	if (d.snapTranslationGen != tf.snapTranslationGen) {
+		tf.snapTranslationGen = d.snapTranslationGen;
+		tf.transform.translation = tf.targetTransform.translation;
+	}
+	if (d.snapRotationGen != tf.snapRotationGen) {
+		tf.snapRotationGen = d.snapRotationGen;
+		tf.transform.rotation = tf.targetTransform.rotation;
+	}
+	if (tf.smooth != d.smooth) {
+		tf.filter.initialized = false;
+	}
+	tf.smooth = d.smooth;
+}
+
 bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr::DriverPose_t& pose)
 {
 	if (openVRID >= vr::k_unMaxTrackedDeviceCount) {
 		return true;
 	}
 
+	auto& tf = transforms[openVRID];
+	SyncDeviceState(openVRID, tf);
+	const DriverSettings& settings = tf.settings;
+
 	// Apply debug pose before anything else
 	if (openVRID > 0) {
-		auto dbgPos = convert(pose.vecPosition) + debugTransform;
-		auto dbgRot = convert(pose.qRotation) * debugRotation;
+		const Eigen::Vector3d dbgPos = convert(pose.vecPosition) + convert(settings.debugTranslation);
+		const Eigen::Quaterniond dbgRot =
+		    convert(pose.qRotation) *
+		    Eigen::Quaterniond(settings.debugRotation[0], settings.debugRotation[1], settings.debugRotation[2], settings.debugRotation[3]);
 		pose.qRotation = convert(dbgRot);
 		pose.vecPosition[0] = dbgPos(0);
 		pose.vecPosition[1] = dbgPos(1);
@@ -357,9 +444,7 @@ bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr:
 
 	shmem.SetPose(openVRID, pose);
 
-	auto& tf = transforms[openVRID];
-
-	if (tf.smooth && smoothingStrength > 0 && !tf.quash) {
+	if (tf.smooth && settings.smoothingStrength > 0 && !tf.quash) {
 		ApplySmoothing(tf, pose);
 	}
 
@@ -375,10 +460,12 @@ bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr:
 		pose.vecPosition[2] *= tf.scale;
 
 		auto deviceWorldPose = toIsoPose(pose);
-		tf.currentRate = GetTransformDeltaSize(tf.currentRate, deviceWorldPose, tf.transform, tf.targetTransform);
-		double lerp = GetTransformRate(tf.currentRate);
+		tf.currentRate = GetTransformDeltaSize(settings.alignment, tf.currentRate, deviceWorldPose, tf.transform, tf.targetTransform);
 
 		BlendTransform(tf, deviceWorldPose);
+		if (!IsFinite(tf.transform)) {
+			tf.transform = tf.targetTransform;
+		}
 		ApplyTransform(tf, pose);
 	}
 
@@ -392,8 +479,14 @@ void ServerTrackedDeviceProvider::HandleApplyRandomOffset()
 	auto init = Eigen::Vector3d(d(gen), d(gen), d(gen));
 	auto posOffset = init * 0.25f;
 
-	debugTransform = posOffset;
-	debugRotation = Eigen::Quaterniond::Identity();
+	for (int i = 0; i < 3; ++i) {
+		ipcSettings.debugTranslation[i] = posOffset(i);
+	}
+	ipcSettings.debugRotation[0] = 1.0;
+	ipcSettings.debugRotation[1] = 0.0;
+	ipcSettings.debugRotation[2] = 0.0;
+	ipcSettings.debugRotation[3] = 0.0;
+	settingsLock.Write(ipcSettings);
 
 	std::ostringstream oss;
 	oss << "Applied random offset: " << posOffset << " from init " << init << '\n';

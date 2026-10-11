@@ -14,7 +14,7 @@ struct IsoTransform
 
 	IsoTransform() : rotation(Eigen::Quaterniond::Identity()), translation(Eigen::Vector3d::Zero()) {}
 	IsoTransform(const Eigen::Quaterniond& rot) : rotation(rot), translation(Eigen::Vector3d::Zero()) {}
-	IsoTransform(const Eigen::Vector3d& trans) : rotation(Eigen::Quaterniond::Identity()) {}
+	IsoTransform(const Eigen::Vector3d& trans) : rotation(Eigen::Quaterniond::Identity()), translation(trans) {}
 	IsoTransform(const Eigen::Quaterniond& rot, const Eigen::Vector3d& trans) : rotation(rot), translation(trans) {}
 
 	void pretranslate(const Eigen::Vector3d& t) { translation += t; }

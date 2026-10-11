@@ -303,6 +303,7 @@ namespace protocol {
 		HANDLE hMapFile;
 		ShmemData* pData;
 		uint64_t cursor;
+		SRWLOCK writeLock = SRWLOCK_INIT;
 
 		AugmentedPose lastPose[vr::k_unMaxTrackedDeviceCount] = {0};
 
@@ -397,21 +398,21 @@ namespace protocol {
 		bool GetPose(int index, vr::DriverPose_t& pose, LARGE_INTEGER* pSampleTime = NULL)
 		{
 			ReadNewPoses([this](AugmentedPose const& pose) {
-				if (pose.pose.poseIsValid && pose.pose.result == vr::ETrackingResult::TrackingResult_Running_OK) {
+				if (pose.deviceId >= 0 && pose.deviceId < (int)vr::k_unMaxTrackedDeviceCount && pose.pose.poseIsValid &&
+				    pose.pose.result == vr::ETrackingResult::TrackingResult_Running_OK) {
 					this->lastPose[pose.deviceId] = pose;
 				}
 			});
 
-			if (index >= 0 && index < vr::k_unMaxTrackedDeviceCount) {
-				pose = lastPose[index].pose;
-				if (pSampleTime) *pSampleTime = lastPose[index].sample_time;
-				return true;
-			}
+			if (index < 0 || index >= (int)vr::k_unMaxTrackedDeviceCount) return false;
+			pose = lastPose[index].pose;
+			if (pSampleTime) *pSampleTime = lastPose[index].sample_time;
+			return true;
 		}
 
 		void SetPose(int index, const vr::DriverPose_t& pose)
 		{
-			if (index >= vr::k_unMaxTrackedDeviceCount) return;
+			if (index < 0 || index >= (int)vr::k_unMaxTrackedDeviceCount) return;
 			if (pData == nullptr) return;
 
 			AugmentedPose augPose = {0};
@@ -419,9 +420,11 @@ namespace protocol {
 			augPose.pose = pose;
 			QueryPerformanceCounter(&augPose.sample_time);
 
-			uint64_t cur_index = pData->index.load(std::memory_order_relaxed) + 1;
-			pData->poses[cur_index % BUFFERED_SAMPLES] = augPose;
-			pData->index.store(cur_index, std::memory_order_release);
+			AcquireSRWLockExclusive(&writeLock);
+			const uint64_t slot = pData->index.load(std::memory_order_relaxed);
+			pData->poses[slot % BUFFERED_SAMPLES] = augPose;
+			pData->index.store(slot + 1, std::memory_order_release);
+			ReleaseSRWLockExclusive(&writeLock);
 		}
 	};
 }

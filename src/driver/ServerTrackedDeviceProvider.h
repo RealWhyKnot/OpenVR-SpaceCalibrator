@@ -7,6 +7,7 @@
 #include "PoseFilter.h"
 #include "FingerConfigPacking.h"
 #include "IsometryTransform.h"
+#include "Seqlock.h"
 
 #include <Eigen/Dense>
 
@@ -49,7 +50,7 @@ public:
 	void SetDeviceTransform(const protocol::SetDeviceTransform& newTransform);
 	bool HandleDevicePoseUpdated(uint32_t openVRID, vr::DriverPose_t& pose);
 	void HandleApplyRandomOffset();
-	void HandleSetAlignmentSpeedParams(const protocol::AlignmentSpeedParams params) { alignmentSpeedParams = params; }
+	void HandleSetAlignmentSpeedParams(const protocol::AlignmentSpeedParams params);
 	void HandleSetSmoothingParams(const protocol::SmoothingParams& params);
 	void HandleGetSmoothingStats(const protocol::SmoothingStatsRequest& request, protocol::SmoothingStats& stats);
 	void SetFingerSmoothingConfig(const protocol::FingerSmoothingConfig& config);
@@ -72,12 +73,35 @@ private:
 		LARGE
 	};
 
+	struct DesiredTransform
+	{
+		bool enabled = false;
+		bool quash = false;
+		bool smooth = false;
+		double translation[3] = {0.0, 0.0, 0.0};
+		double rotation[4] = {1.0, 0.0, 0.0, 0.0};
+		double scale = 1.0;
+		uint32_t snapTranslationGen = 0;
+		uint32_t snapRotationGen = 0;
+	};
+
+	struct DriverSettings
+	{
+		protocol::AlignmentSpeedParams alignment{};
+		uint8_t smoothingStrength = 0;
+		spacecal::OneEuroParams filter;
+		double predictionScale = 1.0;
+		double debugTranslation[3] = {0.0, 0.0, 0.0};
+		double debugRotation[4] = {1.0, 0.0, 0.0, 0.0};
+		uint32_t filterResetGen = 0;
+	};
+
 	struct DeviceTransform
 	{
 		bool enabled = false;
 		bool quash = false;
 		IsoTransform transform, targetTransform;
-		double scale;
+		double scale = 1.0;
 		LARGE_INTEGER lastPoll;
 		DeltaSize currentRate = DeltaSize::TINY;
 		bool smooth = false;
@@ -87,27 +111,34 @@ private:
 		uint8_t lastResult = 0;
 		double rawPosJitter2 = 0.0;
 		double smoothPosJitter2 = 0.0;
+		uint32_t desiredSeen = 0;
+		uint32_t settingsSeen = 0;
+		uint32_t snapTranslationGen = 0;
+		uint32_t snapRotationGen = 0;
+		DesiredTransform desired;
+		DriverSettings settings;
 	};
 
 	DeviceTransform transforms[vr::k_unMaxTrackedDeviceCount];
-	Eigen::Vector3d debugTransform = Eigen::Vector3d::Zero();
-	Eigen::Quaterniond debugRotation = Eigen::Quaterniond::Identity();
 
 	DeltaSize currentDeltaSpeed[vr::k_unMaxTrackedDeviceCount];
 
-	protocol::AlignmentSpeedParams alignmentSpeedParams;
+	DesiredTransform ipcDesired[vr::k_unMaxTrackedDeviceCount];
+	bool ipcRejectLogged[vr::k_unMaxTrackedDeviceCount] = {};
+	spacecal::Seqlock<DesiredTransform> desiredLocks[vr::k_unMaxTrackedDeviceCount];
+	DriverSettings ipcSettings;
+	spacecal::Seqlock<DriverSettings> settingsLock;
+
 	mutable std::atomic<uint64_t> fingerCfgHeaderPacked{0};
 	mutable std::atomic<uint64_t> fingerCfgLowPacked{0};
-	uint8_t smoothingStrength = 0;
-	spacecal::OneEuroParams smoothingFilter;
-	double smoothingPredictionScale = 1.0;
 
+	void SyncDeviceState(uint32_t openVRID, DeviceTransform& device);
 	void ApplySmoothing(DeviceTransform& device, vr::DriverPose_t& devicePose);
 
-	DeltaSize GetTransformDeltaSize(DeltaSize prior_delta, const IsoTransform& deviceWorldPose, const IsoTransform& src,
-	                                const IsoTransform& target) const;
+	DeltaSize GetTransformDeltaSize(const protocol::AlignmentSpeedParams& params, DeltaSize prior_delta,
+	                                const IsoTransform& deviceWorldPose, const IsoTransform& src, const IsoTransform& target) const;
 
-	double GetTransformRate(DeltaSize delta) const;
+	double GetTransformRate(const protocol::AlignmentSpeedParams& params, DeltaSize delta) const;
 
 	void BlendTransform(DeviceTransform& device, const IsoTransform& deviceWorldPose) const;
 	void ApplyTransform(DeviceTransform& device, vr::DriverPose_t& devicePose) const;

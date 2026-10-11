@@ -1,6 +1,7 @@
 #include "SkeletalHook.h"
 #include "DriverInputVTable.h"
 #include "Hooking.h"
+#include "HookGate.h"
 #include "Logging.h"
 #include "ServerTrackedDeviceProvider.h"
 #include "SkeletalSmoothingMath.h"
@@ -175,16 +176,8 @@ namespace spacecal::skeletal_hook {
 		                           vr::EVRSkeletalTrackingLevel, const vr::VRBoneTransform_t*, uint32_t, vr::VRInputComponentHandle_t*)>
 		    PublicCreateSkeletonHook("IVRDriverInput::CreateSkeletonComponent");
 
-		vr::EVRInputError DetourPublicCreateSkeletonComponent(vr::IVRDriverInput* _this, vr::PropertyContainerHandle_t ulContainer,
-		                                                      const char* pchName, const char* pchSkeletonPath, const char* pchBasePosePath,
-		                                                      vr::EVRSkeletalTrackingLevel eSkeletalTrackingLevel,
-		                                                      const vr::VRBoneTransform_t* pGripLimitTransforms,
-		                                                      uint32_t unGripLimitTransformCount, vr::VRInputComponentHandle_t* pHandle)
+		void MapCreatedSkeleton(vr::EVRInputError result, const char* pchSkeletonPath, const vr::VRInputComponentHandle_t* pHandle)
 		{
-			auto result =
-			    PublicCreateSkeletonHook.originalFunc(_this, ulContainer, pchName, pchSkeletonPath, pchBasePosePath, eSkeletalTrackingLevel,
-			                                          pGripLimitTransforms, unGripLimitTransformCount, pHandle);
-
 			bool firstCreateExpected = false;
 			if (g_firstCreateSkeletonLogged.compare_exchange_strong(firstCreateExpected, true)) {
 				LOG("[skeletal] FIRST CreateSkeleton call: result=%d path='%s' outHandle=%llu", (int)result,
@@ -222,6 +215,28 @@ namespace spacecal::skeletal_hook {
 					    g_handleToHandedness.size());
 				}
 			}
+		}
+
+		vr::EVRInputError DetourPublicCreateSkeletonComponent(vr::IVRDriverInput* _this, vr::PropertyContainerHandle_t ulContainer,
+		                                                      const char* pchName, const char* pchSkeletonPath, const char* pchBasePosePath,
+		                                                      vr::EVRSkeletalTrackingLevel eSkeletalTrackingLevel,
+		                                                      const vr::VRBoneTransform_t* pGripLimitTransforms,
+		                                                      uint32_t unGripLimitTransformCount, vr::VRInputComponentHandle_t* pHandle)
+		{
+			hook_gate::Scope gate;
+			auto result =
+			    PublicCreateSkeletonHook.Original()(_this, ulContainer, pchName, pchSkeletonPath, pchBasePosePath, eSkeletalTrackingLevel,
+			                                        pGripLimitTransforms, unGripLimitTransformCount, pHandle);
+			if (!gate.Open()) return result;
+			try {
+				MapCreatedSkeleton(result, pchSkeletonPath, pHandle);
+			}
+			catch (const std::exception& ex) {
+				SkeletalContainmentFault(ex.what());
+			}
+			catch (...) {
+				SkeletalContainmentFault(nullptr);
+			}
 			return result;
 		}
 
@@ -233,7 +248,7 @@ namespace spacecal::skeletal_hook {
 				if (!pTransforms || unTransformCount != math::kFingerBoneCount) {
 					g_invalidTransformCalls.fetch_add(1, std::memory_order_relaxed);
 				}
-				return PublicUpdateSkeletonHook.originalFunc(_this, ulComponent, eMotionRange, pTransforms, unTransformCount);
+				return PublicUpdateSkeletonHook.Original()(_this, ulComponent, eMotionRange, pTransforms, unTransformCount);
 			}
 			auto cfg = g_driver->GetFingerSmoothingConfig();
 
@@ -254,7 +269,7 @@ namespace spacecal::skeletal_hook {
 				}
 
 				MaybeLogStats("UpdateSkeleton/unknown");
-				return PublicUpdateSkeletonHook.originalFunc(_this, ulComponent, eMotionRange, pTransforms, unTransformCount);
+				return PublicUpdateSkeletonHook.Original()(_this, ulComponent, eMotionRange, pTransforms, unTransformCount);
 			}
 
 			g_stats[handedness].totalCalls.fetch_add(1, std::memory_order_relaxed);
@@ -292,7 +307,7 @@ namespace spacecal::skeletal_hook {
 			if (!anySmoothing) {
 				g_stats[handedness].passthroughCalls.fetch_add(1, std::memory_order_relaxed);
 				MaybeLogStats("UpdateSkeleton");
-				return PublicUpdateSkeletonHook.originalFunc(_this, ulComponent, eMotionRange, pTransforms, unTransformCount);
+				return PublicUpdateSkeletonHook.Original()(_this, ulComponent, eMotionRange, pTransforms, unTransformCount);
 			}
 
 			vr::VRBoneTransform_t smoothed[math::kFingerBoneCount];
@@ -322,15 +337,16 @@ namespace spacecal::skeletal_hook {
 
 			g_stats[handedness].smoothedCalls.fetch_add(1, std::memory_order_relaxed);
 			MaybeLogStats("UpdateSkeleton");
-			return PublicUpdateSkeletonHook.originalFunc(_this, ulComponent, eMotionRange, smoothed, unTransformCount);
+			return PublicUpdateSkeletonHook.Original()(_this, ulComponent, eMotionRange, smoothed, unTransformCount);
 		}
 
 		vr::EVRInputError DetourPublicUpdateSkeletonComponent(vr::IVRDriverInput* _this, vr::VRInputComponentHandle_t ulComponent,
 		                                                      vr::EVRSkeletalMotionRange eMotionRange,
 		                                                      const vr::VRBoneTransform_t* pTransforms, uint32_t unTransformCount)
 		{
-			if (g_skeletalFaulted.load(std::memory_order_relaxed)) {
-				return PublicUpdateSkeletonHook.originalFunc(_this, ulComponent, eMotionRange, pTransforms, unTransformCount);
+			hook_gate::Scope gate;
+			if (!gate.Open() || g_skeletalFaulted.load(std::memory_order_relaxed)) {
+				return PublicUpdateSkeletonHook.Original()(_this, ulComponent, eMotionRange, pTransforms, unTransformCount);
 			}
 			try {
 				return DetourPublicUpdateSkeletonComponentImpl(_this, ulComponent, eMotionRange, pTransforms, unTransformCount);
@@ -341,7 +357,7 @@ namespace spacecal::skeletal_hook {
 			catch (...) {
 				SkeletalContainmentFault(nullptr);
 			}
-			return PublicUpdateSkeletonHook.originalFunc(_this, ulComponent, eMotionRange, pTransforms, unTransformCount);
+			return PublicUpdateSkeletonHook.Original()(_this, ulComponent, eMotionRange, pTransforms, unTransformCount);
 		}
 
 	}
@@ -392,6 +408,9 @@ namespace spacecal::skeletal_hook {
 	void TryInstallPublicHooks(void* iface)
 	{
 		if (!iface) return;
+
+		std::lock_guard<std::mutex> lock(hook_gate::InstallMutex());
+		if (!hook_gate::IsOpen()) return;
 
 		bool createAlready = IHook::Exists(PublicCreateSkeletonHook.name);
 		bool updateAlready = IHook::Exists(PublicUpdateSkeletonHook.name);

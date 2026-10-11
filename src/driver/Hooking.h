@@ -2,6 +2,7 @@
 
 #include "Logging.h"
 #include <MinHook.h>
+#include <atomic>
 #include <map>
 #include <string>
 
@@ -13,11 +14,15 @@ public:
 	IHook(const std::string& name) : name(name) {}
 	virtual ~IHook() {}
 
+	virtual void QueueDisable() = 0;
+	virtual void MarkUnhooked() = 0;
+	virtual bool DisableNow() = 0;
 	virtual void Destroy() = 0;
 
 	static bool Exists(const std::string& name);
 	static void Register(IHook* hook);
 	static void Unregister(IHook* hook);
+	static bool DisableAll();
 	static void DestroyAll();
 
 private:
@@ -30,6 +35,8 @@ public:
 	FuncType originalFunc = nullptr;
 	Hook(const std::string& name) : IHook(name) {}
 
+	FuncType Original() const { return unhooked.load(std::memory_order_seq_cst) ? reinterpret_cast<FuncType>(targetFunc) : originalFunc; }
+
 	bool CreateHookInObjectVTable(void* object, int vtableOffset, void* detourFunction)
 	{
 		// For virtual objects, VC++ adds a pointer to the vtable as the first member.
@@ -38,6 +45,7 @@ public:
 
 		// The vtable itself is an array of pointers to member functions,
 		// in the order they were declared in.
+		unhooked.store(false, std::memory_order_seq_cst);
 		targetFunc = vtable[vtableOffset];
 
 		auto err = MH_CreateHook(targetFunc, detourFunction, (LPVOID*)&originalFunc);
@@ -58,7 +66,26 @@ public:
 		return true;
 	}
 
-	void Destroy()
+	void QueueDisable() override
+	{
+		if (enabled) MH_QueueDisableHook(targetFunc);
+	}
+
+	void MarkUnhooked() override
+	{
+		if (enabled) unhooked.store(true, std::memory_order_seq_cst);
+	}
+
+	bool DisableNow() override
+	{
+		if (!enabled) return true;
+		const MH_STATUS status = MH_DisableHook(targetFunc);
+		if (status != MH_OK && status != MH_ERROR_DISABLED) return false;
+		unhooked.store(true, std::memory_order_seq_cst);
+		return true;
+	}
+
+	void Destroy() override
 	{
 		if (enabled) {
 			MH_RemoveHook(targetFunc);
@@ -68,5 +95,6 @@ public:
 
 private:
 	bool enabled = false;
+	std::atomic<bool> unhooked{false};
 	void* targetFunc = nullptr;
 };

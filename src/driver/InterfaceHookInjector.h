@@ -6,3 +6,4 @@ class ServerTrackedDeviceProvider;
 
 void InjectHooks(ServerTrackedDeviceProvider* driver, vr::IVRDriverContext* pDriverContext);
 void DisableHooks();
+bool RemoveHooks();

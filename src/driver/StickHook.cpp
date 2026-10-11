@@ -1,6 +1,7 @@
 #include "StickHook.h"
 #include "DriverInputVTable.h"
 #include "Hooking.h"
+#include "HookGate.h"
 #include "Logging.h"
 #include "StickSmoothingMath.h"
 
@@ -121,8 +122,9 @@ namespace spacecal::stick_hook {
 		                                              const char* pchName, vr::VRInputComponentHandle_t* pHandle, vr::EVRScalarType eType,
 		                                              vr::EVRScalarUnits eUnits)
 		{
-			auto result = CreateScalarHook.originalFunc(_this, ulContainer, pchName, pHandle, eType, eUnits);
-			if (result != vr::VRInputError_None || !pHandle || *pHandle == vr::k_ulInvalidInputComponentHandle ||
+			hook_gate::Scope gate;
+			auto result = CreateScalarHook.Original()(_this, ulContainer, pchName, pHandle, eType, eUnits);
+			if (!gate.Open() || result != vr::VRInputError_None || !pHandle || *pHandle == vr::k_ulInvalidInputComponentHandle ||
 			    !math::IsStickAxisPath(pchName) || g_faulted.load(std::memory_order_relaxed)) {
 				return result;
 			}
@@ -164,8 +166,9 @@ namespace spacecal::stick_hook {
 		vr::EVRInputError DetourUpdateScalarComponent(vr::IVRDriverInput* _this, vr::VRInputComponentHandle_t ulComponent, float fNewValue,
 		                                              double fTimeOffset)
 		{
+			hook_gate::Scope gate;
 			float value = fNewValue;
-			if (!g_faulted.load(std::memory_order_relaxed) && std::isfinite(fNewValue)) {
+			if (gate.Open() && !g_faulted.load(std::memory_order_relaxed) && std::isfinite(fNewValue)) {
 				try {
 					value = EasedValue(_this, ulComponent, fNewValue);
 				}
@@ -178,7 +181,7 @@ namespace spacecal::stick_hook {
 					value = fNewValue;
 				}
 			}
-			return UpdateScalarHook.originalFunc(_this, ulComponent, value, fTimeOffset);
+			return UpdateScalarHook.Original()(_this, ulComponent, value, fTimeOffset);
 		}
 
 		void PumpImpl()
@@ -222,7 +225,7 @@ namespace spacecal::stick_hook {
 			}
 
 			for (const auto& update : g_pumpUpdates) {
-				UpdateScalarHook.originalFunc(update.iface, update.handle, update.value, 0.0);
+				UpdateScalarHook.Original()(update.iface, update.handle, update.value, 0.0);
 			}
 		}
 
@@ -270,7 +273,9 @@ namespace spacecal::stick_hook {
 
 	void Pump()
 	{
-		if (!g_armed.load(std::memory_order_acquire) || !UpdateScalarHook.originalFunc || g_faulted.load(std::memory_order_relaxed)) {
+		hook_gate::Scope gate;
+		if (!gate.Open() || !g_armed.load(std::memory_order_acquire) || !UpdateScalarHook.originalFunc ||
+		    g_faulted.load(std::memory_order_relaxed)) {
 			return;
 		}
 		try {
@@ -287,6 +292,9 @@ namespace spacecal::stick_hook {
 	void TryInstallPublicHooks(void* iface)
 	{
 		if (!iface) return;
+
+		std::lock_guard<std::mutex> lock(hook_gate::InstallMutex());
+		if (!hook_gate::IsOpen()) return;
 
 		const bool createAlready = IHook::Exists(CreateScalarHook.name);
 		const bool updateAlready = IHook::Exists(UpdateScalarHook.name);

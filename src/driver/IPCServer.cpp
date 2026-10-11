@@ -3,50 +3,64 @@
 #include "ServerTrackedDeviceProvider.h"
 #include "StickHook.h"
 
+#include <memory>
+
 void IPCServer::HandleRequest(const protocol::Request& request, protocol::Response& response)
 {
-	switch (request.type) {
-		case protocol::RequestHandshake:
-			response.type = protocol::ResponseHandshake;
-			response.protocol.version = protocol::Version;
-			break;
+	try {
+		switch (request.type) {
+			case protocol::RequestHandshake:
+				response.type = protocol::ResponseHandshake;
+				response.protocol.version = protocol::Version;
+				break;
 
-		case protocol::RequestSetDeviceTransform:
-			driver->SetDeviceTransform(request.setDeviceTransform);
-			response.type = protocol::ResponseSuccess;
-			break;
+			case protocol::RequestSetDeviceTransform:
+				driver->SetDeviceTransform(request.setDeviceTransform);
+				response.type = protocol::ResponseSuccess;
+				break;
 
-		case protocol::RequestDebugOffset:
-			driver->HandleApplyRandomOffset();
-			response.type = protocol::ResponseSuccess;
-			break;
+			case protocol::RequestDebugOffset:
+				driver->HandleApplyRandomOffset();
+				response.type = protocol::ResponseSuccess;
+				break;
 
-		case protocol::RequestSetAlignmentSpeedParams:
-			driver->HandleSetAlignmentSpeedParams(request.setAlignmentSpeedParams);
-			response.type = protocol::ResponseSuccess;
-			break;
+			case protocol::RequestSetAlignmentSpeedParams:
+				driver->HandleSetAlignmentSpeedParams(request.setAlignmentSpeedParams);
+				response.type = protocol::ResponseSuccess;
+				break;
 
-		case protocol::RequestSetSmoothingParams:
-			driver->HandleSetSmoothingParams(request.setSmoothingParams);
-			response.type = protocol::ResponseSuccess;
-			break;
+			case protocol::RequestSetSmoothingParams:
+				driver->HandleSetSmoothingParams(request.setSmoothingParams);
+				response.type = protocol::ResponseSuccess;
+				break;
 
-		case protocol::RequestGetSmoothingStats:
-			driver->HandleGetSmoothingStats(request.getSmoothingStats, response.smoothingStats);
-			response.type = protocol::ResponseSmoothingStats;
-			break;
+			case protocol::RequestGetSmoothingStats:
+				driver->HandleGetSmoothingStats(request.getSmoothingStats, response.smoothingStats);
+				response.type = protocol::ResponseSmoothingStats;
+				break;
 
-		case protocol::RequestSetFingerSmoothing:
-			driver->SetFingerSmoothingConfig(request.setFingerSmoothing);
-			response.type = protocol::ResponseSuccess;
-			break;
+			case protocol::RequestSetFingerSmoothing:
+				driver->SetFingerSmoothingConfig(request.setFingerSmoothing);
+				response.type = protocol::ResponseSuccess;
+				break;
 
-		case protocol::RequestSetStickSmoothing:
-			spacecal::stick_hook::SetConfig(request.setStickSmoothing);
-			response.type = protocol::ResponseSuccess;
-			break;
+			case protocol::RequestSetStickSmoothing:
+				spacecal::stick_hook::SetConfig(request.setStickSmoothing);
+				response.type = protocol::ResponseSuccess;
+				break;
 
-		default: LOG("Invalid IPC request: %d", request.type); break;
+			default:
+				LOG("Invalid IPC request: %d", request.type);
+				response.type = protocol::ResponseInvalid;
+				break;
+		}
+	}
+	catch (...) {
+		response = protocol::Response(protocol::ResponseInvalid);
+		static std::atomic<bool> logged{false};
+		if (!logged.exchange(true)) {
+			LOG("IPC request %d threw; answering ResponseInvalid", (int)request.type);
+		}
 	}
 }
 
@@ -57,28 +71,43 @@ IPCServer::~IPCServer()
 
 void IPCServer::Run()
 {
-	mainThread = std::thread(RunThread, this);
+	if (mainThread.joinable()) return;
+	stop = false;
+	connectEvent = CreateEvent(0, TRUE, TRUE, 0);
+	if (!connectEvent) {
+		LOG("CreateEvent failed in Run. Error: %lu", GetLastError());
+		return;
+	}
+	try {
+		mainThread = std::thread(RunThread, this);
+	}
+	catch (...) {
+		LOG("%s", "IPC server thread could not start");
+		CloseHandle(connectEvent);
+		connectEvent = nullptr;
+	}
 }
 
 void IPCServer::Stop()
 {
 	TRACE("IPCServer::Stop()");
-	if (!running) return;
+	if (!mainThread.joinable()) return;
 
 	stop = true;
 	SetEvent(connectEvent);
 	mainThread.join();
-	running = false;
+	CloseHandle(connectEvent);
+	connectEvent = nullptr;
 	TRACE("IPCServer::Stop() finished");
 }
 
 IPCServer::PipeInstance* IPCServer::CreatePipeInstance(HANDLE pipe)
 {
-	auto pipeInst = new PipeInstance;
+	auto pipeInst = std::make_unique<PipeInstance>();
 	pipeInst->pipe = pipe;
 	pipeInst->server = this;
-	pipes.insert(pipeInst);
-	return pipeInst;
+	pipes.insert(pipeInst.get());
+	return pipeInst.release();
 }
 
 void IPCServer::ClosePipeInstance(PipeInstance* pipeInst)
@@ -91,16 +120,9 @@ void IPCServer::ClosePipeInstance(PipeInstance* pipeInst)
 
 void IPCServer::RunThread(IPCServer* _this)
 {
-	_this->running = true;
-	LPCTSTR pipeName = TEXT(OPENVR_SPACECALIBRATOR_PIPE_NAME);
+	HANDLE connectEvent = _this->connectEvent;
 
-	HANDLE connectEvent = _this->connectEvent = CreateEvent(0, TRUE, TRUE, 0);
-	if (!connectEvent) {
-		LOG("CreateEvent failed in RunThread. Error: %d", GetLastError());
-		return;
-	}
-
-	OVERLAPPED connectOverlap;
+	OVERLAPPED connectOverlap{};
 	connectOverlap.hEvent = connectEvent;
 
 	HANDLE nextPipe;
@@ -122,28 +144,40 @@ void IPCServer::RunThread(IPCServer* _this)
 				DWORD bytesConnect;
 				BOOL success = GetOverlappedResult(nextPipe, &connectOverlap, &bytesConnect, FALSE);
 				if (!success) {
-					LOG("GetOverlappedResult failed in RunThread. Error: %d", GetLastError());
-					return;
+					LOG("GetOverlappedResult failed in RunThread. Error: %lu", GetLastError());
+					break;
 				}
 			}
 
 			LOG("IPC client connected");
 
-			auto pipeInst = _this->CreatePipeInstance(nextPipe);
-			CompletedWriteCallback(0, sizeof(protocol::Response), (LPOVERLAPPED)pipeInst);
+			PipeInstance* pipeInst = nullptr;
+			try {
+				pipeInst = _this->CreatePipeInstance(nextPipe);
+			}
+			catch (...) {
+				LOG("%s", "IPC client dropped: out of memory for its pipe instance");
+				DisconnectNamedPipe(nextPipe);
+				CloseHandle(nextPipe);
+			}
+			if (pipeInst) {
+				CompletedWriteCallback(0, sizeof(protocol::Response), (LPOVERLAPPED)pipeInst);
+			}
 
 			connectPending = CreateAndConnectInstance(&connectOverlap, nextPipe);
 		}
 		else if (wait != WAIT_IO_COMPLETION) {
-			printf("WaitForSingleObjectEx failed in RunThread. Error %d", GetLastError());
-			return;
+			LOG("WaitForSingleObjectEx failed in RunThread. Error: %lu", GetLastError());
+			break;
 		}
 	}
 
-	for (auto& pipeInst : _this->pipes) {
-		_this->ClosePipeInstance(pipeInst);
+	if (nextPipe != INVALID_HANDLE_VALUE) {
+		CloseHandle(nextPipe);
 	}
-	_this->pipes.clear();
+	while (!_this->pipes.empty()) {
+		_this->ClosePipeInstance(*_this->pipes.begin());
+	}
 }
 
 BOOL IPCServer::CreateAndConnectInstance(LPOVERLAPPED overlap, HANDLE& pipe)
@@ -153,7 +187,7 @@ BOOL IPCServer::CreateAndConnectInstance(LPOVERLAPPED overlap, HANDLE& pipe)
 	                       sizeof(protocol::Response), 1000, 0);
 
 	if (pipe == INVALID_HANDLE_VALUE) {
-		LOG("CreateNamedPipe failed. Error: %d", GetLastError());
+		LOG("CreateNamedPipe failed. Error: %lu", GetLastError());
 		return FALSE;
 	}
 
@@ -170,7 +204,7 @@ BOOL IPCServer::CreateAndConnectInstance(LPOVERLAPPED overlap, HANDLE& pipe)
 			if (SetEvent(overlap->hEvent)) return FALSE;
 	}
 
-	LOG("ConnectNamedPipe failed. Error: %d", GetLastError());
+	LOG("ConnectNamedPipe failed. Error: %lu", GetLastError());
 	return FALSE;
 }
 
@@ -190,7 +224,7 @@ void IPCServer::CompletedReadCallback(DWORD err, DWORD bytesRead, LPOVERLAPPED o
 			LOG("IPC client disconnecting normally");
 		}
 		else {
-			LOG("IPC client disconnecting due to error (via CompletedReadCallback), error: %d, bytesRead: %d", err, bytesRead);
+			LOG("IPC client disconnecting due to error (via CompletedReadCallback), error: %lu, bytesRead: %lu", err, bytesRead);
 		}
 		pipeInst->server->ClosePipeInstance(pipeInst);
 	}
@@ -207,7 +241,7 @@ void IPCServer::CompletedWriteCallback(DWORD err, DWORD bytesWritten, LPOVERLAPP
 	}
 
 	if (!success) {
-		LOG("IPC client disconnecting due to error (via CompletedWriteCallback), error: %d, bytesWritten: %d", err, bytesWritten);
+		LOG("IPC client disconnecting due to error (via CompletedWriteCallback), error: %lu, bytesWritten: %lu", err, bytesWritten);
 		pipeInst->server->ClosePipeInstance(pipeInst);
 	}
 }
