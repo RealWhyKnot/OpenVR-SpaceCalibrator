@@ -4,9 +4,14 @@
 
 namespace spacecal {
 
+	inline constexpr const char* UpdateHelperMutexName = "Local\\SpaceCalibratorUpdateHelper";
+
 	struct UpdateHelperParams
 	{
 		unsigned long overlayPid = 0;
+		std::string fromVersion;
+		std::string tag;
+		std::string appMutex;
 		std::string setupUrl;
 		std::string shaUrl;
 		std::string setupName;
@@ -31,15 +36,26 @@ namespace spacecal {
 
 	inline std::string BuildUpdateHelperScript(const UpdateHelperParams& p)
 	{
-		std::string script;
+		std::string script = "\xEF\xBB\xBF";
 		auto line = [&script](const std::string& text) {
 			script += text + "\r\n";
 		};
 		line("$ErrorActionPreference = 'Stop'");
 		line("$ProgressPreference = 'SilentlyContinue'");
 		line("function Log($m) { Add-Content -LiteralPath " + QuotePowerShell(p.logPath) +
-		     " -Value (\"{0} {1}\" -f (Get-Date -Format s), $m) }");
+		     " -Value (\"{0} {1}\" -f (Get-Date -Format s), $m) -Encoding UTF8 }");
+		line("function Busy {");
+		line("    if (Get-Process vrserver -ErrorAction SilentlyContinue) { return $true }");
+		line("    $app = $null");
+		line("    try { if ([System.Threading.Mutex]::TryOpenExisting(" + QuotePowerShell(p.appMutex) +
+		     ", [ref]$app)) { $app.Dispose(); return $true } } catch [System.UnauthorizedAccessException] { return $true }");
+		line("    return $false");
+		line("}");
+		line("try { $lock = New-Object System.Threading.Mutex($false, " + QuotePowerShell(UpdateHelperMutexName) +
+		     "); $owned = $lock.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $owned = $true } catch { exit 0 }");
+		line("if (-not $owned) { exit 0 }");
 		line("try {");
+		line("    Log " + QuotePowerShell("update " + p.fromVersion + " to " + p.tag));
 		line("    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12");
 		line("    $staging = " + QuotePowerShell(p.stagingDir));
 		line("    if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }");
@@ -49,20 +65,37 @@ namespace spacecal {
 		line("    Invoke-WebRequest -Uri " + QuotePowerShell(p.setupUrl) + " -OutFile $setup -UseBasicParsing");
 		line("    Invoke-WebRequest -Uri " + QuotePowerShell(p.shaUrl) + " -OutFile \"$setup.sha256\" -UseBasicParsing");
 		line("    $expected = ((Get-Content -LiteralPath \"$setup.sha256\" -Raw).Trim() -split '\\s+')[0].ToLowerInvariant()");
-		line("    $actual = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()");
+		line("    $hasher = [System.Security.Cryptography.SHA256]::Create()");
+		line("    $stream = [System.IO.File]::OpenRead($setup)");
+		line("    try { $digest = $hasher.ComputeHash($stream) } finally { $stream.Dispose() }");
+		line("    $actual = ([System.BitConverter]::ToString($digest) -replace '-', '').ToLowerInvariant()");
 		line("    if ($expected -ne $actual) { throw \"sha256 mismatch: expected $expected got $actual\" }");
 		line("    Log 'verified'");
 		line("    Log 'waiting for overlay " + std::to_string(p.overlayPid) + "'");
 		line("    Wait-Process -Id " + std::to_string(p.overlayPid) + " -ErrorAction SilentlyContinue");
-		line("    Log 'waiting for vrserver'");
-		line("    while (Get-Process vrserver -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 2 }");
-		line("    Log ('running ' + $setup)");
-		line("    $run = Start-Process -FilePath $setup -ArgumentList ('/S /D=' + " + QuotePowerShell(p.installDir) + ") -Wait -PassThru");
-		line("    if ($run.ExitCode -ne 0) { throw ('setup exited with code ' + $run.ExitCode) }");
+		line("    $attempt = 0");
+		line("    while ($true) {");
+		line("        $attempt++");
+		line("        Log 'waiting for SteamVR and Space Calibrator to close'");
+		line("        while (Busy) { Start-Sleep -Seconds 2 }");
+		line("        Log ('running ' + $setup)");
+		line("        $psi = New-Object System.Diagnostics.ProcessStartInfo");
+		line("        $psi.FileName = $setup");
+		line("        $psi.Arguments = '/S /D=' + " + QuotePowerShell(p.installDir));
+		line("        $psi.UseShellExecute = $false");
+		line("        $run = [System.Diagnostics.Process]::Start($psi)");
+		line("        $run.WaitForExit()");
+		line("        $code = $run.ExitCode");
+		line("        Log ('setup exited with code ' + $code)");
+		line("        if ($code -eq 0) { break }");
+		line("        if (-not ($code -eq 5 -or $code -eq 6) -or $attempt -ge 5) { throw ('setup exited with code ' + $code) }");
+		line("        Start-Sleep -Seconds 5");
+		line("    }");
 		line("    Log 'installed'");
 		line("    Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue");
 		line("} catch {");
 		line("    Log ($_ | Out-String)");
+		line("    Log ('failed: ' + ($_.Exception.Message -replace '\\s+', ' ').Trim())");
 		line("    exit 1");
 		line("}");
 		return script;

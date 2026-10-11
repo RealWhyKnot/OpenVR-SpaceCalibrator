@@ -1,7 +1,9 @@
 #include "stdafx.h"
 #include "Updater.h"
 #include "Configuration.h"
+#include "Constants.h"
 #include "UpdateHelperScript.h"
+#include "UpdateLog.h"
 #include "Version.h"
 
 #include <winhttp.h>
@@ -9,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 
 Updater UpdaterCtx;
 
@@ -115,6 +118,16 @@ namespace {
 		return std::filesystem::path(std::wstring(buffer, length)).parent_path();
 	}
 
+	bool UpdateHelperRunning()
+	{
+		HANDLE mutex = OpenMutexA(SYNCHRONIZE, FALSE, spacecal::UpdateHelperMutexName);
+		if (!mutex) {
+			return GetLastError() == ERROR_ACCESS_DENIED;
+		}
+		CloseHandle(mutex);
+		return true;
+	}
+
 } // namespace
 
 Updater::~Updater()
@@ -209,30 +222,42 @@ void Updater::Poll()
 void Updater::LoadLastRunNote()
 {
 	lastRunNote.clear();
-	std::ifstream log(LocalAppDataDir() / L"update.log");
+	if (UpdateHelperRunning()) {
+		std::cout << "update: a helper from an earlier run is still waiting to install\n";
+		return;
+	}
+	std::ifstream log(LocalAppDataDir() / L"update.log", std::ios::binary);
 	if (!log) {
 		return;
 	}
-	std::string line;
-	std::string lastLine;
-	while (std::getline(log, line)) {
-		if (!line.empty() && line.find_first_not_of(" \t\r") != std::string::npos) {
-			lastLine = line;
-		}
+	const std::string text((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
+	const spacecal::UpdateLogSummary summary = spacecal::SummarizeUpdateLog(text);
+	if (summary.lastMessage.empty()) {
+		return;
 	}
-	if (!lastLine.empty() && lastLine.find("installed") == std::string::npos) {
-		lastRunNote = "the last update may not have finished; see update.log";
-		std::cerr << "update: last helper run ended with: " << lastLine << '\n';
-	}
+	spacecal::UpdateVersion installed;
+	spacecal::ParseUpdateVersion(SPACECAL_VERSION_STRING, installed);
+	lastRunNote = spacecal::UpdateLogNote(summary, installed);
+	std::cout << "update: last helper run for " << (summary.targetTag.empty() ? "an unknown version" : summary.targetTag)
+	          << " ended with: " << summary.lastMessage << "; installed " << SPACECAL_VERSION_STRING
+	          << (lastRunNote.empty() ? ", no note\n" : ", showing note\n");
 }
 
 void Updater::Update()
 {
+	if (UpdateHelperRunning()) {
+		state = UpdateState::Staged;
+		std::cout << "update: a helper is already waiting to install, not starting another for " << available.tag << '\n';
+		return;
+	}
 	std::filesystem::path base = LocalAppDataDir();
 	std::error_code ec;
 	std::filesystem::create_directories(base, ec);
 	spacecal::UpdateHelperParams params;
 	params.overlayPid = GetCurrentProcessId();
+	params.fromVersion = SPACECAL_VERSION_STRING;
+	params.tag = available.tag;
+	params.appMutex = APP_MUTEX_KEY;
 	params.setupUrl = available.setupUrl;
 	params.shaUrl = available.setupShaUrl;
 	params.setupName = spacecal::ReleaseSetupName(available.tag);
