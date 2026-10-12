@@ -1,6 +1,7 @@
 #include "PoseHealth.h"
 
 #include <cstdio>
+#include <limits>
 
 namespace {
 
@@ -69,6 +70,45 @@ namespace {
 		CHECK(ClassifySamplePose(calibrating) == SampleVerdict::Lost);
 	}
 
+	void TestNonFinitePoseIsSkipped()
+	{
+		const double nan = std::numeric_limits<double>::quiet_NaN();
+		const double inf = std::numeric_limits<double>::infinity();
+		vr::DriverPose_t healthy = MakePose(true, true, vr::TrackingResult_Running_OK);
+		healthy.qRotation = {1, 0, 0, 0};
+		healthy.qWorldFromDriverRotation = {1, 0, 0, 0};
+		healthy.vecPosition[0] = 1.5;
+		healthy.vecWorldFromDriverTranslation[2] = -0.25;
+		CHECK(PoseIsFinite(healthy));
+		CHECK(ClassifySamplePose(healthy) == SampleVerdict::Use);
+
+		void (*const setters[])(vr::DriverPose_t&, double) = {
+		    [](vr::DriverPose_t& p, double v) { p.vecPosition[0] = v; },
+		    [](vr::DriverPose_t& p, double v) { p.vecPosition[2] = v; },
+		    [](vr::DriverPose_t& p, double v) { p.vecWorldFromDriverTranslation[1] = v; },
+		    [](vr::DriverPose_t& p, double v) { p.qRotation.w = v; },
+		    [](vr::DriverPose_t& p, double v) { p.qRotation.z = v; },
+		    [](vr::DriverPose_t& p, double v) { p.qWorldFromDriverRotation.x = v; },
+		    [](vr::DriverPose_t& p, double v) { p.qWorldFromDriverRotation.w = v; },
+		};
+		for (auto set : setters) {
+			for (double bad : {nan, inf, -inf}) {
+				vr::DriverPose_t pose = healthy;
+				set(pose, bad);
+				CHECK(!PoseIsFinite(pose));
+				CHECK(ClassifySamplePose(pose) == SampleVerdict::Skip);
+			}
+		}
+
+		vr::DriverPose_t lost = MakePose(false, false, vr::TrackingResult_Running_OutOfRange);
+		lost.vecPosition[1] = nan;
+		CHECK(ClassifySamplePose(lost) == SampleVerdict::Lost);
+
+		vr::DriverPose_t outOfRange = MakePose(true, true, vr::TrackingResult_Running_OutOfRange);
+		outOfRange.qRotation.x = inf;
+		CHECK(ClassifySamplePose(outOfRange) == SampleVerdict::Skip);
+	}
+
 }
 
 int main()
@@ -76,6 +116,7 @@ int main()
 	TestClassify();
 	TestRuntimeState();
 	TestStale();
+	TestNonFinitePoseIsSkipped();
 
 	if (failures == 0) {
 		std::printf("posehealth_tests: all tests passed\n");

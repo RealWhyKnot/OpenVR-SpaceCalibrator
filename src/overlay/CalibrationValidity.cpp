@@ -100,68 +100,38 @@ double CalibrationCalc::RetargetingErrorRMS(const Eigen::Vector3d& hmdToTargetPo
 	return sqrt(errorAccum / sampleCount);
 }
 
+namespace {
+	template <typename F> double PositionJitter(const std::deque<Sample>& samples, const F& position)
+	{
+		Eigen::Vector3d mean = Eigen::Vector3d::Zero();
+		Eigen::Vector3d sumSquares = Eigen::Vector3d::Zero();
+		int sampleCount = 0;
+
+		for (auto& sample : samples) {
+			if (!sample.valid) continue;
+
+			const Eigen::Vector3d& x = position(sample);
+			sampleCount++;
+			const Eigen::Vector3d delta = x - mean;
+			mean += delta / sampleCount;
+			sumSquares += delta.cwiseProduct(x - mean);
+		}
+
+		if (sampleCount < 2) return 0.0;
+
+		const Eigen::Vector3d variance = sumSquares / (sampleCount - 1);
+		return std::sqrt(variance.cwiseAbs().sum());
+	}
+}
+
 double CalibrationCalc::ReferenceJitter() const
 {
-	Eigen::Vector3d m_oldM, m_newM, m_oldS, m_newS;
-	int sampleCount = 0;
-
-	for (auto& sample : m_samples) {
-		if (!sample.valid) continue;
-
-		if (sampleCount == 0) {
-			m_oldM = m_newM = sample.ref.trans;
-			m_oldS = Eigen::Vector3d();
-		}
-		else {
-			m_newM = m_oldM + (sample.ref.trans - m_oldM) / sampleCount;
-			m_newS = m_oldS + (sample.ref.trans - m_oldM).cwiseProduct(sample.ref.trans - m_newM);
-
-			// set up for next iteration
-			m_oldM = m_newM;
-			m_oldS = m_newS;
-		}
-
-		sampleCount++;
-	}
-
-	double var_x = sqrt(((sampleCount > 1) ? m_newS.x() / (sampleCount - 1) : 0.0));
-	double var_y = sqrt(((sampleCount > 1) ? m_newS.y() / (sampleCount - 1) : 0.0));
-	double var_z = sqrt(((sampleCount > 1) ? m_newS.z() / (sampleCount - 1) : 0.0));
-
-	// Take magnitude of standard deviation vector
-	return sqrt(var_x * var_x + var_y * var_y + var_z * var_z);
+	return PositionJitter(m_samples, [](const Sample& sample) -> const Eigen::Vector3d& { return sample.ref.trans; });
 }
 
 double CalibrationCalc::TargetJitter() const
 {
-	Eigen::Vector3d m_oldM, m_newM, m_oldS, m_newS;
-	int sampleCount = 0;
-
-	for (auto& sample : m_samples) {
-		if (!sample.valid) continue;
-
-		if (sampleCount == 0) {
-			m_oldM = m_newM = sample.target.trans;
-			m_oldS = Eigen::Vector3d();
-		}
-		else {
-			m_newM = m_oldM + (sample.target.trans - m_oldM) / sampleCount;
-			m_newS = m_oldS + (sample.target.trans - m_oldM).cwiseProduct(sample.target.trans - m_newM);
-
-			// set up for next iteration
-			m_oldM = m_newM;
-			m_oldS = m_newS;
-		}
-
-		sampleCount++;
-	}
-
-	double var_x = sqrt(((sampleCount > 1) ? std::abs(m_newS.x() / (sampleCount - 1)) : 0.0));
-	double var_y = sqrt(((sampleCount > 1) ? std::abs(m_newS.y() / (sampleCount - 1)) : 0.0));
-	double var_z = sqrt(((sampleCount > 1) ? std::abs(m_newS.z() / (sampleCount - 1)) : 0.0));
-
-	// Take magnitude of standard deviation vector
-	return sqrt(var_x * var_x + var_y * var_y + var_z * var_z);
+	return PositionJitter(m_samples, [](const Sample& sample) -> const Eigen::Vector3d& { return sample.target.trans; });
 }
 
 Eigen::Vector3d CalibrationCalc::ComputeRefToTargetOffset(const Eigen::AffineCompact3d& calibration) const
@@ -243,7 +213,7 @@ Eigen::Vector4d CalibrationCalc::ComputeAxisVariance(const Eigen::AffineCompact3
 	if (posOffsetV) *posOffsetV = posOffset;
 
 	double rmsError = RetargetingErrorRMS(posOffset, calibration);
-	if (rmsError > 0.1) ok = false;
+	if (!(rmsError <= 0.1)) ok = false;
 
 	if (error) *error = rmsError;
 

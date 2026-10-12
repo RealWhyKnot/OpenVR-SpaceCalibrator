@@ -94,6 +94,12 @@ set_target_properties(perf_overlay_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD
 add_test(NAME perf_overlay COMMAND perf_overlay_tests)
 set_tests_properties(perf_overlay PROPERTIES LABELS perf RUN_SERIAL TRUE)
 
+add_executable(profile_tests profile_tests.cpp)
+target_include_directories(profile_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/overlay ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/lib ${CMAKE_SOURCE_DIR}/lib/openvr/headers)
+target_compile_definitions(profile_tests PRIVATE NOMINMAX UNICODE _CRT_SECURE_NO_WARNINGS)
+set_target_properties(profile_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
+add_test(NAME profile COMMAND profile_tests)
+
 add_executable(driver_race_tests driver_race_tests.cpp ${PERF_DRIVER_SOURCES})
 target_include_directories(driver_race_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/driver ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/lib/openvr/headers ${CMAKE_SOURCE_DIR}/lib/minhook/include ${CMAKE_SOURCE_DIR}/lib)
 target_link_libraries(driver_race_tests PRIVATE minhook)
@@ -107,6 +113,16 @@ target_include_directories(protocol_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/common
 target_compile_definitions(protocol_tests PRIVATE NOMINMAX)
 set_target_properties(protocol_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
 add_test(NAME protocol COMMAND protocol_tests)
+
+add_executable(math_tests math_tests.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/CalibrationCalc.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/CalibrationValidity.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/CalibrationMetrics.cpp)
+target_include_directories(math_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/overlay ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/src/driver ${CMAKE_SOURCE_DIR}/lib ${CMAKE_SOURCE_DIR}/lib/openvr/headers)
+target_link_libraries(math_tests PRIVATE shell32 ole32)
+target_compile_definitions(math_tests PRIVATE NOMINMAX UNICODE _CRT_SECURE_NO_WARNINGS)
+set_target_properties(math_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
+add_test(NAME math COMMAND math_tests)
 
 add_executable(blend_tests blend_tests.cpp ${PERF_DRIVER_SOURCES})
 target_include_directories(blend_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/driver ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/lib/openvr/headers ${CMAKE_SOURCE_DIR}/lib/minhook/include ${CMAKE_SOURCE_DIR}/lib)
