@@ -54,11 +54,11 @@ namespace {
 		                   "target device is the unaligned one, typically a tracker.");
 		ImGui::Spacing();
 		Bullet("Hold the reference and target devices together in one hand, as firmly as you can so they never move apart.");
-		Bullet("Pick both devices on the Calibration page, then press Start Calibration.");
+		Bullet("Pick both devices on the Calibration page, then press Start calibration.");
 		Bullet("Walk around your space while drawing a figure eight with your hand until the progress bar fills.");
 		ImGui::Spacing();
 		ImGui::TextWrapped("Once the bar fills, your devices line up instantly. If they don't, run it again with slower speed: "
-		                   "Slow and Very Slow take longer but usually land a more accurate result.");
+		                   "Slow and Very slow take longer but usually land a more accurate result.");
 		ImGui::Spacing();
 		ImGui::TextWrapped("Tracking drifts over time. If you keep having to recalibrate, switch to continuous calibration.");
 	}
@@ -71,7 +71,7 @@ namespace {
 		                   "live.");
 		ImGui::Spacing();
 		Bullet("Attach the tracker to your headset. A fixed mount works far better than tape.");
-		Bullet("Select the headset as reference and the mounted tracker as target, then press Continuous Calibration.");
+		Bullet("Select the headset as reference and the mounted tracker as target, then press Continuous calibration.");
 		Bullet("Leave it running. The calibration refines itself as you play, and it restarts with SteamVR.");
 		ImGui::Spacing();
 		ImGui::TextWrapped("Hide tracker keeps the mounted tracker out of games. If corrections feel too eager or too lazy, "

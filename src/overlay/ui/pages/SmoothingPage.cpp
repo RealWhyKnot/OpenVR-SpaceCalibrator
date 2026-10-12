@@ -30,19 +30,18 @@ static void RefreshSmoothingStats(std::vector<SmoothingStatsRow>& rows)
 	if (!vr::VRSystem()) {
 		return;
 	}
-	char serial[vr::k_unMaxPropertyStringSize];
-	for (uint32_t id = 0; id < vr::k_unMaxTrackedDeviceCount; ++id) {
-		auto deviceClass = vr::VRSystem()->GetTrackedDeviceClass(id);
-		if (deviceClass != vr::TrackedDeviceClass_GenericTracker && deviceClass != vr::TrackedDeviceClass_Controller) {
-			continue;
-		}
+	for (const VRDevice& device : LoadVRState().devices) {
+		if (device.id < 0) continue;
+		const bool tracker = device.deviceClass == vr::TrackedDeviceClass_GenericTracker;
+		const bool controller = device.deviceClass == vr::TrackedDeviceClass_Controller;
+		if (!tracker && !controller) continue;
+		if (device.trackingSystem != CalCtx.targetTrackingSystem) continue;
+		if (controller && !CalCtx.smoothControllers) continue;
 		protocol::SmoothingStats stats;
-		if (!QuerySmoothingStats(id, stats) || !stats.active) {
+		if (!QuerySmoothingStats(device.id, stats) || !stats.active) {
 			continue;
 		}
-		serial[0] = 0;
-		vr::VRSystem()->GetStringTrackedDeviceProperty(id, vr::Prop_SerialNumber_String, serial, sizeof serial);
-		rows.push_back({serial, stats});
+		rows.push_back({device.serial, stats});
 	}
 }
 
@@ -255,82 +254,63 @@ void DrawFingerSmoothingPanel(ImVec2 panel_size)
 	                 "Applied to every enabled finger below; per-finger values override it.");
 	CalCtx.fingerSmoothing.strength = (uint8_t)strength;
 
-	ImGui::BeginDisabled(CalCtx.fingerSmoothing.strength == 0);
-
-	if (ImGui::BeginTable("fingers_grid", 6, ImGuiTableFlags_SizingStretchProp)) {
-		ImGui::TableSetupColumn("Hand");
-		for (int f = 0; f < 5; ++f) {
-			ImGui::TableSetupColumn(kFingerLabels[f]);
-		}
-		ImGui::TableHeadersRow();
-		for (int hand = 0; hand < 2; ++hand) {
-			ImGui::TableNextRow();
-			ImGui::TableSetColumnIndex(0);
-			ImGui::TextUnformatted(kHandLabels[hand]);
+	if (ImGui::TreeNodeEx("Per finger", ImGuiTreeNodeFlags_SpanAvailWidth)) {
+		if (ImGui::BeginTable("fingers_grid", 6, ImGuiTableFlags_SizingStretchProp)) {
+			ImGui::TableSetupColumn("Hand", ImGuiTableColumnFlags_WidthFixed);
 			for (int f = 0; f < 5; ++f) {
-				ImGui::TableSetColumnIndex(f + 1);
-				const int bit = protocol::FingerBit(hand, f);
-				bool enabled = ((CalCtx.fingerSmoothing.fingerMask >> bit) & 1u) != 0;
-				ImGui::PushID(bit);
-				if (ImGui::Checkbox("##finger", &enabled)) {
-					if (enabled) {
-						CalCtx.fingerSmoothing.fingerMask |= (uint16_t)(1u << bit);
-					}
-					else {
-						CalCtx.fingerSmoothing.fingerMask &= (uint16_t)~(1u << bit);
-					}
-					dirty = true;
-				}
-				ImGui::PopID();
+				ImGui::TableSetupColumn(kFingerLabels[f], ImGuiTableColumnFlags_WidthStretch, 1.0f);
 			}
-		}
-		ImGui::EndTable();
-	}
-
-	if (ImGui::Button("Enable all fingers")) {
-		CalCtx.fingerSmoothing.fingerMask = protocol::kAllFingersMask;
-		dirty = true;
-	}
-	ImGui::SameLine();
-	if (ImGui::Button("Disable all fingers")) {
-		CalCtx.fingerSmoothing.fingerMask = 0;
-		dirty = true;
-	}
-
-	if (ImGui::BeginTable("fingers_strength_grid", 6, ImGuiTableFlags_SizingStretchProp)) {
-		ImGui::TableSetupColumn("Hand");
-		for (int f = 0; f < 5; ++f) {
-			ImGui::TableSetupColumn(kFingerLabels[f]);
-		}
-		ImGui::TableHeadersRow();
-		for (int hand = 0; hand < 2; ++hand) {
-			ImGui::TableNextRow();
-			ImGui::TableSetColumnIndex(0);
-			ImGui::TextUnformatted(kHandLabels[hand]);
-			for (int f = 0; f < 5; ++f) {
-				ImGui::TableSetColumnIndex(f + 1);
-				const int bit = protocol::FingerBit(hand, f);
-				const bool fingerEnabled = ((CalCtx.fingerSmoothing.fingerMask >> bit) & 1u) != 0;
-				int value = CalCtx.fingerSmoothing.perFinger[bit];
-				ImGui::PushID(bit);
-				ImGui::SetNextItemWidth(-FLT_MIN);
-				ImGui::BeginDisabled(!fingerEnabled);
-				if (ImGui::SliderInt("##perfinger", &value, 0, 100, value > 0 ? "%d" : "global")) {
-					CalCtx.fingerSmoothing.perFinger[bit] = (uint8_t)value;
+			ImGui::TableHeadersRow();
+			for (int hand = 0; hand < 2; ++hand) {
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0);
+				ImGui::AlignTextToFramePadding();
+				ImGui::TextUnformatted(kHandLabels[hand]);
+				for (int f = 0; f < 5; ++f) {
+					ImGui::TableSetColumnIndex(f + 1);
+					const int bit = protocol::FingerBit(hand, f);
+					bool enabled = ((CalCtx.fingerSmoothing.fingerMask >> bit) & 1u) != 0;
+					ImGui::PushID(bit);
+					if (ImGui::Checkbox("##finger", &enabled)) {
+						if (enabled) {
+							CalCtx.fingerSmoothing.fingerMask |= (uint16_t)(1u << bit);
+						}
+						else {
+							CalCtx.fingerSmoothing.fingerMask &= (uint16_t)~(1u << bit);
+						}
+						dirty = true;
+					}
+					SmoothingTooltip("Smooth this finger.");
+					ImGui::SameLine();
+					int value = CalCtx.fingerSmoothing.perFinger[bit];
+					ImGui::SetNextItemWidth(-FLT_MIN);
+					ImGui::BeginDisabled(!enabled || CalCtx.fingerSmoothing.strength == 0);
+					if (ImGui::SliderInt("##perfinger", &value, 0, 100, value > 0 ? "%d" : "global")) {
+						CalCtx.fingerSmoothing.perFinger[bit] = (uint8_t)value;
+					}
+					dirty |= ImGui::IsItemDeactivatedAfterEdit();
+					ImGui::EndDisabled();
+					if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+						ImGui::SetTooltip("%s %s\n0 = use the global strength (%d).", kHandLabels[hand], kFingerLabels[f],
+						                  (int)CalCtx.fingerSmoothing.strength);
+					}
+					ImGui::PopID();
 				}
-				dirty |= ImGui::IsItemDeactivatedAfterEdit();
-				ImGui::EndDisabled();
-				if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-					ImGui::SetTooltip("%s %s\n0 = use the global strength (%d).", kHandLabels[hand], kFingerLabels[f],
-					                  (int)CalCtx.fingerSmoothing.strength);
-				}
-				ImGui::PopID();
 			}
+			ImGui::EndTable();
 		}
-		ImGui::EndTable();
-	}
 
-	ImGui::EndDisabled();
+		if (ImGui::Button("Enable all fingers")) {
+			CalCtx.fingerSmoothing.fingerMask = protocol::kAllFingersMask;
+			dirty = true;
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Disable all fingers")) {
+			CalCtx.fingerSmoothing.fingerMask = 0;
+			dirty = true;
+		}
+		ImGui::TreePop();
+	}
 
 	if (dirty) {
 		ApplySmoothingSettings();

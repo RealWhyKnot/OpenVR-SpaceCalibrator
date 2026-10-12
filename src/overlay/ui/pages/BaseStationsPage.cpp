@@ -23,6 +23,35 @@ namespace {
 	std::string nickEditSerial;
 	char nickBuffer[64] = {};
 
+	struct PendingChannel
+	{
+		bool open = false;
+		std::string serial;
+		std::string text;
+		uint8_t channel = 0;
+	};
+	PendingChannel pendingChannel;
+	std::map<std::string, uint8_t> pendingFix;
+	std::string pendingFixText;
+
+	std::string StationName(const Station& station)
+	{
+		return station.nickname.empty() ? station.serial : station.nickname;
+	}
+
+	std::string ChannelMoveText(const Station& station, uint8_t channel)
+	{
+		char text[160];
+		if (station.channel >= 1 && station.channel <= 16) {
+			snprintf(text, sizeof text, "%s moves from channel %u to channel %u.", StationName(station).c_str(), (unsigned)station.channel,
+			         (unsigned)channel);
+		}
+		else {
+			snprintf(text, sizeof text, "%s moves to channel %u.", StationName(station).c_str(), (unsigned)channel);
+		}
+		return text;
+	}
+
 	ImVec4 ToneColor(StatusTone tone)
 	{
 		switch (tone) {
@@ -30,18 +59,16 @@ namespace {
 			case StatusTone::Pending: return ImVec4(1.0f, 0.75f, 0.3f, 1.0f);
 			case StatusTone::Error: return ImVec4(0.9f, 0.4f, 0.4f, 1.0f);
 			case StatusTone::Info: return ImVec4(0.55f, 0.75f, 1.0f, 1.0f);
-			default: return ImVec4(0.6f, 0.6f, 0.6f, 1.0f);
+			default: return ImVec4(0.72f, 0.72f, 0.72f, 1.0f);
 		}
 	}
 
 	void Tooltip(const char* text)
 	{
-		if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-			ImGui::SetTooltip("%s", text);
-		}
+		ui::Tooltip(text, ImGuiHoveredFlags_AllowWhenDisabled);
 	}
 
-	bool SteamVrNativePowerManagementLooksActive()
+	bool ReadSteamVrNativePowerManagement()
 	{
 		auto* settings = vr::VRSettings();
 		if (!settings) return false;
@@ -53,6 +80,21 @@ namespace {
 		settings->GetString(vr::k_pch_Lighthouse_Section, vr::k_pch_Lighthouse_PowerManagedBaseStations2_String, managed, sizeof managed,
 		                    &err);
 		return err == vr::VRSettingsError_None && managed[0] != '\0';
+	}
+
+	bool SteamVrNativePowerManagementLooksActive()
+	{
+		constexpr double kRecheckSeconds = 1.0;
+		static bool active = false;
+		static bool checked = false;
+		static double checkedAt = 0.0;
+		const double now = ImGui::GetTime();
+		if (!checked || now < checkedAt || now - checkedAt >= kRecheckSeconds) {
+			active = ReadSteamVrNativePowerManagement();
+			checked = true;
+			checkedAt = now;
+		}
+		return active;
 	}
 
 	void DrawChannelGrid(BaseStationsController& ctl, const Station& station, const std::map<uint8_t, std::string>& occupancy)
@@ -68,7 +110,7 @@ namespace {
 			const ImVec2 size(kChannelButtonSize, kChannelButtonSize);
 			switch (ClassifyChannelSlot(ch, station, occupancy)) {
 				case ChannelSlot::Current: {
-					const ImVec4 current = ToneColor(StatusTone::Ok);
+					const ImVec4 current(0.14f, 0.48f, 0.26f, 1.0f);
 					ImGui::PushStyleColor(ImGuiCol_Button, current);
 					ImGui::PushStyleColor(ImGuiCol_ButtonHovered, current);
 					ImGui::PushStyleColor(ImGuiCol_ButtonActive, current);
@@ -78,9 +120,9 @@ namespace {
 					break;
 				}
 				case ChannelSlot::Taken: {
-					ImGui::BeginDisabled(true);
+					ui::BeginDisabledLook(true);
 					ImGui::Button(label, size);
-					ImGui::EndDisabled();
+					ui::EndDisabledLook();
 					const auto it = occupancy.find(ch);
 					const std::string why = "Used by " + (it != occupancy.end() ? it->second : std::string("another station"));
 					Tooltip(why.c_str());
@@ -88,7 +130,10 @@ namespace {
 				}
 				case ChannelSlot::Free:
 					if (ImGui::Button(label, size)) {
-						ctl.RequestChannel(station.serial, ch);
+						pendingChannel.open = true;
+						pendingChannel.serial = station.serial;
+						pendingChannel.channel = ch;
+						pendingChannel.text = ChannelMoveText(station, ch);
 					}
 					break;
 			}
@@ -147,27 +192,27 @@ namespace {
 			const bool unseen = !station.seenByBle;
 			const bool notV2 = station.kind != StationKind::V2;
 
-			ImGui::BeginDisabled(unseen);
+			ui::BeginDisabledLook(unseen);
 			if (ImGui::Button(ICON_MI_POWER " Wake")) ctl.RequestPower(station, PowerCommand::Wake);
-			ImGui::EndDisabled();
+			ui::EndDisabledLook();
 			if (unseen) Tooltip("Not seen over Bluetooth yet.");
 
 			ImGui::SameLine();
-			ImGui::BeginDisabled(unseen || notV2 || !station.standbySupported);
+			ui::BeginDisabledLook(unseen || notV2 || !station.standbySupported);
 			if (ImGui::Button(ICON_MI_HISTORY " Standby")) ctl.RequestPower(station, PowerCommand::Standby);
-			ImGui::EndDisabled();
+			ui::EndDisabledLook();
 			Tooltip(unseen ? "Not seen over Bluetooth yet." : "Standby needs a 2.0 station on current firmware.");
 
 			ImGui::SameLine();
-			ImGui::BeginDisabled(unseen);
+			ui::BeginDisabledLook(unseen);
 			if (ImGui::Button(ICON_MI_BEDTIME " Sleep")) ctl.RequestPower(station, PowerCommand::Sleep);
-			ImGui::EndDisabled();
+			ui::EndDisabledLook();
 			if (unseen) Tooltip("Not seen over Bluetooth yet.");
 
 			ImGui::SameLine();
-			ImGui::BeginDisabled(unseen || notV2);
+			ui::BeginDisabledLook(unseen || notV2);
 			if (ImGui::Button(ICON_MI_LIGHTBULB " Identify")) ctl.RequestIdentify(station);
-			ImGui::EndDisabled();
+			ui::EndDisabledLook();
 			Tooltip(unseen ? "Not seen over Bluetooth yet." : "Identify needs a 2.0 station.");
 
 			if (station.kind == StationKind::V2) DrawChannelGrid(ctl, station, occupancy);
@@ -183,24 +228,25 @@ namespace {
 		auto& automation = ctl.Settings().automation;
 		ui::TextHeading("Power automation");
 		bool changed = false;
-		changed |= ui::CheckboxWithDescription("Enable power automation",
-		                                       "Wake stations when the VR session starts and power them down when it ends. Not "
-		                                       "recommended for tracking spaces shared with other SteamVR machines.",
-		                                       &automation.powerManagement);
-		ImGui::BeginDisabled(!automation.powerManagement);
-		changed |= ui::CheckboxWithDescription("Wake on SteamVR start", nullptr, &automation.wakeOnStart);
-		changed |= ui::CheckboxWithDescription("Power down on SteamVR exit", nullptr, &automation.sleepOnExit);
-		changed |= ui::CheckboxWithDescription("Use standby instead of sleep",
-		                                       "Standby wakes faster but needs 2.0 stations on current firmware; others fall back "
-		                                       "to sleep.",
-		                                       &automation.useStandby);
-		ImGui::EndDisabled();
+		changed |= ImGui::Checkbox("Enable power automation", &automation.powerManagement);
+		Tooltip("Turns on the options below. Not recommended if other SteamVR PCs share these stations.");
+		if (automation.powerManagement) {
+			ImGui::Indent();
+			changed |= ImGui::Checkbox("Wake on SteamVR start", &automation.wakeOnStart);
+			Tooltip("Wakes every station seen over Bluetooth during the first minute after Space Calibrator connects to SteamVR.");
+			changed |= ImGui::Checkbox("Power down on SteamVR exit", &automation.sleepOnExit);
+			Tooltip("Powers stations down when SteamVR closes. Only runs in sessions where Wake on SteamVR start fired.");
+			changed |= ImGui::Checkbox("Use standby instead of sleep", &automation.useStandby);
+			Tooltip("Power down and Sleep all use standby. Standby wakes faster but needs 2.0 stations on current firmware; others "
+			        "fall back to sleep.");
+			ImGui::Unindent();
+		}
 		if (changed) ctl.SaveSettings();
 
 		if (automation.powerManagement && SteamVrNativePowerManagementLooksActive()) {
-			ImGui::PushStyleColor(ImGuiCol_Text, ToneColor(StatusTone::Pending));
-			ImGui::TextWrapped("SteamVR also manages station power. Both managers are active; disable one so they don't fight.");
-			ImGui::PopStyleColor();
+			ui::Note("power_conflict", ui::NoteTone::Pending,
+			         "SteamVR is also managing station power, so the two can fight. Turn off Enable power automation here, or turn "
+			         "off base station power management in SteamVR settings.");
 		}
 	}
 
@@ -213,39 +259,60 @@ void DrawBaseStationsPage()
 
 	ui::TextHeading("Base stations");
 
-	if (ctl.BluetoothFailed()) {
-		ImGui::PushStyleColor(ImGuiCol_Text, ToneColor(StatusTone::Error));
-		ImGui::TextWrapped("No usable Bluetooth LE adapter was found. Station control needs one.");
-		ImGui::PopStyleColor();
+	const bool bluetoothFailed = ctl.BluetoothFailed();
+	if (bluetoothFailed) {
+		ui::Note("bluetooth_failed", ui::NoteTone::Error,
+		         "Bluetooth LE isn't available, so stations can't be controlled. Turn Bluetooth on in Windows or plug in an adapter, "
+		         "then restart Space Calibrator.");
 		ImGui::Spacing();
 	}
 
+	ui::BeginDisabledLook(bluetoothFailed);
 	if (ImGui::Button(ICON_MI_POWER " Wake all")) ctl.RequestPowerAll(PowerCommand::Wake);
-	Tooltip("Wake every station in range.");
+	ui::EndDisabledLook();
+	Tooltip(bluetoothFailed ? "Needs Bluetooth LE." : "Wake every station in range.");
 	ImGui::SameLine();
+	ui::BeginDisabledLook(bluetoothFailed);
 	if (ImGui::Button(ICON_MI_BEDTIME " Sleep all")) {
 		ctl.RequestPowerAll(ctl.Settings().automation.useStandby ? PowerCommand::Standby : PowerCommand::Sleep);
 	}
-	Tooltip("Power down every station in range.");
+	ui::EndDisabledLook();
+	Tooltip(bluetoothFailed ? "Needs Bluetooth LE." : "Power down every station in range.");
 	ImGui::Spacing();
 
 	const auto& stations = ctl.Stations();
-	if (stations.empty()) {
+	if (stations.empty() && !bluetoothFailed) {
 		ImGui::TextDisabled("Listening for base stations over Bluetooth...");
 		ImGui::Spacing();
 	}
 
 	const auto conflicts = ConflictingChannels(stations);
 	if (!conflicts.empty()) {
-		ImGui::PushStyleColor(ImGuiCol_Text, ToneColor(StatusTone::Error));
-		ImGui::TextWrapped("Channel conflict: two or more 2.0 stations share a channel.");
-		ImGui::PopStyleColor();
-		if (ImGui::Button("Fix channels")) {
-			for (const auto& [serial, channel] : AutoAssignChannels(stations)) {
-				ctl.RequestChannel(serial, channel);
+		bool fixClicked = false;
+		if (ui::BeginNote("channel_conflict", ui::NoteTone::Error)) {
+			ImGui::TextWrapped("Two or more 2.0 stations share a channel, so they can't both track. Fix channels moves the extras to "
+			                   "free channels.");
+			fixClicked = ImGui::Button("Fix channels");
+			ui::EndNote();
+		}
+		if (fixClicked) {
+			pendingFix = AutoAssignChannels(stations);
+			pendingFixText.clear();
+			for (const auto& [serial, channel] : pendingFix) {
+				for (const Station& station : stations) {
+					if (station.serial != serial) continue;
+					if (!pendingFixText.empty()) pendingFixText += "\n";
+					pendingFixText += ChannelMoveText(station, channel);
+				}
 			}
+			if (!pendingFix.empty()) ImGui::OpenPopup("Fix channels?");
 		}
 		ImGui::Spacing();
+	}
+	if (ui::ConfirmPopup("Fix channels?", pendingFixText.c_str(), "Fix channels")) {
+		for (const auto& [serial, channel] : pendingFix) {
+			ctl.RequestChannel(serial, channel);
+		}
 	}
 
 	if (!nickEditSerial.empty()) {
@@ -262,6 +329,14 @@ void DrawBaseStationsPage()
 	const auto occupancy = ChannelOccupancy(stations);
 	for (const Station& station : stations) {
 		DrawStationCard(ctl, station, occupancy);
+	}
+
+	if (pendingChannel.open) {
+		pendingChannel.open = false;
+		ImGui::OpenPopup("Change channel?");
+	}
+	if (ui::ConfirmPopup("Change channel?", pendingChannel.text.c_str(), "Change channel")) {
+		ctl.RequestChannel(pendingChannel.serial, pendingChannel.channel);
 	}
 
 	ImGui::Spacing();

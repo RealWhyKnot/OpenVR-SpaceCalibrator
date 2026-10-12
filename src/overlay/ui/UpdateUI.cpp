@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "UiCommon.h"
+#include "Widgets.h"
 #include "Configuration.h"
 #include "Updater.h"
 #include "Version.h"
@@ -7,13 +8,35 @@
 #include <imgui/imgui.h>
 #include "imgui_extensions.h"
 
+#include <cstdio>
+#include <string>
+
+static std::string UpdateFailureNote(const std::string& error)
+{
+	int code = 0;
+	if (sscanf_s(error.c_str(), "request failed: %d", &code) == 1 && (code == 12002 || code == 12007 || code == 12029 || code == 12030)) {
+		return "Couldn't reach GitHub to check for updates. Check your internet connection, then press Check now. (error " +
+		       std::to_string(code) + ")";
+	}
+	const std::string helper = "could not start the update helper: ";
+	if (error.rfind(helper, 0) == 0) {
+		return "The update installer couldn't start (error " + error.substr(helper.size()) +
+		       "). Press Check now to try again, or get the setup from the GitHub releases page.";
+	}
+	const std::string write = "could not write ";
+	if (error.rfind(write, 0) == 0) {
+		return "Couldn't save the update helper to " + error.substr(write.size()) + ". Press Check now to try again.";
+	}
+	return "Update check failed (" + error + "). Press Check now to try again.";
+}
+
 void DrawUpdatePrompt()
 {
 	static bool shown = false;
 	if (UpdaterCtx.state != UpdateState::Available) {
 		shown = false;
 	}
-	else if (!shown) {
+	else if (!shown && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
 		ImGui::OpenPopup("Update available");
 		shown = true;
 	}
@@ -62,32 +85,35 @@ void DrawUpdatesPanel(ImVec2 panel_size)
 		ImGui::TextDisabled("dev build: update checks are off");
 	}
 	else {
-		ImGui::TextDisabled("installed: v" SPACECAL_VERSION_STRING " (" SPACECAL_CHANNEL ")");
+		ImGui::TextDisabled("Installed: v" SPACECAL_VERSION_STRING " (" SPACECAL_CHANNEL ")");
 		if (ImGui::Checkbox("Check for updates when the overlay starts", &UpdaterCtx.settings.checkOnStartup)) {
 			SaveUpdateSettings(UpdaterCtx.settings);
 		}
 		if (ImGui::Checkbox("Install updates automatically when SteamVR closes", &UpdaterCtx.settings.autoInstall)) {
 			SaveUpdateSettings(UpdaterCtx.settings);
 		}
-		ImGui::BeginDisabled(UpdaterCtx.state == UpdateState::Checking);
+		ui::BeginDisabledLook(UpdaterCtx.state == UpdateState::Checking);
 		if (ImGui::Button("Check now")) {
 			UpdaterCtx.StartCheck(true);
 		}
-		ImGui::EndDisabled();
+		ui::EndDisabledLook();
 		if (UpdaterCtx.state == UpdateState::Available) {
 			ImGui::SameLine();
 			if (ImGui::Button("Update")) {
 				UpdaterCtx.Update();
 			}
 		}
-		std::string status = UpdaterCtx.StatusText();
-		if (!status.empty()) {
-			ImGui::TextDisabled("%s", status.c_str());
+		if (UpdaterCtx.state == UpdateState::Failed) {
+			ui::Note("update_failed", ui::NoteTone::Error, UpdateFailureNote(UpdaterCtx.error).c_str());
+		}
+		else {
+			std::string status = UpdaterCtx.StatusText();
+			if (!status.empty()) {
+				ImGui::TextDisabled("%s", status.c_str());
+			}
 		}
 		if (!UpdaterCtx.lastRunNote.empty()) {
-			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.75f, 0.3f, 1.0f));
-			ImGui::TextWrapped("%s", UpdaterCtx.lastRunNote.c_str());
-			ImGui::PopStyleColor();
+			ui::Note("update_last_run", ui::NoteTone::Pending, UpdaterCtx.lastRunNote.c_str());
 		}
 	}
 	ImGui::EndGroupPanel();

@@ -81,10 +81,16 @@ void VRSessionTick(double time)
 			std::string driverError;
 			if (!TryConnectDriver(driverError)) {
 				DriverConflictCtx.Refresh(LastDriverHandshake());
+				const bool notLoaded = LastDriverHandshake() == spacecal::HandshakeOutcome::Unavailable;
+				if (notLoaded && !VRSess.driverNotLoaded) {
+					std::cerr << "driver not answering: " << driverError << "\n";
+				}
+				VRSess.driverNotLoaded = notLoaded;
 				VRSess.statusText = driverError;
 				VRSess.nextAttemptTime = time + 2.0;
 				return;
 			}
+			VRSess.driverNotLoaded = false;
 			DriverConflictCtx.Refresh(LastDriverHandshake());
 			DriverConflictCtx.QueueRegisterOwn();
 			VRSess.statusText.clear();
@@ -103,6 +109,7 @@ void VRSessionHandleLost(double time)
 	VRSess.overlayMainHandle = 0;
 	VRSess.overlayThumbnailHandle = 0;
 	VRSess.state = VRConnectionState::Disconnected;
+	VRSess.driverNotLoaded = false;
 	VRSess.quitRequested = true;
 	vrServerWatch.Release();
 }

@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "ui/UiCommon.h"
+#include "ui/Widgets.h"
 #include "Calibration.h"
+#include "Configuration.h"
 #include "LegacyInstall.h"
 
 #include <imgui/imgui.h>
@@ -8,62 +10,110 @@
 
 #include <shellapi.h>
 
+#include <cmath>
+#include <cstring>
 #include <string>
 
-static void ScaledDragFloat(const char* label, double& f, double scale, double min, double max, int flags = ImGuiSliderFlags_AlwaysClamp)
+static bool AcceptValue(double& value, double candidate, bool positive)
+{
+	if (!std::isfinite(candidate) || (positive && candidate <= 0.0)) return false;
+	value = candidate;
+	return true;
+}
+
+static double SquaredToMm(double squaredMetres)
+{
+	return std::sqrt(squaredMetres > 0.0 ? squaredMetres : 0.0) * 1000.0;
+}
+
+static bool SquaredDistanceSlider(const char* id, double& squaredMetres, double minMm, double maxMm, const char* tooltip)
+{
+	float mm = (float)SquaredToMm(squaredMetres);
+	if (ImGui::SliderFloat(id, &mm, (float)minMm, (float)maxMm, "%.1f mm", ImGuiSliderFlags_AlwaysClamp)) {
+		const double metres = mm / 1000.0;
+		AcceptValue(squaredMetres, metres * metres, false);
+	}
+	const bool commit = ImGui::IsItemDeactivatedAfterEdit();
+	ui::Tooltip(tooltip);
+	return commit;
+}
+
+static bool ScaledDragFloat(const char* label, double& f, double scale, double min, double max, int flags, const char* format,
+                            const char* tooltip)
 {
 	float v = (float)(f * scale);
-	std::string labelStr = std::string(label);
 	bool changed;
 
-	if (labelStr.size() > 2 && labelStr[0] == '#' && labelStr[1] == '#') {
-		changed = ImGui::SliderFloat(label, &v, (float)min, (float)max, "%1.2f", flags);
+	if (label[0] == '#' && label[1] == '#' && label[2] != 0) {
+		changed = ImGui::SliderFloat(label, &v, (float)min, (float)max, format, flags);
 	}
 	else {
-		size_t visible = labelStr.find("##");
-		ImGui::TextUnformatted(label, visible == std::string::npos ? nullptr : label + visible);
+		ImGui::TextUnformatted(label, std::strstr(label, "##"));
 		ImGui::SameLine();
-		ImGui::PushID((std::string(label) + "_id").c_str());
+		ImGui::PushID(label);
 		constexpr uint32_t LABEL_CURSOR = 100;
 		uint32_t cursorPosX = (int)ImGui::GetCursorPosX();
 		uint32_t roundedPosition = ((cursorPosX + LABEL_CURSOR / 2) / LABEL_CURSOR) * LABEL_CURSOR;
 		ImGui::SetCursorPosX((float)roundedPosition);
-		changed = ImGui::SliderFloat((std::string("##") + label).c_str(), &v, (float)min, (float)max, "%1.2f", flags);
+		changed = ImGui::SliderFloat("##slider", &v, (float)min, (float)max, format, flags);
 		ImGui::PopID();
 	}
 
 	if (changed) {
-		f = v / scale;
+		AcceptValue(f, v / scale, false);
 	}
+	const bool commit = ImGui::IsItemDeactivatedAfterEdit();
+	ui::Tooltip(tooltip);
+	return commit;
 }
 
-static void DrawVectorElement(const std::string id, const char* text, double* value, int defaultValue = 0,
-                              const char* defaultValueStr = " 0 ")
+static bool DrawVectorElement(const char* id, const char* text, double* value, const char* format, const char* tooltip,
+                              int defaultValue = 0, const char* defaultValueStr = " 0 ", bool positive = false)
 {
 	constexpr float CONTINUOUS_CALIBRATION_TRACKER_OFFSET_DELTA = 0.01f;
+	bool commit = false;
 
 	ImGui::TextUnformatted(text);
+	ui::Tooltip(tooltip);
 
 	ImGui::SameLine();
 
-	ImGui::PushID((id + text + "_btn_reset").c_str());
+	ImGui::PushID(id);
+	ImGui::PushID(text);
 	if (ImGui::Button(defaultValueStr)) {
 		*value = defaultValue;
+		commit = true;
 	}
-	ImGui::PopID();
+	ui::Tooltip(tooltip);
 	ImGui::SameLine();
-	if (ImGui::ArrowButton((id + text + "_decrease").c_str(), ImGuiDir_Down)) {
-		*value -= CONTINUOUS_CALIBRATION_TRACKER_OFFSET_DELTA;
+	if (ImGui::ArrowButton("decrease", ImGuiDir_Down)) {
+		commit |= AcceptValue(*value, *value - CONTINUOUS_CALIBRATION_TRACKER_OFFSET_DELTA, positive);
 	}
+	ui::Tooltip(tooltip);
 	ImGui::SameLine();
 	ImGui::PushItemWidth(100);
-	ImGui::PushID((id + text + "_text_field").c_str());
-	ImGui::InputDouble("##label", value, 0, 0, "%.2f");
-	ImGui::PopID();
+	double edited = *value;
+	if (ImGui::InputDouble("##label", &edited, 0, 0, format)) {
+		AcceptValue(*value, edited, positive);
+	}
+	commit |= ImGui::IsItemDeactivatedAfterEdit();
+	ui::Tooltip(tooltip);
 	ImGui::PopItemWidth();
 	ImGui::SameLine();
-	if (ImGui::ArrowButton((id + text + "_increase").c_str(), ImGuiDir_Up)) {
-		*value += CONTINUOUS_CALIBRATION_TRACKER_OFFSET_DELTA;
+	if (ImGui::ArrowButton("increase", ImGuiDir_Up)) {
+		commit |= AcceptValue(*value, *value + CONTINUOUS_CALIBRATION_TRACKER_OFFSET_DELTA, positive);
+	}
+	ui::Tooltip(tooltip);
+	ImGui::PopID();
+	ImGui::PopID();
+	return commit;
+}
+
+static void InputProfileValue(const char* label, double* value, double step, double stepFast, bool positive = false)
+{
+	double edited = *value;
+	if (ImGui::InputDouble(label, &edited, step, stepFast, "%.8f")) {
+		AcceptValue(*value, edited, positive);
 	}
 }
 
@@ -105,10 +155,8 @@ static void DrawLegacyInstallPanel(ImVec2 panel_size)
 				queueError.clear();
 				queued = QueueLegacyUninstall(info, queueError);
 			}
-			if (ImGui::IsItemHovered(0)) {
-				ImGui::SetTooltip("Asks for administrator rights now, then waits in the background and removes the old install "
-				                  "once SteamVR has closed.");
-			}
+			ui::Tooltip("Asks for administrator rights now, then waits in the background and removes the old install once SteamVR "
+			            "has closed.");
 			if (!queueError.empty()) {
 				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.4f, 0.4f, 1.0f));
 				ImGui::TextWrapped("%s", queueError.c_str());
@@ -130,22 +178,12 @@ static void DrawLegacyInstallPanel(ImVec2 panel_size)
 void CCal_DrawSettings()
 {
 	ImVec2 panel_size{ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, 0};
+	bool save = false;
 
 	DrawDriverConflictPanel();
 
-	ImGui::BeginGroupPanel("Tip", panel_size);
-	ImGui::Text("Hover over settings to learn more about them!");
-	ImGui::EndGroupPanel();
-
 	{
 		ImGui::BeginGroupPanel("Calibration speeds", panel_size);
-
-		ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-		ImGui::TextWrapped(
-		    "SpaceCalibrator uses up to three different speeds at which it drags the calibration back into "
-		    "position when drift occurs. These settings control how far off the calibration should be before going back to low speed (for "
-		    "Decel) or going to higher speeds (for Slow and Fast).");
-		ImGui::PopStyleColor();
 
 		{
 			ImGui::BeginGroupPanel("Calibration speed", ImVec2(-FLT_MIN, 0));
@@ -156,53 +194,58 @@ void CCal_DrawSettings()
 			if (ImGui::RadioButton("Fast", speed == CalibrationContext::FAST)) {
 				CalCtx.calibrationSpeed = CalibrationContext::FAST;
 			}
+			ui::Tooltip(ui::kCalibrationSpeedTips[0]);
 			ImGui::NextColumn();
 			if (ImGui::RadioButton("Slow", speed == CalibrationContext::SLOW)) {
 				CalCtx.calibrationSpeed = CalibrationContext::SLOW;
 			}
+			ui::Tooltip(ui::kCalibrationSpeedTips[1]);
 			ImGui::NextColumn();
 			if (ImGui::RadioButton("Very slow", speed == CalibrationContext::VERY_SLOW)) {
 				CalCtx.calibrationSpeed = CalibrationContext::VERY_SLOW;
 			}
+			ui::Tooltip(ui::kCalibrationSpeedTips[2]);
 			ImGui::Columns(1);
+			save |= CalCtx.calibrationSpeed != speed;
 
 			ImGui::EndGroupPanel();
 		}
 
 		if (ImGui::BeginTable("SpeedThresholds", 3, 0)) {
-			ImGui::TableNextRow();
-			ImGui::TableSetColumnIndex(1);
-			ImGui::Text("Translation (mm)");
-			ImGui::TableSetColumnIndex(2);
-			ImGui::Text("Rotation (degrees)");
+			constexpr double kDegrees = 180.0 / EIGEN_PI;
+			constexpr int kClamp = ImGuiSliderFlags_AlwaysClamp;
+			const double maxSlowMm = SquaredToMm(0.020);
+			const double maxFastMm = SquaredToMm(0.050);
+			auto& params = CalCtx.alignmentSpeedParams;
 
 			ImGui::TableNextRow();
-			ImGui::TableSetColumnIndex(0);
-			ImGui::Text("Decel");
 			ImGui::TableSetColumnIndex(1);
-			ScaledDragFloat("##TransDecel", CalCtx.alignmentSpeedParams.thr_trans_tiny, 1000.0, 0, 20.0);
+			ImGui::Text("Translation");
 			ImGui::TableSetColumnIndex(2);
-			ScaledDragFloat("##RotDecel", CalCtx.alignmentSpeedParams.thr_rot_tiny, 180.0 / EIGEN_PI, 0, 5.0);
+			ImGui::Text("Rotation");
 
 			ImGui::TableNextRow();
 			ImGui::TableSetColumnIndex(0);
 			ImGui::Text("Slow");
 			ImGui::TableSetColumnIndex(1);
-			ScaledDragFloat("##TransSlow", CalCtx.alignmentSpeedParams.thr_trans_small, 1000.0,
-			                CalCtx.alignmentSpeedParams.thr_trans_tiny * 1000.0, 20.0);
+			save |= SquaredDistanceSlider("##TransSlow", params.thr_trans_small, 0.0, maxSlowMm,
+			                              "Trackers speed up to Slow when a new calibration is more than this far from the applied one.");
 			ImGui::TableSetColumnIndex(2);
-			ScaledDragFloat("##RotSlow", CalCtx.alignmentSpeedParams.thr_rot_small, 180.0 / EIGEN_PI,
-			                CalCtx.alignmentSpeedParams.thr_rot_tiny * (180.0 / EIGEN_PI), 10.0);
+			save |= ScaledDragFloat("##RotSlow", params.thr_rot_small, kDegrees, 0.0, 10.0, kClamp, "%.2f deg",
+			                        "Trackers speed up to Slow when a new calibration is turned more than this many degrees from the "
+			                        "applied one.");
 
 			ImGui::TableNextRow();
 			ImGui::TableSetColumnIndex(0);
 			ImGui::Text("Fast");
 			ImGui::TableSetColumnIndex(1);
-			ScaledDragFloat("##TransFast", CalCtx.alignmentSpeedParams.thr_trans_large, 1000.0,
-			                CalCtx.alignmentSpeedParams.thr_trans_small * 1000.0, 50.0);
+			save |= SquaredDistanceSlider("##TransFast", params.thr_trans_large, SquaredToMm(params.thr_trans_small), maxFastMm,
+			                              "Trackers speed up to Fast when a new calibration is more than this far from the applied one. "
+			                              "They stay fast until the gap is under both Slow thresholds.");
 			ImGui::TableSetColumnIndex(2);
-			ScaledDragFloat("##RotFast", CalCtx.alignmentSpeedParams.thr_rot_large, 180.0 / EIGEN_PI,
-			                CalCtx.alignmentSpeedParams.thr_rot_small * (180.0 / EIGEN_PI), 20.0);
+			save |= ScaledDragFloat("##RotFast", params.thr_rot_large, kDegrees, params.thr_rot_small * kDegrees, 20.0, kClamp, "%.2f deg",
+			                        "Trackers speed up to Fast when a new calibration is turned more than this many degrees from the "
+			                        "applied one. They stay fast until the gap is under both Slow thresholds.");
 
 			ImGui::EndTable();
 		}
@@ -213,9 +256,15 @@ void CCal_DrawSettings()
 	{
 		ImGui::BeginGroupPanel("Alignment speeds", panel_size);
 
-		ScaledDragFloat("Decel", CalCtx.alignmentSpeedParams.align_speed_tiny, 1.0, 0, 2.0, 0);
-		ScaledDragFloat("Slow", CalCtx.alignmentSpeedParams.align_speed_small, 1.0, 0, 2.0, 0);
-		ScaledDragFloat("Fast", CalCtx.alignmentSpeedParams.align_speed_large, 1.0, 0, 2.0, 0);
+		save |= ScaledDragFloat("Decel", CalCtx.alignmentSpeedParams.align_speed_tiny, 1.0, 0, 2.0, 0, "%1.2f",
+		                        "During continuous calibration, how fast trackers glide to a new calibration while the gap is under "
+		                        "both Slow thresholds. 1.0 closes about 63% of the gap per second. 0 stops them moving.");
+		save |= ScaledDragFloat("Slow", CalCtx.alignmentSpeedParams.align_speed_small, 1.0, 0, 2.0, 0, "%1.2f",
+		                        "During continuous calibration, how fast trackers glide to a new calibration after the gap passes a "
+		                        "Slow threshold. 1.0 closes about 63% of the gap per second.");
+		save |= ScaledDragFloat("Fast", CalCtx.alignmentSpeedParams.align_speed_large, 1.0, 0, 2.0, 0, "%1.2f",
+		                        "During continuous calibration, how fast trackers glide to a new calibration after the gap passes a "
+		                        "Fast threshold. 2.0 closes about 86% of the gap per second.");
 
 		ImGui::EndGroupPanel();
 	}
@@ -228,54 +277,44 @@ void CCal_DrawSettings()
 			ImGui::SameLine(sliderLabelWidth);
 			ImGui::SetNextItemWidth(-FLT_MIN);
 			ImGui::PushID("recalibration_threshold");
-			ImGui::SliderFloat("##recalibration_threshold_slider", &CalCtx.continuousCalibrationThreshold, 1.01f, 10.0f, "%.2f",
+			ImGui::SliderFloat("##recalibration_threshold_slider", &CalCtx.continuousCalibrationThreshold, 1.01f, 10.0f, "%.2fx",
 			                   ImGuiSliderFlags_AlwaysClamp);
-			if (ImGui::IsItemHovered(0)) {
-				ImGui::SetTooltip(
-				    "Controls how good the calibration must be before realigning the trackers.\n"
-				    "Higher values cause calibration to happen less often, and may be useful for systems with lots of tracking drift.");
-			}
+			save |= ImGui::IsItemDeactivatedAfterEdit();
+			ui::Tooltip("A new result replaces the current calibration only if its error is this many times lower. Higher values "
+			            "recalibrate less often.");
 			ImGui::PopID();
 
 			ImGui::Text("Max relative error threshold");
 			ImGui::SameLine(sliderLabelWidth);
 			ImGui::SetNextItemWidth(-FLT_MIN);
 			ImGui::PushID("max_relative_error_threshold");
-			ImGui::SliderFloat("##max_relative_error_threshold_slider", &CalCtx.maxRelativeErrorThreshold, 0.001f, 1.0f, "%.3f",
-			                   ImGuiSliderFlags_AlwaysClamp);
-			if (ImGui::IsItemHovered(0)) {
-				ImGui::SetTooltip("Controls the maximum acceptable relative error. If the error from the relative calibration is too poor, "
-				                  "the calibration will be discarded.");
+			float maxErrorMm = CalCtx.maxRelativeErrorThreshold * 1000.0f;
+			if (ImGui::SliderFloat("##max_relative_error_threshold_slider", &maxErrorMm, 1.0f, 1000.0f, "%.1f mm",
+			                       ImGuiSliderFlags_AlwaysClamp)) {
+				CalCtx.maxRelativeErrorThreshold = maxErrorMm / 1000.0f;
 			}
+			save |= ImGui::IsItemDeactivatedAfterEdit();
+			ui::Tooltip("Only used with static recalibration. A static result with more error than this is thrown away.");
 			ImGui::PopID();
-
-			ImGui::Text("Jitter threshold");
-			ImGui::SameLine(sliderLabelWidth);
-			ImGui::SetNextItemWidth(-FLT_MIN);
-			ImGui::PushID("jitter_threshold");
-			ImGui::SliderFloat("##jitter_threshold_slider", &CalCtx.jitterThreshold, 0.1f, 10.0f, "%1.1f", 0);
-			if (ImGui::IsItemHovered(0)) {
-				ImGui::SetTooltip("Controls how much jitter will be allowed for calibration.\n"
-				                  "Higher values allow worse tracking to calibrate, but may result in poorer tracking.");
-			}
-			ImGui::PopID();
-
-			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-			ImGui::TextWrapped("Controls how often SpaceCalibrator synchronises playspaces.");
-			ImGui::PopStyleColor();
 		}
 
 		{
+			static const char* const kOffsetTip =
+			    "During continuous calibration, shifts the calibrated trackers by this many metres on this axis. The arrows step 1 cm "
+			    "and 0 resets it.";
 			ImGui::BeginGroupPanel("Tracker offset", ImVec2(-FLT_MIN, 0));
-			DrawVectorElement("cc_tracker_offset", "X", &CalCtx.continuousCalibrationOffset.x());
-			DrawVectorElement("cc_tracker_offset", "Y", &CalCtx.continuousCalibrationOffset.y());
-			DrawVectorElement("cc_tracker_offset", "Z", &CalCtx.continuousCalibrationOffset.z());
+			save |= DrawVectorElement("cc_tracker_offset", "X", &CalCtx.continuousCalibrationOffset.x(), "%.2f m", kOffsetTip);
+			save |= DrawVectorElement("cc_tracker_offset", "Y", &CalCtx.continuousCalibrationOffset.y(), "%.2f m", kOffsetTip);
+			save |= DrawVectorElement("cc_tracker_offset", "Z", &CalCtx.continuousCalibrationOffset.z(), "%.2f m", kOffsetTip);
 			ImGui::EndGroupPanel();
 		}
 
 		{
 			ImGui::BeginGroupPanel("Playspace scale", ImVec2(-FLT_MIN, 0));
-			DrawVectorElement("cc_playspace_scale", "Playspace scale", &CalCtx.calibratedScale, 1, " 1 ");
+			save |= DrawVectorElement("cc_playspace_scale", "Playspace scale", &CalCtx.calibratedScale, "%.2f",
+			                          "Multiplies target device positions by this before the calibration is applied. 1 means no "
+			                          "scaling, and the 1 button resets it.",
+			                          1, " 1 ", true);
 			ImGui::EndGroupPanel();
 		}
 
@@ -289,10 +328,22 @@ void CCal_DrawSettings()
 	ImGui::NewLine();
 	ImGui::Indent();
 	if (ImGui::Button("Reset settings")) {
-		CalCtx.ResetConfig();
+		ImGui::OpenPopup("Reset settings?");
 	}
+	ui::Tooltip("Puts thresholds, alignment speeds, tracker offset, static recalibration and everything on the Smoothing page back to "
+	            "defaults. Your calibration, calibration speed and playspace scale stay.");
 	ImGui::Unindent();
+	if (ui::ConfirmPopup("Reset settings?",
+	                     "Resets thresholds, alignment speeds, tracker offset, static recalibration and the Smoothing page.",
+	                     "Reset settings")) {
+		CalCtx.ResetConfig();
+		save = true;
+	}
 	ImGui::NewLine();
+
+	if (save) {
+		SaveProfile(CalCtx);
+	}
 }
 
 void BuildProfileEditor()
@@ -301,33 +352,33 @@ void BuildProfileEditor()
 	float width = ImGui::GetWindowContentRegionWidth() / 3.0f - style.FramePadding.x;
 	float widthF = width - style.FramePadding.x;
 
-	TextWithWidth("YawLabel", "Yaw", width);
+	TextWithWidth("YawLabel", "Yaw (degrees)", width);
 	ImGui::SameLine();
-	TextWithWidth("PitchLabel", "Pitch", width);
+	TextWithWidth("PitchLabel", "Pitch (degrees)", width);
 	ImGui::SameLine();
-	TextWithWidth("RollLabel", "Roll", width);
+	TextWithWidth("RollLabel", "Roll (degrees)", width);
 
 	ImGui::PushItemWidth(widthF);
-	ImGui::InputDouble("##Yaw", &CalCtx.calibratedRotation(1), 0.1, 1.0, "%.8f");
+	InputProfileValue("##Yaw", &CalCtx.calibratedRotation(1), 0.1, 1.0);
 	ImGui::SameLine();
-	ImGui::InputDouble("##Pitch", &CalCtx.calibratedRotation(2), 0.1, 1.0, "%.8f");
+	InputProfileValue("##Pitch", &CalCtx.calibratedRotation(2), 0.1, 1.0);
 	ImGui::SameLine();
-	ImGui::InputDouble("##Roll", &CalCtx.calibratedRotation(0), 0.1, 1.0, "%.8f");
+	InputProfileValue("##Roll", &CalCtx.calibratedRotation(0), 0.1, 1.0);
 
-	TextWithWidth("XLabel", "X", width);
+	TextWithWidth("XLabel", "X (cm)", width);
 	ImGui::SameLine();
-	TextWithWidth("YLabel", "Y", width);
+	TextWithWidth("YLabel", "Y (cm)", width);
 	ImGui::SameLine();
-	TextWithWidth("ZLabel", "Z", width);
+	TextWithWidth("ZLabel", "Z (cm)", width);
 
-	ImGui::InputDouble("##X", &CalCtx.calibratedTranslation(0), 1.0, 10.0, "%.8f");
+	InputProfileValue("##X", &CalCtx.calibratedTranslation(0), 1.0, 10.0);
 	ImGui::SameLine();
-	ImGui::InputDouble("##Y", &CalCtx.calibratedTranslation(1), 1.0, 10.0, "%.8f");
+	InputProfileValue("##Y", &CalCtx.calibratedTranslation(1), 1.0, 10.0);
 	ImGui::SameLine();
-	ImGui::InputDouble("##Z", &CalCtx.calibratedTranslation(2), 1.0, 10.0, "%.8f");
+	InputProfileValue("##Z", &CalCtx.calibratedTranslation(2), 1.0, 10.0);
 
 	TextWithWidth("ScaleLabel", "Scale", width);
 
-	ImGui::InputDouble("##Scale", &CalCtx.calibratedScale, 0.0001, 0.01, "%.8f");
+	InputProfileValue("##Scale", &CalCtx.calibratedScale, 0.0001, 0.01, true);
 	ImGui::PopItemWidth();
 }

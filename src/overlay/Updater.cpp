@@ -8,6 +8,7 @@
 
 #include <winhttp.h>
 #include <shlobj.h>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -132,8 +133,20 @@ namespace {
 
 Updater::~Updater()
 {
-	if (worker.joinable()) {
+	if (!worker.joinable()) {
+		return;
+	}
+	bool finished;
+	{
+		std::unique_lock<std::mutex> lock(shared->mutex);
+		finished = shared->finished.wait_for(lock, std::chrono::milliseconds(500), [this] { return shared->done; });
+	}
+	if (finished) {
 		worker.join();
+	}
+	else {
+		std::cout << "update: exiting without waiting for the release check to finish\n";
+		worker.detach();
 	}
 }
 
@@ -159,15 +172,21 @@ void Updater::StartCheck(bool manualCheck)
 	error.clear();
 	std::cout << "update: checking releases for the " << spacecal::UpdateChannelName(Channel()) << " channel, current "
 	          << SPACECAL_VERSION_STRING << (manual ? " (manual)\n" : "\n");
-	worker = std::thread([this]() {
+	{
+		std::lock_guard<std::mutex> lock(shared->mutex);
+		shared->done = false;
+	}
+	worker = std::thread([state = shared]() {
 		Result result;
 		std::string body;
 		result.error = HttpGet(ReleasesHost, ReleasesPath, body);
 		if (result.error.empty()) {
 			result.error = spacecal::ParseReleasesJson(body, result.releases);
 		}
-		std::lock_guard<std::mutex> lock(mutex);
-		pending = std::move(result);
+		std::lock_guard<std::mutex> lock(state->mutex);
+		state->pending = std::move(result);
+		state->done = true;
+		state->finished.notify_all();
 	});
 }
 
@@ -175,12 +194,12 @@ void Updater::Poll()
 {
 	std::optional<Result> result;
 	{
-		std::lock_guard<std::mutex> lock(mutex);
-		if (!pending) {
+		std::lock_guard<std::mutex> lock(shared->mutex);
+		if (!shared->pending) {
 			return;
 		}
-		result = std::move(pending);
-		pending.reset();
+		result = std::move(shared->pending);
+		shared->pending.reset();
 	}
 	if (!result->error.empty()) {
 		error = result->error;
@@ -317,7 +336,9 @@ std::string Updater::StatusText() const
 		case UpdateState::Available: return "update available: " + available.tag;
 		case UpdateState::Staged: return "update " + available.tag + " downloads now and installs after SteamVR closes";
 		case UpdateState::UpToDate: return "up to date";
-		case UpdateState::Failed: return "update check failed: " + error;
+		case UpdateState::Failed:
+			return error.rfind("could not start", 0) == 0 || error.rfind("could not write", 0) == 0 ? "update couldn't start"
+			                                                                                        : "update check failed";
 		default: return std::string();
 	}
 }

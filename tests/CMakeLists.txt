@@ -100,6 +100,48 @@ target_compile_definitions(profile_tests PRIVATE NOMINMAX UNICODE _CRT_SECURE_NO
 set_target_properties(profile_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
 add_test(NAME profile COMMAND profile_tests)
 
+set(PERF_OVERLAY_UI_SOURCES
+	${CMAKE_SOURCE_DIR}/lib/imgui/imgui.cpp
+	${CMAKE_SOURCE_DIR}/lib/imgui/imgui_demo.cpp
+	${CMAKE_SOURCE_DIR}/lib/imgui/imgui_draw.cpp
+	${CMAKE_SOURCE_DIR}/lib/imgui/imgui_tables.cpp
+	${CMAKE_SOURCE_DIR}/lib/imgui/imgui_widgets.cpp
+	${CMAKE_SOURCE_DIR}/lib/implot/implot.cpp
+	${CMAKE_SOURCE_DIR}/lib/implot/implot_items.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/ui/MainWindow.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/ui/Sidebar.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/ui/Style.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/ui/Widgets.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/ui/UpdateUI.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/ui/DriverConflictUI.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/ui/pages/AboutPage.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/ui/pages/BaseStationsPage.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/ui/pages/CalibrationPage.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/ui/pages/DevicePickers.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/ui/pages/LearnPage.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/ui/pages/SettingsPage.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/ui/pages/SmoothingPage.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/imgui_extensions.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/EmbeddedFontText.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/EmbeddedFontIcons.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/VRState.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/CalibrationDebug.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/CalibrationMetrics.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/CalibrationCalc.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/CalibrationValidity.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/AutoDetectController.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/DriverConflictState.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/LegacyInstall.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/Updater.cpp)
+add_executable(perf_overlay_ui_tests perf_overlay_ui_tests.cpp ${PERF_OVERLAY_UI_SOURCES})
+target_include_directories(perf_overlay_ui_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/overlay ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_BINARY_DIR}/generated ${CMAKE_SOURCE_DIR}/lib ${CMAKE_SOURCE_DIR}/lib/imgui ${CMAKE_SOURCE_DIR}/lib/openvr/headers ${CMAKE_SOURCE_DIR}/lib/minhook/include)
+target_link_libraries(perf_overlay_ui_tests PRIVATE minhook shell32 ole32 winhttp)
+target_compile_definitions(perf_overlay_ui_tests PRIVATE NOMINMAX UNICODE _CRT_SECURE_NO_WARNINGS IMGUI_DEFINE_MATH_OPERATORS IMGUI_ENABLE_TEST_ENGINE VR_API_EXPORT)
+target_compile_options(perf_overlay_ui_tests PRIVATE /bigobj)
+set_target_properties(perf_overlay_ui_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
+add_test(NAME perf_overlay_ui COMMAND perf_overlay_ui_tests)
+set_tests_properties(perf_overlay_ui PROPERTIES LABELS perf RUN_SERIAL TRUE)
+
 add_executable(scripts_tests scripts_tests.cpp)
 target_include_directories(scripts_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/lib)
 set_target_properties(scripts_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
@@ -128,6 +170,14 @@ target_link_libraries(math_tests PRIVATE shell32 ole32)
 target_compile_definitions(math_tests PRIVATE NOMINMAX UNICODE _CRT_SECURE_NO_WARNINGS)
 set_target_properties(math_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
 add_test(NAME math COMMAND math_tests)
+
+add_executable(perf_overlay_config_tests perf_overlay_config_tests.cpp)
+target_include_directories(perf_overlay_config_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/overlay ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/lib ${CMAKE_SOURCE_DIR}/lib/openvr/headers ${CMAKE_SOURCE_DIR}/lib/minhook/include)
+target_link_libraries(perf_overlay_config_tests PRIVATE minhook)
+target_compile_definitions(perf_overlay_config_tests PRIVATE NOMINMAX UNICODE _CRT_SECURE_NO_WARNINGS)
+set_target_properties(perf_overlay_config_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
+add_test(NAME perf_overlay_config COMMAND perf_overlay_config_tests)
+set_tests_properties(perf_overlay_config PROPERTIES LABELS perf RUN_SERIAL TRUE)
 
 add_executable(blend_tests blend_tests.cpp ${PERF_DRIVER_SOURCES})
 target_include_directories(blend_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/driver ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/lib/openvr/headers ${CMAKE_SOURCE_DIR}/lib/minhook/include ${CMAKE_SOURCE_DIR}/lib)

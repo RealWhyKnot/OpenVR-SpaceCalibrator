@@ -83,6 +83,8 @@ namespace {
 			if (CalCtx.state != CalibrationState::Continuous) {
 				CalCtx.Log("Aborting calibration!\n");
 				CalCtx.state = CalibrationState::None;
+				CalCtx.failureReason =
+				    referenceVerdict == spacecal::SampleVerdict::Lost ? kFailureReferenceNotTracking : kFailureTargetNotTracking;
 			}
 			return false;
 		}
@@ -309,7 +311,7 @@ static void ScanAndApplyProfileImpl(CalibrationContext& ctx)
 		SendDriverState(req);
 	}
 
-	if (ctx.enabled && ctx.chaperone.valid && ctx.chaperone.autoApply) {
+	if (ctx.enabled && ctx.chaperone.valid && ctx.chaperone.autoApply && !ctx.chaperone.geometry.empty()) {
 		uint32_t quadCount = 0;
 		vr::VRChaperoneSetup()->GetLiveCollisionBoundsInfo(nullptr, &quadCount);
 
@@ -369,6 +371,7 @@ void StartCalibration()
 	CalCtx.state = CalibrationState::Begin;
 	CalCtx.wantedUpdateInterval = 0.0;
 	CalCtx.messages.clear();
+	CalCtx.failureReason.clear();
 	calibration.Clear();
 	Metrics::WriteLogAnnotation("StartCalibration");
 }
@@ -471,14 +474,19 @@ void CalibrationTick(double time)
 	}
 
 	bool ok = true;
+	const char* reason = nullptr;
+	auto fail = [&](const char* why) {
+		ok = false;
+		if (!reason) reason = why;
+	};
 
 	if (ctx.referenceID == -1 || ctx.referenceID >= vr::k_unMaxTrackedDeviceCount) {
 		CalCtx.Log("Missing reference device\n");
-		ok = false;
+		fail(kFailureMissingDevice);
 	}
 	if (ctx.targetID == -1 || ctx.targetID >= vr::k_unMaxTrackedDeviceCount) {
 		CalCtx.Log("Missing target device\n");
-		ok = false;
+		fail(kFailureMissingDevice);
 	}
 
 	if (ctx.state == CalibrationState::Begin) {
@@ -490,32 +498,32 @@ void CalibrationTick(double time)
 		char buf[256];
 		snprintf(buf, sizeof buf, "Reference device ID: %d, serial: %s\n", ctx.referenceID, referenceSerial);
 		CalCtx.Log(buf);
-		snprintf(buf, sizeof buf, "Target device ID: %d, serial %s\n", ctx.targetID, targetSerial);
+		snprintf(buf, sizeof buf, "Target device ID: %d, serial: %s\n", ctx.targetID, targetSerial);
 		CalCtx.Log(buf);
 
 		ScanAndApplyProfile(ctx);
 
 		Metrics::jitterRef.Push(calibration.ReferenceJitter());
-		Metrics::jitterRef.Push(calibration.TargetJitter());
+		Metrics::jitterTarget.Push(calibration.TargetJitter());
 
 		if (!CalCtx.ReferencePoseIsValidSimple()) {
 			CalCtx.Log("Reference device is not tracking\n");
-			ok = false;
+			fail(kFailureReferenceNotTracking);
 		}
 
 		if (!CalCtx.TargetPoseIsValidSimple()) {
 			CalCtx.Log("Target device is not tracking\n");
-			ok = false;
+			fail(kFailureTargetNotTracking);
 		}
 
 		// @TOOD: Determine if the tracking is jittery
 		if (calibration.ReferenceJitter() > ctx.jitterThreshold) {
 			CalCtx.Log("Reference device is not tracking\n");
-			ok = false;
+			fail(kFailureReferenceNotTracking);
 		}
 		if (calibration.TargetJitter() > ctx.jitterThreshold) {
 			CalCtx.Log("Target device is not tracking\n");
-			ok = false;
+			fail(kFailureTargetNotTracking);
 		}
 
 		if (ok) {
@@ -531,6 +539,7 @@ void CalibrationTick(double time)
 	if (!ok) {
 		if (ctx.state != CalibrationState::Continuous) {
 			ctx.state = CalibrationState::None;
+			ctx.failureReason = reason;
 
 			CalCtx.Log("Aborting calibration!\n");
 		}
@@ -612,6 +621,7 @@ void CalibrationTick(double time)
 	}
 	else {
 		CalCtx.Log("Calibration failed.\n");
+		if (CalCtx.state != CalibrationState::Continuous) CalCtx.failureReason = kFailureSamplesMismatch;
 	}
 
 	LARGE_INTEGER end_time;
@@ -638,21 +648,14 @@ void CalibrationTick(double time)
 void LoadChaperoneBounds()
 {
 	if (!vr::VRChaperoneSetup()) return;
-	vr::VRChaperoneSetup()->RevertWorkingCopy();
-
-	uint32_t quadCount = 0;
-	vr::VRChaperoneSetup()->GetLiveCollisionBoundsInfo(nullptr, &quadCount);
-
-	CalCtx.chaperone.geometry.resize(quadCount);
-	vr::VRChaperoneSetup()->GetLiveCollisionBoundsInfo(&CalCtx.chaperone.geometry[0], &quadCount);
-	vr::VRChaperoneSetup()->GetWorkingStandingZeroPoseToRawTrackingPose(&CalCtx.chaperone.standingCenter);
-	vr::VRChaperoneSetup()->GetWorkingPlayAreaSize(&CalCtx.chaperone.playSpaceSize.v[0], &CalCtx.chaperone.playSpaceSize.v[1]);
-	CalCtx.chaperone.valid = true;
+	if (!CopyLiveChaperoneBounds(*vr::VRChaperoneSetup(), CalCtx.chaperone)) {
+		std::cerr << "Chaperone copy skipped: SteamVR reports no collision bounds, keeping the saved bounds\n";
+	}
 }
 
 void ApplyChaperoneBounds()
 {
-	if (!vr::VRChaperoneSetup()) return;
+	if (!vr::VRChaperoneSetup() || CalCtx.chaperone.geometry.empty()) return;
 	vr::VRChaperoneSetup()->RevertWorkingCopy();
 	vr::VRChaperoneSetup()->SetWorkingCollisionBoundsInfo(&CalCtx.chaperone.geometry[0], (uint32_t)CalCtx.chaperone.geometry.size());
 	vr::VRChaperoneSetup()->SetWorkingStandingZeroPoseToRawTrackingPose(&CalCtx.chaperone.standingCenter);

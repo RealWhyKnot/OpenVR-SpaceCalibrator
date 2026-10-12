@@ -77,6 +77,7 @@ void DriverConflictState::Refresh(spacecal::HandshakeOutcome handshake)
 {
 	const std::filesystem::path own = FindOwnDriverDir();
 	ownDriverDir = own.empty() ? std::string() : own.string();
+	RefreshOwnDriverDll();
 
 	spacecal::OpenVRPaths paths;
 	const std::filesystem::path localAppData = KnownFolder(FOLDERID_LocalAppData);
@@ -119,21 +120,27 @@ void DriverConflictState::Refresh(spacecal::HandshakeOutcome handshake)
 	}
 }
 
+void DriverConflictState::RefreshOwnDriverDll()
+{
+	ownDllPath.clear();
+	ownDllStamp.clear();
+	if (ownDriverDir.empty()) return;
+	ownDllPath = DriverDllIn(ownDriverDir).string();
+	std::error_code ec;
+	const auto written = std::filesystem::last_write_time(std::filesystem::path(ownDllPath), ec);
+	if (ec) return;
+	const auto system = std::chrono::clock_cast<std::chrono::system_clock>(written);
+	ownDllStamp = std::format("{:%Y-%m-%d %H:%M}", std::chrono::floor<std::chrono::minutes>(system));
+}
+
 std::string DriverConflictState::OwnDriverDllPath() const
 {
-	if (ownDriverDir.empty()) return {};
-	return DriverDllIn(ownDriverDir).string();
+	return ownDllPath;
 }
 
 std::string DriverConflictState::OwnDriverDllStamp() const
 {
-	const std::string dll = OwnDriverDllPath();
-	if (dll.empty()) return {};
-	std::error_code ec;
-	const auto written = std::filesystem::last_write_time(std::filesystem::path(dll), ec);
-	if (ec) return {};
-	const auto system = std::chrono::clock_cast<std::chrono::system_clock>(written);
-	return std::format("{:%Y-%m-%d %H:%M}", std::chrono::floor<std::chrono::minutes>(system));
+	return ownDllStamp;
 }
 
 bool DriverConflictState::StartDriverScript(spacecal::UnregisterDriverParams params, const char* baseName)

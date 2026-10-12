@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "ui/UiCommon.h"
+#include "ui/Widgets.h"
 #include "AutoDetectController.h"
 #include "Calibration.h"
 #include "CalibrationMetrics.h"
@@ -9,9 +10,26 @@
 #include <imgui/imgui.h>
 #include "imgui_extensions.h"
 
+#include <algorithm>
+#include <cstdio>
+#include <string>
+#include <string_view>
+
 void DrawSteamVRWarning()
 {
 	ImVec2 panel_size{ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, 0};
+
+	if (VRSess.state == VRConnectionState::Connecting && VRSess.driverNotLoaded) {
+		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.75f, 0.3f, 1.0f));
+		ImGui::BeginGroupPanel("Space Calibrator driver not loaded", panel_size);
+		ImGui::PopStyleColor();
+		ImGui::TextWrapped("SteamVR is running, but the Space Calibrator driver isn't answering.");
+		ImGui::TextWrapped("Make sure the Space Calibrator add-on is on in SteamVR settings, then restart SteamVR. If it's already on, "
+		                   "reinstall Space Calibrator.");
+		ImGui::TextDisabled("Space Calibrator tries again every 2 seconds.");
+		ImGui::EndGroupPanel();
+		return;
+	}
 
 	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.75f, 0.3f, 1.0f));
 	ImGui::BeginGroupPanel("SteamVR not connected", panel_size);
@@ -66,9 +84,25 @@ void DrawAutoDetectCard()
 	ImGui::EndGroupPanel();
 }
 
+static void DeviceStatusCell(bool found, bool tracking)
+{
+	const char* status = "OK";
+	ui::NoteTone tone = ui::NoteTone::Ok;
+	if (!found) {
+		status = "Not found";
+		tone = ui::NoteTone::Error;
+	}
+	else if (!tracking) {
+		status = "Not tracking";
+		tone = ui::NoteTone::Pending;
+	}
+	ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, ImGui::GetColorU32(ui::NoteTint(tone)));
+	ImGui::Text("Status: %s", status);
+}
+
 void CCal_BasicInfo()
 {
-	if (ImGui::BeginTable("DeviceInfo", 2, 0)) {
+	if (ImGui::BeginTable("DeviceInfo", 2, ImGuiTableFlags_PadOuterX | ImGuiTableFlags_BordersInnerV)) {
 		ImGui::TableSetupColumn("Reference device");
 		ImGui::TableSetupColumn("Target device");
 		ImGui::TableHeadersRow();
@@ -80,36 +114,13 @@ void CCal_BasicInfo()
 		ImGui::TableSetColumnIndex(0);
 		ImGui::BeginGroup();
 		ImGui::Text("%s / %s / %s", refTrackingSystem, CalCtx.referenceStandby.model.c_str(), CalCtx.referenceStandby.serial.c_str());
-		const char* status;
-		if (CalCtx.referenceID < 0) {
-			ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, 0xFF000080);
-			status = "Not found";
-		}
-		else if (!CalCtx.ReferencePoseIsValidSimple()) {
-			ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, 0xFFFF0080);
-			status = "Not tracking";
-		}
-		else {
-			status = "OK";
-		}
-		ImGui::Text("Status: %s", status);
+		DeviceStatusCell(CalCtx.referenceID >= 0, CalCtx.ReferencePoseIsValidSimple());
 		ImGui::EndGroup();
 
 		ImGui::TableSetColumnIndex(1);
 		ImGui::BeginGroup();
 		ImGui::Text("%s / %s / %s", targetTrackingSystem, CalCtx.targetStandby.model.c_str(), CalCtx.targetStandby.serial.c_str());
-		if (CalCtx.targetID < 0) {
-			ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, 0xFF000080);
-			status = "Not found";
-		}
-		else if (!CalCtx.TargetPoseIsValidSimple()) {
-			ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, 0xFFFF0080);
-			status = "Not tracking";
-		}
-		else {
-			status = "OK";
-		}
-		ImGui::Text("Status: %s", status);
+		DeviceStatusCell(CalCtx.targetID >= 0, CalCtx.TargetPoseIsValidSimple());
 		ImGui::EndGroup();
 
 		ImGui::EndTable();
@@ -140,15 +151,24 @@ void CCal_BasicInfo()
 	}
 
 	ImGui::Checkbox("Hide tracker", &CalCtx.quashTargetInContinuous);
+	ui::Tooltip("Moves the target tracker far above the play area during continuous calibration, so games don't see it.");
 	ImGui::SameLine();
 	ImGui::Checkbox("Static recalibration", &CalCtx.enableStaticRecalibration);
+	ui::Tooltip("Also recalibrates from the saved offset between reference and target, which works while you stand still. Uses "
+	            "Recalibration threshold and Max relative error threshold from Settings.");
 	ImGui::SameLine();
 	ImGui::Checkbox("Enable debug logs", &Metrics::enableLogs);
+	ui::Tooltip("Writes calibration data to AppData\\LocalLow\\SpaceCalibrator\\Logs and shows two debug buttons. Logs older than a "
+	            "day are deleted when a new one starts.");
 	ImGui::Checkbox("Lock relative transform", &CalCtx.lockRelativePosition);
+	ui::Tooltip("Recalibrates from the saved offset between reference and target. The motion-based solve only runs if that fails.");
 	ImGui::SameLine();
 	ImGui::Checkbox("Require triggers", &CalCtx.requireTriggerPressToApply);
+	ui::Tooltip("After the first result, continuous calibration only updates while you hold the trigger on every controller from the "
+	            "target system.");
 	ImGui::SameLine();
 	ImGui::Checkbox("Ignore outliers", &CalCtx.ignoreOutliers);
+	ui::Tooltip("Leaves out samples whose rotation disagrees with the rest by more than about 16 degrees when solving rotation.");
 
 	ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 1));
 
@@ -163,16 +183,119 @@ void CCal_BasicInfo()
 	ShowCalibrationDebug(1, 3);
 }
 
+namespace {
+
+	struct EditSnapshot
+	{
+		Eigen::Vector3d rotation = Eigen::Vector3d::Zero();
+		Eigen::Vector3d translation = Eigen::Vector3d::Zero();
+		double scale = 1.0;
+	};
+
+	EditSnapshot editSnapshot;
+
+	std::string_view LastLogLine()
+	{
+		std::string_view last;
+		for (const auto& message : CalCtx.messages) {
+			if (message.type != CalibrationContext::Message::String) continue;
+			const std::string_view text(message.str);
+			size_t start = 0;
+			while (start < text.size()) {
+				size_t end = text.find('\n', start);
+				if (end == std::string_view::npos) end = text.size();
+				if (end > start) last = text.substr(start, end - start);
+				start = end + 1;
+			}
+		}
+		return last;
+	}
+
+	float LastProgressFraction()
+	{
+		float fraction = 0.0f;
+		for (const auto& message : CalCtx.messages) {
+			if (message.type == CalibrationContext::Message::Progress && message.target > 0) {
+				fraction = (float)message.progress / (float)message.target;
+			}
+		}
+		return fraction;
+	}
+
+	void DrawCalibrationProgress()
+	{
+		const ImGuiIO& io = ImGui::GetIO();
+		const ImGuiStyle& style = ImGui::GetStyle();
+		ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+		ImGui::SetNextWindowSize(ImVec2(std::min(680.0f, io.DisplaySize.x - 40.0f), 0.0f), ImGuiCond_Always);
+		ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, ImVec4(0.0f, 0.0f, 0.0f, 0.6f));
+		ImGui::PushStyleColor(ImGuiCol_PopupBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
+		const ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+		                               ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize;
+		if (ImGui::BeginPopupModal("Calibration progress", nullptr, flags)) {
+			const float buttonHeight = ImGui::GetFrameHeight() * 1.3f;
+			const float halfWidth = (ImGui::GetContentRegionAvail().x - style.ItemSpacing.x) * 0.5f;
+			ImGui::Spacing();
+			if (CalCtx.state != CalibrationState::None) {
+				const std::string_view status = LastLogLine();
+				ImGui::TextWrapped("Hold both devices firmly together and draw slow figure eights until the bar fills.");
+				ImGui::Spacing();
+				ImGui::ProgressBar(LastProgressFraction(), ImVec2(-FLT_MIN, buttonHeight));
+				ImGui::TextDisabled("%.*s", (int)status.size(), status.data());
+				ImGui::Spacing();
+				if (ImGui::Button("Cancel", ImVec2(-FLT_MIN, buttonHeight))) {
+					CancelCalibration();
+					CalCtx.RestoreSelectionBeforeCommit();
+					ImGui::CloseCurrentPopup();
+				}
+			}
+			else if (CalCtx.failureReason.empty()) {
+				ImGui::TextWrapped("Calibration finished and the profile is saved.");
+				ImGui::Spacing();
+				if (ImGui::Button("Close", ImVec2(-FLT_MIN, buttonHeight))) {
+					CalCtx.KeepCommittedSelection();
+					ImGui::CloseCurrentPopup();
+				}
+			}
+			else {
+				ImGui::TextUnformatted("Calibration didn't finish");
+				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+				ImGui::TextWrapped("%s", CalCtx.failureReason.c_str());
+				ImGui::PopStyleColor();
+				ImGui::Spacing();
+				const bool canRetry = CalCtx.failureReason != kFailureMissingDevice;
+				if (canRetry) {
+					if (ImGui::Button("Try again", ImVec2(halfWidth, buttonHeight))) {
+						StartCalibration();
+					}
+					ImGui::SameLine();
+				}
+				if (ImGui::Button("Close", ImVec2(canRetry ? halfWidth : -FLT_MIN, buttonHeight))) {
+					CalCtx.RestoreSelectionBeforeCommit();
+					ImGui::CloseCurrentPopup();
+				}
+			}
+			ImGui::Spacing();
+			ImGui::EndPopup();
+		}
+		ImGui::PopStyleColor(2);
+	}
+
+}
+
 void BuildMenu(bool runningInOverlay)
 {
-	auto& io = ImGui::GetIO();
 	ImGuiStyle& style = ImGui::GetStyle();
 	ImGui::Text("");
 
 	if (CalCtx.state == CalibrationState::None) {
-		if (CalCtx.validProfile && !CalCtx.enabled) {
-			ImGui::TextColored(ImVec4(0.8f, 0.2f, 0.2f, 1), "Reference (%s) HMD not detected, profile disabled",
-			                   GetPrettyTrackingSystemName(CalCtx.referenceTrackingSystem));
+		if (CalCtx.validProfile && !CalCtx.enabled && VRSess.state == VRConnectionState::Connected) {
+			char text[256];
+			snprintf(text, sizeof text,
+			         "No headset from the reference system (%s) is connected, so the profile is off. Connect that headset or "
+			         "calibrate again.",
+			         GetPrettyTrackingSystemName(CalCtx.referenceTrackingSystem));
+			ui::Note("profile_disabled", ui::NoteTone::Error, text);
 			ImGui::Text("");
 		}
 
@@ -180,28 +303,30 @@ void BuildMenu(bool runningInOverlay)
 		const int mainCount = CalCtx.validProfile ? 4 : 2;
 		const float mainWidth = (avail - (mainCount - 1) * style.ItemSpacing.x) / mainCount;
 
-		ImGui::BeginDisabled(VRSess.state != VRConnectionState::Connected);
+		ui::BeginDisabledLook(VRSess.state != VRConnectionState::Connected);
 
 		if (ImGui::Button("Start calibration", ImVec2(mainWidth, ImGui::GetTextLineHeight() * 2))) {
+			CommitDeviceSelection();
 			ImGui::OpenPopup("Calibration progress");
 			StartCalibration();
 		}
 
 		ImGui::SameLine();
 		if (ImGui::Button("Continuous calibration", ImVec2(mainWidth, ImGui::GetTextLineHeight() * 2))) {
+			CommitDeviceSelection();
 			StartContinuousCalibration();
 		}
 
 		if (CalCtx.validProfile) {
 			ImGui::SameLine();
 			if (ImGui::Button("Edit calibration", ImVec2(mainWidth, ImGui::GetTextLineHeight() * 2))) {
+				editSnapshot = {CalCtx.calibratedRotation, CalCtx.calibratedTranslation, CalCtx.calibratedScale};
 				CalCtx.state = CalibrationState::Editing;
 			}
 
 			ImGui::SameLine();
 			if (ImGui::Button("Clear calibration", ImVec2(mainWidth, ImGui::GetTextLineHeight() * 2))) {
-				CalCtx.Clear();
-				SaveProfile(CalCtx);
+				ImGui::OpenPopup("Clear calibration?");
 			}
 		}
 
@@ -217,33 +342,50 @@ void BuildMenu(bool runningInOverlay)
 		if (CalCtx.chaperone.valid) {
 			ImGui::SameLine();
 			if (ImGui::Button("Paste chaperone bounds", ImVec2(chaperoneWidth, ImGui::GetTextLineHeight() * 2))) {
-				ApplyChaperoneBounds();
+				ImGui::OpenPopup("Paste chaperone bounds?");
 			}
+		}
 
+		ui::EndDisabledLook();
+
+		if (CalCtx.chaperone.valid) {
 			if (ImGui::Checkbox("Paste chaperone bounds automatically when geometry resets", &CalCtx.chaperone.autoApply)) {
 				SaveProfile(CalCtx);
 			}
 		}
 
-		ImGui::EndDisabled();
+		if (ui::ConfirmPopup("Clear calibration?", "This deletes the saved calibration and any chaperone bounds stored with it.",
+		                     "Clear calibration")) {
+			CalCtx.Clear();
+			SaveProfile(CalCtx);
+		}
+		if (ui::ConfirmPopup("Paste chaperone bounds?", "This replaces SteamVR's current boundary with the one saved in this profile.",
+		                     "Paste bounds")) {
+			ApplyChaperoneBounds();
+		}
 
 		ImGui::Text("");
 		auto speed = CalCtx.calibrationSpeed;
 
 		ImGui::Columns(4, nullptr, false);
+		ImGui::AlignTextToFramePadding();
 		ImGui::Text("Calibration speed");
 
 		ImGui::NextColumn();
 		if (ImGui::RadioButton("Fast", speed == CalibrationContext::FAST)) CalCtx.calibrationSpeed = CalibrationContext::FAST;
+		ui::Tooltip(ui::kCalibrationSpeedTips[0]);
 
 		ImGui::NextColumn();
 		if (ImGui::RadioButton("Slow", speed == CalibrationContext::SLOW)) CalCtx.calibrationSpeed = CalibrationContext::SLOW;
+		ui::Tooltip(ui::kCalibrationSpeedTips[1]);
 
 		ImGui::NextColumn();
 		if (ImGui::RadioButton("Very slow", speed == CalibrationContext::VERY_SLOW))
 			CalCtx.calibrationSpeed = CalibrationContext::VERY_SLOW;
+		ui::Tooltip(ui::kCalibrationSpeedTips[2]);
 
 		ImGui::Columns(1);
+		if (CalCtx.calibrationSpeed != speed) SaveProfile(CalCtx);
 
 		ImGui::Text("");
 		DrawSmoothingPanel(ImVec2(ImGui::GetWindowContentRegionWidth(), 0));
@@ -251,39 +393,24 @@ void BuildMenu(bool runningInOverlay)
 	else if (CalCtx.state == CalibrationState::Editing) {
 		BuildProfileEditor();
 
-		if (ImGui::Button("Save profile", ImVec2(ImGui::GetWindowContentRegionWidth(), ImGui::GetTextLineHeight() * 2))) {
+		const ImVec2 buttonSize((ImGui::GetContentRegionAvail().x - style.ItemSpacing.x) * 0.5f, ImGui::GetTextLineHeight() * 2);
+		if (ImGui::Button("Save profile", buttonSize)) {
 			SaveProfile(CalCtx);
 			CalCtx.state = CalibrationState::None;
 		}
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel", buttonSize)) {
+			CalCtx.calibratedRotation = editSnapshot.rotation;
+			CalCtx.calibratedTranslation = editSnapshot.translation;
+			CalCtx.calibratedScale = editSnapshot.scale;
+			CalCtx.state = CalibrationState::None;
+			SaveProfile(CalCtx);
+		}
+		ui::Tooltip("Puts back the values from before you started editing.");
 	}
 	else {
 		ImGui::Button("Calibration in progress...", ImVec2(ImGui::GetWindowContentRegionWidth(), ImGui::GetTextLineHeight() * 2));
 	}
 
-	ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
-	ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x - 40.0f, io.DisplaySize.y - 40.0f), ImGuiCond_Always);
-	if (ImGui::BeginPopupModal("Calibration progress", nullptr, bareWindowFlags)) {
-		ImGui::PushStyleColor(ImGuiCol_FrameBg, (ImVec4)ImVec4(0, 0, 0, 1));
-		for (auto& message : CalCtx.messages) {
-			switch (message.type) {
-				case CalibrationContext::Message::String: ImGui::TextWrapped("%s", message.str.c_str()); break;
-				case CalibrationContext::Message::Progress:
-					float fraction = (float)message.progress / (float)message.target;
-					ImGui::Text("");
-					ImGui::ProgressBar(fraction, ImVec2(-1.0f, 0.0f), "");
-					ImGui::SetCursorPosY(ImGui::GetCursorPosY() - ImGui::GetFontSize() - style.FramePadding.y * 2);
-					ImGui::Text(" %d%%", (int)(fraction * 100));
-					break;
-			}
-		}
-		ImGui::PopStyleColor();
-
-		if (CalCtx.state == CalibrationState::None) {
-			ImGui::Text("");
-			if (ImGui::Button("Close", ImVec2(ImGui::GetWindowContentRegionWidth(), ImGui::GetTextLineHeight() * 2)))
-				ImGui::CloseCurrentPopup();
-		}
-
-		ImGui::EndPopup();
-	}
+	DrawCalibrationProgress();
 }

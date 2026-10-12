@@ -29,7 +29,11 @@ static void DrawCalibrationPage()
 	}
 	else {
 		DrawAutoDetectCard();
-		auto state = LoadVRState();
+		static int pickersFrame = -1;
+		const int frame = ImGui::GetFrameCount();
+		if (pickersFrame < 0 || frame - pickersFrame > 1) InvalidateVRStateCache();
+		pickersFrame = frame;
+		const VRState& state = LoadVRState();
 
 		ImGui::BeginDisabled(CalCtx.state == CalibrationState::Continuous);
 		BuildSystemSelection(state);
@@ -73,6 +77,8 @@ void BuildMainWindow(bool runningInOverlay_)
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 14.0f));
 	ImGui::BeginChild("content", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()), ImGuiChildFlags_AlwaysUseWindowPadding);
 	ImGui::PopStyleVar();
+
+	TickIdentifyPulses();
 
 	const bool driverBlocked = DriverConflictCtx.report.tier == spacecal::ConflictTier::Blocking;
 	if (ui::CurrentPage() != ui::Page::Settings) {
@@ -131,7 +137,7 @@ void BuildContinuousCalDisplay()
 			ImGui::EndTabItem();
 		}
 
-		if (ImGui::BeginTabItem("More Graphs")) {
+		if (ImGui::BeginTabItem("More graphs")) {
 			ShowCalibrationDebug(2, 3);
 			ImGui::EndTabItem();
 		}

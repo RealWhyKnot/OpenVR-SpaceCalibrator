@@ -2,8 +2,11 @@
 #include "UiCommon.h"
 #include "DriverConflictState.h"
 #include "VRSession.h"
+#include "Version.h"
 
 #include <shellapi.h>
+
+#include <string>
 
 #include <imgui/imgui.h>
 #include "imgui_extensions.h"
@@ -22,11 +25,29 @@ namespace {
 		ShellExecuteW(nullptr, L"explore", widePath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 	}
 
+	void DisabledWrapped(const std::string& text)
+	{
+		ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+		ImGui::TextWrapped("%s", text.c_str());
+		ImGui::PopStyleColor();
+	}
+
+	const std::string& DriverDateLine(const std::string& stamp)
+	{
+		static std::string cachedStamp;
+		static std::string line;
+		if (line.empty() || stamp != cachedStamp) {
+			cachedStamp = stamp;
+			line = "Driver file date " + stamp + ", overlay build " SPACECAL_VERSION_STRING;
+		}
+		return line;
+	}
+
 	void DrawRivals(DriverConflictState& ctx)
 	{
 		for (size_t i = 0; i < ctx.report.rivals.size(); ++i) {
 			const spacecal::RivalDriver& rival = ctx.report.rivals[i];
-			ImGui::TextDisabled("%s", rival.path.c_str());
+			DisabledWrapped(rival.path);
 			if (rival.kind == spacecal::RivalKind::RuntimeFolder) {
 				ImGui::TextWrapped("SteamVR loads that one because of where it sits, so it can't be unregistered. Remove or rename the "
 				                   "folder, or use the removal panel on the Settings page to delete it.");
@@ -55,24 +76,23 @@ void DrawDriverConflictPanel()
 	ImGui::PopStyleColor();
 
 	if (blocking && ctx.report.ownDriverStale) {
-		ImGui::TextWrapped("The driver answering SteamVR is from a different build than this overlay, and it's the copy that ships with "
-		                   "this install. Close SteamVR and run install.ps1 again, or reinstall Space Calibrator.");
+		ImGui::TextWrapped("SteamVR is running this install's own driver, but it's from a different build than this app. Close SteamVR "
+		                   "and reinstall Space Calibrator. If you built it from source, run install.ps1 again instead.");
 		const std::string dll = ctx.OwnDriverDllPath();
 		if (!dll.empty()) {
 			const std::string stamp = ctx.OwnDriverDllStamp();
-			if (stamp.empty()) {
-				ImGui::TextDisabled("%s", dll.c_str());
+			if (!stamp.empty()) {
+				DisabledWrapped(DriverDateLine(stamp));
 			}
-			else {
-				ImGui::TextDisabled("%s (%s)", dll.c_str(), stamp.c_str());
-			}
+			DisabledWrapped(dll);
 		}
 	}
 	else if (blocking) {
 		ImGui::TextWrapped("A different Space Calibrator driver is registered with SteamVR and answered first, so calibration can't run.");
 		DrawRivals(ctx);
 		if (!ctx.report.ownRegistered) {
-			ImGui::TextWrapped("This copy isn't registered with SteamVR either. Run install.ps1 once the other one is gone.");
+			ImGui::TextWrapped("This copy isn't registered with SteamVR either. Once the other driver is gone, reinstall Space "
+			                   "Calibrator. If you built it from source, run install.ps1 instead.");
 		}
 	}
 	else {
@@ -82,7 +102,7 @@ void DrawDriverConflictPanel()
 	}
 
 	if (blocking && !VRSess.statusText.empty()) {
-		ImGui::TextDisabled("%s", VRSess.statusText.c_str());
+		DisabledWrapped(VRSess.statusText);
 	}
 
 	if (ctx.fixQueued) {

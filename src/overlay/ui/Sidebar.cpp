@@ -43,7 +43,7 @@ namespace ui {
 		switch (VRSess.state) {
 			case VRConnectionState::Connected: PillText(ICON_MI_CHECK " SteamVR", ImVec4(0.35f, 0.85f, 0.45f, 1.0f)); break;
 			case VRConnectionState::Connecting: PillText(ICON_MI_SYNC " Connecting", ImVec4(1.0f, 0.75f, 0.3f, 1.0f)); break;
-			default: PillText(ICON_MI_CLOSE " SteamVR off", ImVec4(0.9f, 0.4f, 0.4f, 1.0f)); break;
+			default: PillText(ICON_MI_CLOSE " SteamVR off", ImVec4(1.0f, 0.52f, 0.52f, 1.0f)); break;
 		}
 	}
 

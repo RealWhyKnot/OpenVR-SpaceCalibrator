@@ -20,6 +20,7 @@ struct VRSessionState
 	double nextAttemptTime = 0.0;
 	double nextServerCheckTime = 0.0;
 	bool quitRequested = false;
+	bool driverNotLoaded = false;
 };
 
 extern VRSessionState VRSess;

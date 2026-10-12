@@ -29,6 +29,24 @@ struct StandbyDevice
 	std::string model, serial;
 };
 
+struct DeviceSelection
+{
+	std::string referenceTrackingSystem;
+	std::string targetTrackingSystem;
+	int32_t referenceID = -1;
+	int32_t targetID = -1;
+	StandbyDevice referenceStandby;
+	StandbyDevice targetStandby;
+};
+
+inline constexpr const char* kFailureSamplesMismatch =
+    "The samples didn't line up. Hold the devices tighter together, or pick Slow speed, then try again.";
+inline constexpr const char* kFailureTargetNotTracking =
+    "Target device is not tracking. Check that both devices are on and tracking, then try again.";
+inline constexpr const char* kFailureReferenceNotTracking =
+    "Reference device is not tracking. Check that both devices are on and tracking, then try again.";
+inline constexpr const char* kFailureMissingDevice = "Pick a reference and a target device, then start again.";
+
 struct CalibrationContext
 {
 	CalibrationState state = CalibrationState::None;
@@ -186,6 +204,43 @@ struct CalibrationContext
 	};
 
 	std::deque<Message> messages;
+	std::string failureReason;
+
+	DeviceSelection selectionBeforeCommit;
+	bool hasSelectionBeforeCommit = false;
+
+	void CommitSelection(const DeviceSelection& selection)
+	{
+		selectionBeforeCommit.referenceTrackingSystem = referenceTrackingSystem;
+		selectionBeforeCommit.targetTrackingSystem = targetTrackingSystem;
+		selectionBeforeCommit.referenceID = referenceID;
+		selectionBeforeCommit.targetID = targetID;
+		selectionBeforeCommit.referenceStandby = referenceStandby;
+		selectionBeforeCommit.targetStandby = targetStandby;
+		hasSelectionBeforeCommit = true;
+		referenceTrackingSystem = selection.referenceTrackingSystem;
+		targetTrackingSystem = selection.targetTrackingSystem;
+		referenceID = selection.referenceID;
+		targetID = selection.targetID;
+		referenceStandby = selection.referenceStandby;
+		targetStandby = selection.targetStandby;
+	}
+
+	void KeepCommittedSelection() { hasSelectionBeforeCommit = false; }
+
+	void RestoreSelectionBeforeCommit()
+	{
+		if (!hasSelectionBeforeCommit) return;
+		hasSelectionBeforeCommit = false;
+		referenceTrackingSystem = selectionBeforeCommit.referenceTrackingSystem;
+		targetTrackingSystem = selectionBeforeCommit.targetTrackingSystem;
+		referenceID = selectionBeforeCommit.referenceID;
+		targetID = selectionBeforeCommit.targetID;
+		referenceStandby = selectionBeforeCommit.referenceStandby;
+		targetStandby = selectionBeforeCommit.targetStandby;
+		timeLastScan = -1.0e9;
+		std::cerr << "Device selection restored to " << referenceTrackingSystem << " / " << targetTrackingSystem << "\n";
+	}
 
 	void Log(const std::string& msg)
 	{
@@ -227,6 +282,34 @@ struct CalibrationContext
 };
 
 extern CalibrationContext CalCtx;
+
+inline void CancelCalibration()
+{
+	if (CalCtx.state != CalibrationState::Begin && CalCtx.state != CalibrationState::Rotation &&
+	    CalCtx.state != CalibrationState::Translation) {
+		return;
+	}
+	CalCtx.state = CalibrationState::None;
+	CalCtx.failureReason.clear();
+	CalCtx.Log("Calibration cancelled\n");
+}
+
+inline bool CopyLiveChaperoneBounds(vr::IVRChaperoneSetup& setup, CalibrationContext::Chaperone& chaperone)
+{
+	setup.RevertWorkingCopy();
+	uint32_t quadCount = 0;
+	setup.GetLiveCollisionBoundsInfo(nullptr, &quadCount);
+	if (quadCount == 0) return false;
+	std::vector<vr::HmdQuad_t> geometry(quadCount);
+	setup.GetLiveCollisionBoundsInfo(geometry.data(), &quadCount);
+	if (quadCount == 0) return false;
+	if (quadCount < geometry.size()) geometry.resize(quadCount);
+	chaperone.geometry = std::move(geometry);
+	setup.GetWorkingStandingZeroPoseToRawTrackingPose(&chaperone.standingCenter);
+	setup.GetWorkingPlayAreaSize(&chaperone.playSpaceSize.v[0], &chaperone.playSpaceSize.v[1]);
+	chaperone.valid = true;
+	return true;
+}
 
 bool TryConnectDriver(std::string& error);
 spacecal::HandshakeOutcome LastDriverHandshake();

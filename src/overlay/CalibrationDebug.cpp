@@ -1,5 +1,6 @@
 #include "stdafx.h"
 
+#include <string>
 #include <vector>
 
 #include <implot/implot.h>
@@ -9,6 +10,41 @@
 // ImPlotPoint (*ImPlotGetter)(int idx, void* user_data);
 namespace {
 	double refTime;
+
+	struct LegendEntry
+	{
+		std::string name;
+		ImVec4 color;
+	};
+	std::vector<LegendEntry> legendEntries;
+
+	void DrawLegendRow()
+	{
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float square = ImGui::GetTextLineHeight() * 0.6f;
+		const float avail = ImGui::GetContentRegionAvail().x;
+		float lineWidth = 0.0f;
+		for (size_t i = 0; i < legendEntries.size(); ++i) {
+			const LegendEntry& entry = legendEntries[i];
+			const float width = square + style.ItemInnerSpacing.x + ImGui::CalcTextSize(entry.name.c_str()).x;
+			if (i > 0 && lineWidth + style.ItemSpacing.x + width <= avail) {
+				ImGui::SameLine();
+				lineWidth += style.ItemSpacing.x + width;
+			}
+			else {
+				lineWidth = width;
+			}
+			ImGui::BeginGroup();
+			const ImVec2 pos = ImGui::GetCursorScreenPos();
+			const float top = pos.y + (ImGui::GetTextLineHeight() - square) * 0.5f;
+			ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(pos.x, top), ImVec2(pos.x + square, top + square),
+			                                          ImGui::GetColorU32(entry.color));
+			ImGui::Dummy(ImVec2(square, ImGui::GetTextLineHeight()));
+			ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+			ImGui::TextUnformatted(entry.name.c_str());
+			ImGui::EndGroup();
+		}
+	}
 
 	template <typename F> ImPlotPoint VPIndexer(int idx, void* ptr)
 	{
@@ -29,6 +65,7 @@ namespace {
 			double y = 0;
 			ImPlot::PlotLine(name, &x, &y, 1);
 		}
+		legendEntries.push_back({name, ImPlot::GetLastItemColor()});
 	}
 
 	template <typename F, typename G> void PlotShadedG(const char* name, const F& data, const G& reference, int count)
@@ -151,7 +188,7 @@ namespace {
 
 	void G_PosOffset_RawComputed()
 	{
-		if (ImPlot::BeginPlot("##posOffsetRawComputed")) {
+		if (ImPlot::BeginPlot("##posOffsetRawComputed", ImVec2(-1, 0), ImPlotFlags_NoLegend)) {
 			ImPlot::SetupAxes(nullptr, "mm", 0, ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
 			SetupXAxis();
 			ImPlot::SetupAxisLimits(ImAxis_Y1, -200, 200, ImGuiCond_Appearing);
@@ -162,11 +199,12 @@ namespace {
 
 			ImPlot::EndPlot();
 		}
+		DrawLegendRow();
 	}
 
 	void G_PosOffset_CurrentCal()
 	{
-		if (ImPlot::BeginPlot("##posOffsetCurrentCal")) {
+		if (ImPlot::BeginPlot("##posOffsetCurrentCal", ImVec2(-1, 0), ImPlotFlags_NoLegend)) {
 			ImPlot::SetupAxes(nullptr, "mm", 0, ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
 			SetupXAxis();
 			ImPlot::SetupAxisLimits(ImAxis_Y1, -200, 200, ImGuiCond_Appearing);
@@ -177,11 +215,12 @@ namespace {
 
 			ImPlot::EndPlot();
 		}
+		DrawLegendRow();
 	}
 
 	void G_PosOffset_LastSample()
 	{
-		if (ImPlot::BeginPlot("##posOffsetLastSample")) {
+		if (ImPlot::BeginPlot("##posOffsetLastSample", ImVec2(-1, 0), ImPlotFlags_NoLegend)) {
 			ImPlot::SetupAxes(nullptr, "mm", 0, ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
 			SetupXAxis();
 			ImPlot::SetupAxisLimits(ImAxis_Y1, -200, 200, ImGuiCond_Appearing);
@@ -192,11 +231,12 @@ namespace {
 
 			ImPlot::EndPlot();
 		}
+		DrawLegendRow();
 	}
 
 	void G_PosOffset_ByRelPose()
 	{
-		if (ImPlot::BeginPlot("##posOffsetByRelPose")) {
+		if (ImPlot::BeginPlot("##posOffsetByRelPose", ImVec2(-1, 0), ImPlotFlags_NoLegend)) {
 			ImPlot::SetupAxes(nullptr, "mm", 0, ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
 			SetupXAxis();
 			ImPlot::SetupAxisLimits(ImAxis_Y1, -200, 200, ImGuiCond_Appearing);
@@ -207,11 +247,12 @@ namespace {
 
 			ImPlot::EndPlot();
 		}
+		DrawLegendRow();
 	}
 
 	void G_PosOffset_PosError()
 	{
-		if (ImPlot::BeginPlot("##Position error")) {
+		if (ImPlot::BeginPlot("##Position error", ImVec2(-1, 0), ImPlotFlags_NoLegend)) {
 			ImPlot::SetupAxes(nullptr, "mm (RMS)");
 			SetupXAxis();
 			ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 25, ImGuiCond_Appearing);
@@ -220,10 +261,11 @@ namespace {
 
 			PlotLineG("Candidate", Metrics::error_rawComputed);
 			PlotLineG("Active", Metrics::error_currentCal);
-			PlotLineG("By Rel Pose", Metrics::error_byRelPose);
-			PlotLineG("CC Rel Pose", Metrics::error_currentCalRelPose);
+			PlotLineG("By rel pose", Metrics::error_byRelPose);
+			PlotLineG("CC rel pose", Metrics::error_currentCalRelPose);
 			ImPlot::EndPlot();
 		}
+		DrawLegendRow();
 	}
 
 	void G_ComputationTime()
@@ -249,7 +291,7 @@ namespace {
 
 			AddApplyTicks();
 
-			PlotLineG("Reference Jitter", Metrics::jitterRef);
+			PlotLineG("Reference jitter", Metrics::jitterRef);
 			ImPlot::EndPlot();
 		}
 	}
@@ -263,7 +305,7 @@ namespace {
 
 			AddApplyTicks();
 
-			PlotLineG("Target Jitter", Metrics::jitterTarget);
+			PlotLineG("Target jitter", Metrics::jitterTarget);
 			ImPlot::EndPlot();
 		}
 	}
@@ -331,15 +373,15 @@ namespace {
 		}
 	}
 
-	const struct GraphInfo graphs[] = {{"Position Error", G_PosOffset_PosError},
-	                                   {"Axis Variance", G_AxisVariance},
-	                                   {"Offset: Raw Computed", G_PosOffset_RawComputed},
-	                                   {"Offset: Current Calibration", G_PosOffset_CurrentCal},
-	                                   {"Offset: Last Sample", G_PosOffset_LastSample},
-	                                   {"Offset: By Rel Pose", G_PosOffset_ByRelPose},
+	const struct GraphInfo graphs[] = {{"Position error", G_PosOffset_PosError},
+	                                   {"Axis variance", G_AxisVariance},
+	                                   {"Offset: raw computed", G_PosOffset_RawComputed},
+	                                   {"Offset: current calibration", G_PosOffset_CurrentCal},
+	                                   {"Offset: last sample", G_PosOffset_LastSample},
+	                                   {"Offset: by relative pose", G_PosOffset_ByRelPose},
 	                                   {"Processing time", G_ComputationTime},
-	                                   {"Reference Jitter", G_JitterReference},
-	                                   {"Target Jitter", G_JitterTarget}};
+	                                   {"Reference jitter", G_JitterReference},
+	                                   {"Target jitter", G_JitterTarget}};
 
 	const int N_GRAPHS = sizeof(graphs) / sizeof(graphs[0]);
 }
@@ -372,14 +414,18 @@ void ShowCalibrationDebug(int rows, int cols)
 	ImGui::PushStyleColor(ImGuiCol_TableRowBgAlt, bgCol);
 	ImPlot::PushStyleColor(ImPlotCol_FrameBg, ImVec4(0, 0, 0, 0));
 
-	ImGui::SetNextWindowBgAlpha(1);
-	if (!ImGui::BeginChild("##CalibrationDebug", avail, false,
+	if (!ImGui::BeginChild("##CalibrationDebug", ImVec2(avail.x, 0.0f), ImGuiChildFlags_AutoResizeY,
 	                       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoTitleBar)) {
 		ImGui::EndChild();
+		ImPlot::PopStyleColor(1);
+		ImGui::PopStyleColor(2);
 		return;
 	}
 
-	if (!ImGui::BeginTable("##CalibrationDebug", cols, ImGuiTableFlags_RowBg)) {
+	if (!ImGui::BeginTable("##CalibrationDebug", cols, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchSame)) {
+		ImGui::EndChild();
+		ImPlot::PopStyleColor(1);
+		ImGui::PopStyleColor(2);
 		return;
 	}
 
@@ -407,6 +453,7 @@ void ShowCalibrationDebug(int rows, int cols)
 				ImGui::EndCombo();
 			}
 
+			legendEntries.clear();
 			graphs[curIndexes[i]].callback();
 
 			ImGui::PopID();

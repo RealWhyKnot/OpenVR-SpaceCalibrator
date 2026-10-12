@@ -12,6 +12,25 @@ namespace spacecal::basestations {
 	namespace {
 		constexpr int kCommandRetries = 4;
 		constexpr double kOpenVrRefreshSec = 1.0;
+
+		bool SameAdvert(const NamedAdvert& a, const NamedAdvert& b)
+		{
+			if (a.address != b.address || a.name != b.name || a.kind != b.kind || a.v2State.has_value() != b.v2State.has_value()) {
+				return false;
+			}
+			if (!a.v2State) return true;
+			return a.v2State->channel == b.v2State->channel && a.v2State->powerState == b.v2State->powerState &&
+			       a.v2State->isFaulty == b.v2State->isFaulty && a.v2State->oldFirmware == b.v2State->oldFirmware;
+		}
+
+		bool SameReferences(const std::vector<OpenVrReference>& a, const std::vector<OpenVrReference>& b)
+		{
+			if (a.size() != b.size()) return false;
+			for (size_t i = 0; i < a.size(); ++i) {
+				if (a[i].serial != b[i].serial || a[i].model != b[i].model) return false;
+			}
+			return true;
+		}
 	}
 
 	BaseStationsController& BaseStationsController::Get()
@@ -45,6 +64,7 @@ namespace spacecal::basestations {
 	bool BaseStationsController::SetNickname(const std::string& serial, const std::string& value)
 	{
 		if (!ApplyNickname(settings_.nicknames, serial, value)) return false;
+		stationsDirty_ = true;
 		SaveSettings();
 		return true;
 	}
@@ -64,7 +84,10 @@ namespace spacecal::basestations {
 			named.name = std::move(advert.name);
 			named.kind = kind;
 			if (kind == StationKind::V2) named.v2State = DecodeV2ManufacturerData(advert.manufacturerData);
+			const auto existing = adverts_.find(named.address);
+			if (existing != adverts_.end() && SameAdvert(existing->second, named)) continue;
 			adverts_[named.address] = std::move(named);
+			stationsDirty_ = true;
 		}
 
 		DrainResults();
@@ -74,9 +97,15 @@ namespace spacecal::basestations {
 			lastOpenVrRefresh_ = now;
 			RefreshOpenVrReferences();
 		}
-		if (!vrConnected) openvrRefs_.clear();
+		if (!vrConnected && !openvrRefs_.empty()) {
+			openvrRefs_.clear();
+			stationsDirty_ = true;
+		}
 
-		RebuildStations();
+		if (stationsDirty_) {
+			RebuildStations();
+			stationsDirty_ = false;
+		}
 		TickIntents();
 
 		const double nowSec = std::chrono::duration<double>(now.time_since_epoch()).count();
@@ -124,7 +153,7 @@ namespace spacecal::basestations {
 	{
 		auto* system = vr::VRSystem();
 		if (!system) return;
-		openvrRefs_.clear();
+		std::vector<OpenVrReference> refs;
 		char buffer[vr::k_unMaxPropertyStringSize] = {};
 		for (uint32_t id = 0; id < vr::k_unMaxTrackedDeviceCount; ++id) {
 			if (system->GetTrackedDeviceClass(id) != vr::TrackedDeviceClass_TrackingReference) continue;
@@ -136,8 +165,11 @@ namespace spacecal::basestations {
 			err = vr::TrackedProp_Success;
 			system->GetStringTrackedDeviceProperty(id, vr::Prop_ModelNumber_String, buffer, sizeof buffer, &err);
 			if (err == vr::TrackedProp_Success) ref.model = buffer;
-			openvrRefs_.push_back(std::move(ref));
+			refs.push_back(std::move(ref));
 		}
+		if (SameReferences(refs, openvrRefs_)) return;
+		openvrRefs_ = std::move(refs);
+		stationsDirty_ = true;
 	}
 
 	void BaseStationsController::RebuildStations()

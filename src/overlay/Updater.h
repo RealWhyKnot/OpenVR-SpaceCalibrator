@@ -2,6 +2,8 @@
 
 #include "ReleaseSelector.h"
 
+#include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -53,9 +55,16 @@ private:
 		std::vector<spacecal::GithubRelease> releases;
 	};
 
+	struct Shared
+	{
+		std::mutex mutex;
+		std::condition_variable finished;
+		bool done = true;
+		std::optional<Result> pending;
+	};
+
 	std::thread worker;
-	std::mutex mutex;
-	std::optional<Result> pending;
+	std::shared_ptr<Shared> shared = std::make_shared<Shared>();
 };
 
 extern Updater UpdaterCtx;

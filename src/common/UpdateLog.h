@@ -125,7 +125,7 @@ namespace spacecal {
 			}
 			reason = reason.substr(0, cut) + "...";
 		}
-		const std::string subject = summary.targetTag.empty() ? "the last update" : "the update to " + summary.targetTag;
+		const std::string subject = summary.targetTag.empty() ? "The last update" : "The update to " + summary.targetTag;
 		return subject + " did not finish: " + reason + "; see update.log";
 	}
 

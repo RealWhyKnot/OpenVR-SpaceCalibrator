@@ -52,6 +52,7 @@ namespace spacecal::basestations {
 		std::map<std::string, PowerIntent> intents_;
 		AutomationState automationState_;
 		bool prevVrConnected_ = false;
+		bool stationsDirty_ = true;
 		int pendingWrites_ = 0;
 		std::chrono::steady_clock::time_point lastOpenVrRefresh_{};
 	};

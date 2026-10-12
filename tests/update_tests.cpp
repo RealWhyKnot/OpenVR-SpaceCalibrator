@@ -205,7 +205,7 @@ namespace {
 		                                                    "2026-10-10T18:00:42 failed: setup exited with code 2\r\n");
 		CHECK(!failed.finished);
 		CHECK(failed.lastMessage == "failed: setup exited with code 2");
-		CHECK(UpdateLogNote(failed, older) == "the update to v2026.10.9.0-beta did not finish: setup exited with code 2; see update.log");
+		CHECK(UpdateLogNote(failed, older) == "The update to v2026.10.9.0-beta did not finish: setup exited with code 2; see update.log");
 		CHECK(UpdateLogNote(failed, target).empty());
 
 		UpdateLogSummary killed = SummarizeUpdateLog(head);
@@ -227,7 +227,7 @@ namespace {
 		CHECK(oldFormat.targetTag == "v2026.10.9.0-beta");
 		CHECK(oldFormat.lastMessage.rfind("Get-FileHash : The term", 0) == 0);
 		std::string oldNote = UpdateLogNote(oldFormat, older);
-		CHECK(oldNote.rfind("the update to v2026.10.9.0-beta did not finish: Get-FileHash : The term", 0) == 0);
+		CHECK(oldNote.rfind("The update to v2026.10.9.0-beta did not finish: Get-FileHash : The term", 0) == 0);
 		CHECK(oldNote.find("...; see update.log") != std::string::npos);
 		CHECK(oldNote.size() < 200);
 
@@ -245,15 +245,15 @@ namespace {
 		                                                      "2026-10-11T08:00:01 failed: Unable to connect to the remote server\r\n");
 		CHECK(laterRun.targetTag == "v2026.10.11.0-beta");
 		CHECK(UpdateLogNote(laterRun, target) ==
-		      "the update to v2026.10.11.0-beta did not finish: Unable to connect to the remote server; see update.log");
+		      "The update to v2026.10.11.0-beta did not finish: Unable to connect to the remote server; see update.log");
 
 		UpdateLogSummary noTag = SummarizeUpdateLog("garbage line\n");
 		CHECK(noTag.targetTag.empty());
-		CHECK(UpdateLogNote(noTag, older) == "the last update did not finish: garbage line; see update.log");
+		CHECK(UpdateLogNote(noTag, older) == "The last update did not finish: garbage line; see update.log");
 
 		const std::string utf8Tail = std::string(96, 'a') + "\xC3\xA9" + std::string(20, 'b');
 		std::string cut = UpdateLogNote(SummarizeUpdateLog("2026-10-10T18:00:00 failed: " + utf8Tail + "\n"), older);
-		CHECK(cut == "the last update did not finish: " + std::string(96, 'a') + "...; see update.log");
+		CHECK(cut == "The last update did not finish: " + std::string(96, 'a') + "...; see update.log");
 
 		CHECK(UpdateLogNote(SummarizeUpdateLog(""), older).empty());
 		CHECK(UpdateLogNote(SummarizeUpdateLog("\xEF\xBB\xBF\r\n \r\n"), older).empty());

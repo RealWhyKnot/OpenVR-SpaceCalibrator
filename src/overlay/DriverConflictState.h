@@ -10,12 +10,15 @@ struct DriverConflictState
 {
 	spacecal::ConflictReport report;
 	std::string ownDriverDir;
+	std::string ownDllPath;
+	std::string ownDllStamp;
 	std::string vrpathregExe;
 	std::string fixError;
 	bool fixQueued = false;
 	bool dismissed = false;
 
 	void Refresh(spacecal::HandshakeOutcome handshake);
+	void RefreshOwnDriverDll();
 	bool QueueUnregister();
 	bool QueueRegisterOwn();
 	bool StartDriverScript(spacecal::UnregisterDriverParams params, const char* baseName);
