@@ -27,3 +27,12 @@ foreach ($name in $overlayFiles) { Copy-Item -LiteralPath (Join-Path $overlayDir
 Copy-Item -LiteralPath (Join-Path $repo "scripts\install.ps1"), (Join-Path $repo "scripts\uninstall.ps1") -Destination $OutDir
 Copy-Item -LiteralPath (Join-Path $repo "README.md"), (Join-Path $repo "LICENSE"), (Join-Path $repo "NOTICE") -Destination $OutDir
 Get-ChildItem -LiteralPath $OutDir -Recurse -File | ForEach-Object { Write-Host $_.FullName.Substring($OutDir.Length + 1) }
+
+$installerExcludes = @("install.ps1", "uninstall.ps1")
+$runtimeFiles = @("01spacecalibrator\bin\win64\space_calibrator_driver.log", "01spacecalibrator\bin\win64\space_calibrator_driver.old.log")
+$files = @(Get-ChildItem -LiteralPath $OutDir -Recurse -File -Force | Where-Object { $installerExcludes -notcontains $_.Name } | ForEach-Object { $_.FullName.Substring($OutDir.Length + 1) }) + $runtimeFiles
+$dirs = @(Get-ChildItem -LiteralPath $OutDir -Recurse -Directory -Force | ForEach-Object { $_.FullName.Substring($OutDir.Length + 1) } | Sort-Object -Property @{ Expression = { ($_ -split '\\').Count }; Descending = $true }, @{ Expression = { $_ }; Descending = $false })
+$lines = @($files | Sort-Object -Unique | ForEach-Object { 'Delete "$INSTDIR\' + $_.Replace('$', '$$') + '"' }) + @($dirs | ForEach-Object { 'RMDir "$INSTDIR\' + $_.Replace('$', '$$') + '"' })
+$uninstallList = Join-Path (Split-Path -Parent $OutDir) "uninstall_files.nsh"
+[System.IO.File]::WriteAllLines($uninstallList, [string[]]$lines, (New-Object System.Text.UTF8Encoding($false)))
+Write-Host "wrote $uninstallList ($($files.Count) files, $($dirs.Count) folders)"

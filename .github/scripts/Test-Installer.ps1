@@ -37,6 +37,11 @@ if ($existing.Count -gt 0) {
 
 if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }
 
+$foreignName = "not-space-calibrator.txt"
+$foreignFile = Join-Path $dir $foreignName
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+Set-Content -LiteralPath $foreignFile -Value "user file"
+
 New-Item -ItemType Directory -Force -Path $localData | Out-Null
 Set-Content -LiteralPath (Join-Path $localData "update.log") -Value "seed"
 New-Item -ItemType Directory -Force -Path (Join-Path $lowData "Logs") | Out-Null
@@ -58,7 +63,9 @@ $installedFiles = @(
 	"NOTICE",
 	"Uninstall.exe",
 	"01spacecalibrator\driver.vrdrivermanifest",
-	"01spacecalibrator\bin\win64\driver_01spacecalibrator.dll"
+	"01spacecalibrator\bin\win64\driver_01spacecalibrator.dll",
+	"01spacecalibrator\resources\driver.vrresources",
+	"01spacecalibrator\resources\settings\default.vrsettings"
 )
 foreach ($f in $installedFiles) {
 	Assert (Test-Path -LiteralPath (Join-Path $dir $f)) "installed $f"
@@ -80,6 +87,13 @@ Assert ($arp.NoRepair -eq 1) "NoRepair"
 Assert ($arp.EstimatedSize -gt 0) "EstimatedSize (got $($arp.EstimatedSize))"
 Assert (Test-Path -LiteralPath $shortcut) "start menu shortcut"
 
+$register = Start-Process -FilePath (Join-Path $dir "SpaceCalibrator.exe") -ArgumentList "-register" -PassThru
+$null = $register.Handle
+if (-not $register.WaitForExit(120000)) {
+	throw "SpaceCalibrator.exe -register did not exit within 120 seconds"
+}
+Assert ($register.ExitCode -eq 3) "SpaceCalibrator.exe -register exit code 3 without SteamVR (got $($register.ExitCode))"
+
 $uninstall = Start-Process -FilePath (Join-Path $dir "Uninstall.exe") -ArgumentList ("/S _?=" + $dir) -Wait -PassThru
 Assert ($uninstall.ExitCode -eq 0) "uninstaller exit code 0 (got $($uninstall.ExitCode))"
 
@@ -89,9 +103,11 @@ Assert (-not (Test-Path -LiteralPath $localData)) "local appdata removed"
 Assert (-not (Test-Path -LiteralPath $lowData)) "locallow logs removed"
 Assert (-not (Test-Path -LiteralPath $shortcut)) "start menu shortcut removed"
 
+Assert ((Test-Path -LiteralPath $foreignFile) -and ((Get-Content -LiteralPath $foreignFile -Raw).Trim() -eq "user file")) "unrelated file in the install dir kept"
+
 $leftovers = @()
 if (Test-Path -LiteralPath $dir) {
-	$leftovers = @(Get-ChildItem -LiteralPath $dir -Recurse -Force | Where-Object { $_.Name -ne "Uninstall.exe" })
+	$leftovers = @(Get-ChildItem -LiteralPath $dir -Recurse -Force | Where-Object { $_.Name -ne "Uninstall.exe" -and $_.Name -ne $foreignName })
 }
 Assert ($leftovers.Count -eq 0) "install dir emptied (left: $(($leftovers | ForEach-Object Name) -join ', '))"
 if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }
