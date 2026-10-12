@@ -23,6 +23,8 @@ jobs:
     if: needs.tag.outputs.tag != ''
     permissions:
       contents: write
+      actions: read
     uses: ./.github/workflows/release.yml
     with:
       tag: ${{ needs.tag.outputs.tag }}
+      delete-tag-on-failure: true

@@ -15,9 +15,14 @@ on:
       tag:
         required: true
         type: string
+      delete-tag-on-failure:
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: release
@@ -27,7 +32,7 @@ jobs:
   release:
     name: Publish ${{ inputs.tag || github.ref_name }}
     runs-on: windows-2025-vs2026
-    timeout-minutes: 40
+    timeout-minutes: 75
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
@@ -132,6 +137,46 @@ jobs:
         shell: pwsh
         run: ./.github/scripts/Assert-NoUpstreamReferences.ps1 -Path '${{ steps.notes.outputs.file }}'
 
+      - name: Wait for CI on the release commit
+        shell: pwsh
+        run: |
+          $sha = '${{ steps.tag.outputs.sha }}'
+          if (-not $sha) { throw "The release tag did not resolve to a commit." }
+          $deadline = (Get-Date).AddMinutes(30)
+          while ($true) {
+            $json = gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$sha&per_page=100" 2>$null
+            $fetched = $LASTEXITCODE -eq 0
+            $global:LASTEXITCODE = 0
+            if ($fetched) {
+              $runs = @(($json | ConvertFrom-Json).workflow_runs | Where-Object { $_.event -ne 'pull_request' })
+              $passed = @($runs | Where-Object { $_.status -eq 'completed' -and $_.conclusion -eq 'success' })
+              $running = @($runs | Where-Object { $_.status -ne 'completed' })
+              if ($passed.Count -gt 0) {
+                Write-Host "CI passed for $sha (run $($passed[0].id))"
+                break
+              }
+              if ($runs.Count -gt 0 -and $running.Count -eq 0) {
+                $summary = ($runs | ForEach-Object { "run $($_.id) $($_.conclusion)" }) -join ', '
+                throw "CI did not pass for $sha ($summary). Re-run CI on that commit, then re-run this release."
+              }
+              Write-Host "Waiting for CI on $sha ($($runs.Count) run(s), $($running.Count) still going)"
+            }
+            if ((Get-Date) -ge $deadline) { throw "No passing CI run for $sha after 30 minutes." }
+            Start-Sleep -Seconds 30
+          }
+
+      - name: Claim the release
+        id: claim
+        shell: pwsh
+        run: |
+          $tag = $env:RELEASE_TAG
+          $lookup = gh api "repos/${{ github.repository }}/releases/tags/$tag" 2>&1
+          $found = $LASTEXITCODE -eq 0
+          $global:LASTEXITCODE = 0
+          if ($found) { throw "A release for $tag already exists. Delete it first to publish it again." }
+          if (($lookup | Out-String) -notmatch 'HTTP 404') { throw "Could not check for an existing $tag release: $($lookup | Out-String)" }
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "owned=true"
+
       - name: Publish release
         shell: pwsh
         run: |
@@ -168,8 +213,29 @@ jobs:
           Write-Host "Verified $($expected.Count) asset digests"
 
       - name: Remove partial release on failure
-        if: failure()
+        if: (failure() || cancelled()) && steps.claim.outputs.owned == 'true'
         shell: pwsh
         run: |
           gh release delete $env:RELEASE_TAG --repo '${{ github.repository }}' --yes 2>$null
           $global:LASTEXITCODE = 0
+
+      - name: Remove the nightly tag on failure
+        if: (failure() || cancelled()) && inputs.delete-tag-on-failure
+        shell: pwsh
+        run: |
+          $tag = $env:RELEASE_TAG
+          if ($tag -notmatch '-beta$') {
+            Write-Host "Keeping $tag because it is not a beta tag."
+            exit 0
+          }
+          $lookup = gh api "repos/${{ github.repository }}/releases/tags/$tag" 2>&1
+          $found = $LASTEXITCODE -eq 0
+          $global:LASTEXITCODE = 0
+          if ($found) {
+            Write-Host "Keeping $tag because a published release still uses it."
+            exit 0
+          }
+          if (($lookup | Out-String) -notmatch 'HTTP 404') { throw "Could not check for a $tag release, so the tag stays: $($lookup | Out-String)" }
+          gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag"
+          if ($LASTEXITCODE -ne 0) { throw "Could not delete the tag $tag ($LASTEXITCODE)" }
+          Write-Host "Deleted $tag so the next nightly can tag again."

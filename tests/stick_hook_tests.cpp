@@ -5,11 +5,10 @@
 
 #include <MinHook.h>
 
-#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <map>
-#include <thread>
+#include <windows.h>
 
 namespace {
 
@@ -154,9 +153,37 @@ namespace {
 		spacecal::stick_hook::SetConfig(config);
 	}
 
-	void SleepMs(int ms)
+	int64_t g_fakeTicks = 0;
+	int64_t g_ticksPerSecond = 0;
+
+	BOOL WINAPI FakeQueryPerformanceCounter(LARGE_INTEGER* out)
 	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+		out->QuadPart = g_fakeTicks;
+		return TRUE;
+	}
+
+	bool InstallFakeClock()
+	{
+		LARGE_INTEGER freq{};
+		LARGE_INTEGER start{};
+		QueryPerformanceFrequency(&freq);
+		QueryPerformanceCounter(&start);
+		g_ticksPerSecond = freq.QuadPart;
+		g_fakeTicks = start.QuadPart + g_ticksPerSecond;
+		void* target = nullptr;
+		if (MH_CreateHookApiEx(L"kernel32", "QueryPerformanceCounter", reinterpret_cast<void*>(&FakeQueryPerformanceCounter), nullptr,
+		                       &target) != MH_OK) {
+			return false;
+		}
+		if (MH_EnableHook(target) != MH_OK) return false;
+		LARGE_INTEGER probe{};
+		QueryPerformanceCounter(&probe);
+		return probe.QuadPart == g_fakeTicks;
+	}
+
+	void AdvanceMs(int ms)
+	{
+		g_fakeTicks += g_ticksPerSecond * ms / 1000;
 	}
 
 	void TestOffForwardsRawValues(vr::VRInputComponentHandle_t leftX)
@@ -177,7 +204,7 @@ namespace {
 		CHECK(g_fakeInput.lastValue[leftX] == 1.0f);
 		CHECK(g_fakeInput.lastValue[rightX] < 0.01f);
 
-		SleepMs(60);
+		AdvanceMs(60);
 		g_input->UpdateScalarComponent(rightX, 1.0f, 0.0);
 		const float eased = g_fakeInput.lastValue[rightX];
 		CHECK(eased > 0.0f);
@@ -191,7 +218,7 @@ namespace {
 		spacecal::stick_hook::SetConfig(config);
 		g_input->UpdateScalarComponent(leftY, -1.0f, 0.0);
 		CHECK(std::fabs(g_fakeInput.lastValue[leftY] + 0.4f) < 1e-6f);
-		SleepMs(60);
+		AdvanceMs(60);
 		g_input->UpdateScalarComponent(leftY, -1.0f, 0.0);
 		CHECK(g_fakeInput.lastValue[leftY] < -0.4f);
 		CHECK(g_fakeInput.lastValue[leftY] > -0.5f);
@@ -206,10 +233,10 @@ namespace {
 		spacecal::stick_hook::SetConfig(config);
 		g_input->UpdateScalarComponent(leftThumbX, 1.0f, 0.0);
 		CHECK(std::fabs(g_fakeInput.lastValue[leftThumbX] - 0.4f) < 1e-6f);
-		SleepMs(100);
+		AdvanceMs(100);
 		g_input->UpdateScalarComponent(leftThumbX, 1.0f, 0.0);
 		CHECK(std::fabs(g_fakeInput.lastValue[leftThumbX] - 0.4f) < 1e-6f);
-		SleepMs(450);
+		AdvanceMs(450);
 		g_input->UpdateScalarComponent(leftThumbX, 1.0f, 0.0);
 		CHECK(g_fakeInput.lastValue[leftThumbX] > 0.4f);
 		CHECK(g_fakeInput.lastValue[leftThumbX] < 1.0f);
@@ -227,7 +254,7 @@ namespace {
 		float previous = g_fakeInput.lastValue[rightY];
 		int pumped = 0;
 		for (int i = 0; i < 140; ++i) {
-			SleepMs(25);
+			AdvanceMs(25);
 			spacecal::stick_hook::Pump();
 			const float now = g_fakeInput.lastValue[rightY];
 			CHECK(now <= previous);
@@ -239,7 +266,7 @@ namespace {
 		CHECK(g_fakeInput.lastTimeOffset[rightY] == 0.0);
 
 		const int settledUpdates = g_fakeInput.updates[rightY];
-		SleepMs(25);
+		AdvanceMs(25);
 		spacecal::stick_hook::Pump();
 		CHECK(g_fakeInput.updates[rightY] == settledUpdates);
 	}
@@ -249,13 +276,13 @@ namespace {
 		SetStrengths(0, 100);
 		g_input->UpdateScalarComponent(rightY, 0.0f, 0.0);
 		CHECK(g_fakeInput.lastValue[rightY] == -1.0f);
-		SleepMs(30);
+		AdvanceMs(30);
 		spacecal::stick_hook::Pump();
 		CHECK(g_fakeInput.lastValue[rightY] < -0.5f);
 		CHECK(g_fakeInput.lastValue[rightY] > -1.0f);
 
 		SetStrengths(0, 0);
-		SleepMs(25);
+		AdvanceMs(25);
 		spacecal::stick_hook::Pump();
 		CHECK(g_fakeInput.lastValue[rightY] == 0.0f);
 	}
@@ -273,11 +300,11 @@ namespace {
 	{
 		SetStrengths(100, 100);
 		g_context.properties.roles[kTracker] = vr::TrackedControllerRole_LeftHand;
-		SleepMs(1100);
+		AdvanceMs(1100);
 		spacecal::stick_hook::Pump();
 		g_input->UpdateScalarComponent(trackerX, -0.6f, 0.0);
 		CHECK(g_fakeInput.lastValue[trackerX] == 0.6f);
-		SleepMs(25);
+		AdvanceMs(25);
 		spacecal::stick_hook::Pump();
 		CHECK(g_fakeInput.lastValue[trackerX] < 0.6f);
 		CHECK(g_fakeInput.lastValue[trackerX] > 0.0f);
@@ -290,6 +317,7 @@ int main()
 	LogFile = stdout;
 	CHECK(InitContext() == vr::VRInitError_None);
 	CHECK(MH_Initialize() == MH_OK);
+	CHECK(InstallFakeClock());
 
 	g_context.properties.roles[kLeftController] = vr::TrackedControllerRole_LeftHand;
 	g_context.properties.roles[kRightController] = vr::TrackedControllerRole_RightHand;
