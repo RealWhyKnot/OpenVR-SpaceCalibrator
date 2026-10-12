@@ -1,16 +1,9 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" xmlns:asmv3="urn:schemas-microsoft-com:asm.v3" manifestVersion="1.0">
    <assemblyIdentity type="win32" name="hyblocker.SpaceCalibrator" version="1.5.1.0" processorArchitecture="amd64" />
    <asmv3:application>
-      <asmv3:windowsSettings xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">
-         <dpiAware>true</dpiAware>
-      </asmv3:windowsSettings>
-      <asmv3:windowsSettings xmlns:ws2="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
-         <dpiAwareness>system</dpiAwareness>
-         <ws2:longPathAware>true</ws2:longPathAware>
-      </asmv3:windowsSettings>
-      <asmv3:windowsSettings xmlns="http://schemas.microsoft.com/SMI/2020/WindowsSettings">
-         <heapType>SegmentHeap</heapType>
+      <asmv3:windowsSettings>
+         <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
       </asmv3:windowsSettings>
    </asmv3:application>
    <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">

@@ -286,7 +286,7 @@ namespace {
 		CHECK(resets == params.driverDirs.size());
 
 		CHECK(script.find(R"('C:\Users\it''s me\01spacecalibrator')") != std::string::npos);
-		CHECK(script.find("$ErrorActionPreference = 'Stop'") == 0);
+		CHECK(script.rfind("\xEF\xBB\xBF$ErrorActionPreference = 'Stop'", 0) == 0);
 
 		UnregisterDriverParams empty;
 		empty.vrpathregExe = params.vrpathregExe;

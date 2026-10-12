@@ -13,6 +13,25 @@
 
 static bool s_isGitHubVersionInstalled = false;
 
+static std::string Utf8(const std::wstring& wide)
+{
+	if (wide.empty()) return {};
+	const int size = WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
+	if (size <= 0) return {};
+	std::string narrow(static_cast<size_t>(size), '\0');
+	WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), narrow.data(), size, nullptr, nullptr);
+	return narrow;
+}
+
+static bool WriteScript(const std::filesystem::path& path, const std::string& bytes)
+{
+	std::ofstream file(path, std::ios::binary | std::ios::trunc);
+	if (!file) return false;
+	file.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+	file.close();
+	return !file.fail();
+}
+
 bool IsGithubVersionInstalled()
 {
 	return s_isGitHubVersionInstalled;
@@ -171,33 +190,37 @@ bool QueueLegacyUninstall(const LegacyInstallInfo& info, std::string& error)
 
 	spacecal::UninstallHelperParams params;
 	params.overlayPid = GetCurrentProcessId();
-	params.logPath = (base / L"uninstall-old.log").string();
+	params.logPath = Utf8((base / L"uninstall-old.log").wstring());
 	params.runtimeDriverDirs = info.runtimeDriverDirs;
 	params.uninstallExe = info.uninstallExe;
 	params.programFilesDir = info.programFilesDir;
 	params.registryKeys = info.registryKeys;
 	PWSTR programsRaw = nullptr;
 	if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_CommonPrograms, 0, nullptr, &programsRaw))) {
-		params.startMenuShortcut = (std::filesystem::path(programsRaw) / L"Space Calibrator.lnk").string();
+		params.startMenuShortcut = Utf8((std::filesystem::path(programsRaw) / L"Space Calibrator.lnk").wstring());
 	}
 	if (programsRaw) CoTaskMemFree(programsRaw);
 
+	wchar_t systemDir[MAX_PATH] = {};
+	const UINT systemDirLength = GetSystemDirectoryW(systemDir, MAX_PATH);
+	if (systemDirLength == 0 || systemDirLength >= MAX_PATH) {
+		error = "could not resolve the system folder (error " + std::to_string(GetLastError()) + ")";
+		return false;
+	}
+	const std::wstring powershell = std::wstring(systemDir) + L"\\WindowsPowerShell\\v1.0\\powershell.exe";
+
 	const std::filesystem::path scriptPath = base / L"uninstall-old.ps1";
-	{
-		std::ofstream script(scriptPath, std::ios::binary | std::ios::trunc);
-		if (!script) {
-			error = "could not write " + scriptPath.string();
-			return false;
-		}
-		script << spacecal::BuildUninstallHelperScript(params);
+	if (!WriteScript(scriptPath, spacecal::BuildUninstallHelperScript(params))) {
+		error = "could not write " + Utf8(scriptPath.wstring());
+		return false;
 	}
 
-	std::wstring parameters = L"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + scriptPath.wstring() + L"\"";
+	const std::wstring parameters = L"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + scriptPath.wstring() + L"\"";
 	SHELLEXECUTEINFOW sei = {};
 	sei.cbSize = sizeof(sei);
 	sei.fMask = SEE_MASK_NOCLOSEPROCESS;
 	sei.lpVerb = L"runas";
-	sei.lpFile = L"powershell.exe";
+	sei.lpFile = powershell.c_str();
 	sei.lpParameters = parameters.c_str();
 	sei.nShow = SW_HIDE;
 	if (!ShellExecuteExW(&sei)) {

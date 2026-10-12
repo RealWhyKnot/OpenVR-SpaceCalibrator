@@ -20,13 +20,13 @@ namespace spacecal {
 
 	inline std::string BuildUninstallHelperScript(const UninstallHelperParams& p)
 	{
-		std::string script;
+		std::string script = "\xEF\xBB\xBF";
 		auto line = [&script](const std::string& text) {
 			script += text + "\r\n";
 		};
 		line("$ErrorActionPreference = 'Stop'");
 		line("function Log($m) { Add-Content -LiteralPath " + QuotePowerShell(p.logPath) +
-		     " -Value (\"{0} {1}\" -f (Get-Date -Format s), $m) }");
+		     " -Value (\"{0} {1}\" -f (Get-Date -Format s), $m) -Encoding UTF8 }");
 		line("try {");
 		line("    Log 'waiting for overlay " + std::to_string(p.overlayPid) + "'");
 		line("    Wait-Process -Id " + std::to_string(p.overlayPid) + " -ErrorAction SilentlyContinue");

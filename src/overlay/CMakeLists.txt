@@ -34,7 +34,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
     enable_language("RC")
-    set (WIN32_RESOURCES ${CMAKE_SOURCE_DIR}/src/overlay/SpaceCalibrator.rc ${CMAKE_BINARY_DIR}/generated/Version.rc)
+    set (WIN32_RESOURCES ${CMAKE_SOURCE_DIR}/src/overlay/SpaceCalibrator.rc ${CMAKE_BINARY_DIR}/generated/Version.rc ${CMAKE_SOURCE_DIR}/src/overlay/spacecal.manifest)
 endif()
 
 # Add source files

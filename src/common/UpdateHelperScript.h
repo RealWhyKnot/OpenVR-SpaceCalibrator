@@ -20,15 +20,29 @@ namespace spacecal {
 		std::string logPath;
 	};
 
+	inline bool IsTypographicSingleQuote(const std::string& value, size_t at)
+	{
+		if (at + 2 >= value.size()) return false;
+		const auto byte = [&value](size_t i) {
+			return static_cast<unsigned char>(value[i]);
+		};
+		return byte(at) == 0xE2 && byte(at + 1) == 0x80 && byte(at + 2) >= 0x98 && byte(at + 2) <= 0x9B;
+	}
+
 	inline std::string QuotePowerShell(const std::string& value)
 	{
 		std::string quoted = "'";
-		for (char c : value) {
-			if (c == '\'') {
+		for (size_t i = 0; i < value.size(); ++i) {
+			if (value[i] == '\'') {
 				quoted += "''";
 			}
+			else if (IsTypographicSingleQuote(value, i)) {
+				const std::string quote = value.substr(i, 3);
+				quoted += quote + quote;
+				i += 2;
+			}
 			else {
-				quoted += c;
+				quoted += value[i];
 			}
 		}
 		return quoted + "'";

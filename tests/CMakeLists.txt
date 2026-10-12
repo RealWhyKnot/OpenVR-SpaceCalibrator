@@ -100,6 +100,11 @@ target_compile_definitions(profile_tests PRIVATE NOMINMAX UNICODE _CRT_SECURE_NO
 set_target_properties(profile_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
 add_test(NAME profile COMMAND profile_tests)
 
+add_executable(scripts_tests scripts_tests.cpp)
+target_include_directories(scripts_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/lib)
+set_target_properties(scripts_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
+add_test(NAME scripts COMMAND scripts_tests)
+
 add_executable(driver_race_tests driver_race_tests.cpp ${PERF_DRIVER_SOURCES})
 target_include_directories(driver_race_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/driver ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/lib/openvr/headers ${CMAKE_SOURCE_DIR}/lib/minhook/include ${CMAKE_SOURCE_DIR}/lib)
 target_link_libraries(driver_race_tests PRIVATE minhook)
@@ -130,3 +135,10 @@ target_link_libraries(blend_tests PRIVATE minhook)
 target_compile_definitions(blend_tests PRIVATE NOMINMAX UNICODE _CRT_SECURE_NO_WARNINGS)
 set_target_properties(blend_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
 add_test(NAME blend COMMAND blend_tests)
+
+add_executable(utf8_acp_tests utf8_acp_tests.cpp ${CMAKE_SOURCE_DIR}/src/overlay/spacecal.manifest)
+target_compile_definitions(utf8_acp_tests PRIVATE NOMINMAX UNICODE)
+set_target_properties(utf8_acp_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
+add_test(NAME utf8_acp COMMAND utf8_acp_tests)
+add_test(NAME utf8_acp_overlay COMMAND utf8_acp_tests $<TARGET_FILE:SpaceCalibratorOverlay>)
+set_tests_properties(utf8_acp_overlay PROPERTIES SKIP_RETURN_CODE 77)
