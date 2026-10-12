@@ -339,7 +339,7 @@ namespace {
 			return std::max(wanted, 1.0 / 90.0);
 		};
 		auto hiddenWait = [](double now, double lastTick, double wanted) {
-			return spacecal::pacing::WaitSeconds(now, lastTick, wanted, false, false);
+			return spacecal::pacing::WaitSeconds(now, now, lastTick, wanted, false, false);
 		};
 
 		for (const double granularity : {0.001, 1.0 / 64.0}) {
@@ -360,15 +360,185 @@ namespace {
 			const LoopRun disconnected = SimulateLoop(hiddenWait, 0.0, false, granularity);
 			PERF_CHECK(disconnected.wakesPerSecond <= 21.0);
 			const LoopRun idle = SimulateLoop(hiddenWait, 1.0, true, granularity);
-			PERF_CHECK(idle.wakesPerSecond <= 1.1);
+			PERF_CHECK(idle.wakesPerSecond <= 4.0);
 			const LoopRun editing = SimulateLoop(hiddenWait, 0.1, true, granularity);
 			PERF_CHECK(editing.wakesPerSecond <= 10.1);
 		}
 
-		PERF_CHECK(spacecal::pacing::WaitSeconds(10.0, 9.99, 1.0, true, false) == spacecal::pacing::kDashboardFrameSeconds);
-		PERF_CHECK(spacecal::pacing::WaitSeconds(10.0, 9.99, 0.0, true, false) == spacecal::pacing::kDashboardFrameSeconds);
-		PERF_CHECK(spacecal::pacing::WaitSeconds(10.0, 9.99, 1.0, false, true) == 0.0);
-		PERF_CHECK(spacecal::pacing::WaitSeconds(10.0, 0.0, 0.0, false, false) >= spacecal::pacing::kCalibrationTickSeconds);
+		using spacecal::pacing::kDashboardFrameSeconds;
+		using spacecal::pacing::WaitSeconds;
+		PERF_CHECK(std::abs(WaitSeconds(10.0, 10.0, 9.99, 1.0, true, false) - kDashboardFrameSeconds) < 1e-9);
+		PERF_CHECK(std::abs(WaitSeconds(10.0, 10.0, 9.99, 0.0, true, false) - kDashboardFrameSeconds) < 1e-9);
+		PERF_CHECK(std::abs(WaitSeconds(10.004, 10.0, 9.99, 1.0, true, false) - (kDashboardFrameSeconds - 0.004)) < 1e-9);
+		PERF_CHECK(WaitSeconds(10.02, 10.0, 9.99, 1.0, true, false) == 0.0);
+		PERF_CHECK(WaitSeconds(9.99, 10.0, 9.99, 1.0, true, false) == kDashboardFrameSeconds);
+		PERF_CHECK(WaitSeconds(10.0, 10.0, 9.99, 1.0, false, true) == 0.0);
+		PERF_CHECK(std::abs(WaitSeconds(10.0, 10.0, 9.99, 1.0, true, true) - kDashboardFrameSeconds) < 1e-9);
+		PERF_CHECK(WaitSeconds(10.02, 10.0, 9.99, 1.0, true, true) == 0.0);
+		PERF_CHECK(WaitSeconds(10.0, 10.0, 0.0, 0.0, false, false) >= spacecal::pacing::kCalibrationTickSeconds);
+		PERF_CHECK(WaitSeconds(10.0, 10.0, 10.0, 1.0, false, false) == spacecal::pacing::kIdleWakeCapSeconds);
+		PERF_CHECK(WaitSeconds(10.0, 10.0, 10.0, 0.1, false, false) == 0.1);
+	}
+
+	namespace legacy_pacing {
+		double DashboardWait(double, double)
+		{
+			return spacecal::pacing::kDashboardFrameSeconds;
+		}
+
+		double HiddenWait(double now, double lastTick, double wanted)
+		{
+			double untilTick = lastTick + spacecal::pacing::kCalibrationTickSeconds - now;
+			if (untilTick <= 0.0) untilTick = spacecal::pacing::kCalibrationTickSeconds;
+			return std::max(wanted, untilTick + spacecal::pacing::kWakeSlackSeconds);
+		}
+	}
+
+	double DashboardWait(double now, double frameStart)
+	{
+		return spacecal::pacing::WaitSeconds(now, frameStart, 0.0, 1.0, true, false);
+	}
+
+	double HiddenWait(double now, double lastTick, double wanted)
+	{
+		return spacecal::pacing::WaitSeconds(now, now, lastTick, wanted, false, false);
+	}
+
+	double TimerWake(double due, double granularity)
+	{
+		return std::ceil(due / granularity - 1e-9) * granularity;
+	}
+
+	template <class WaitFn> double SimulateDashboardFps(WaitFn waitSeconds, double work, double granularity)
+	{
+		const double seconds = 60.0;
+		double now = 0.0;
+		int frames = 0;
+		while (now < seconds) {
+			const double frameStart = now;
+			++frames;
+			const double afterWork = now + work;
+			const double requested = std::floor(waitSeconds(afterWork, frameStart) * 1e3) / 1e3;
+			now = TimerWake(afterWork + requested, granularity);
+		}
+		return frames / seconds;
+	}
+
+	double SimulateMinimizedDashboardFps(double hiddenSeconds, bool minimizedCap, double work, double granularity)
+	{
+		const double cap = 1.0 / 60.0;
+		double now = 0.0;
+		double lastFrameStartTime = 0.0;
+		auto capSleep = [&] {
+			if (!minimizedCap) return;
+			const double waitTime = cap - (now - lastFrameStartTime);
+			if (waitTime > 0) now = TimerWake(now + waitTime, granularity);
+			lastFrameStartTime += cap;
+		};
+		while (now < hiddenSeconds) {
+			const double afterWork = now + 0.0002;
+			const double requested = std::floor(HiddenWait(afterWork, now, 1.0) * 1e3) / 1e3;
+			now = TimerWake(afterWork + requested, granularity);
+			capSleep();
+		}
+		const double end = now + 60.0;
+		int frames = 0;
+		while (now < end) {
+			++frames;
+			const double frameStart = now;
+			const double afterWork = now + work;
+			const double requested = std::floor(DashboardWait(afterWork, frameStart) * 1e3) / 1e3;
+			now = TimerWake(afterWork + requested, granularity);
+			capSleep();
+		}
+		return frames / 60.0;
+	}
+
+	struct IdleRun
+	{
+		double wakesPerSecond;
+		double meanOpenLatency;
+		double worstOpenLatency;
+	};
+
+	template <class WaitFn> IdleRun SimulateIdleHidden(WaitFn waitSeconds, double wanted, double granularity)
+	{
+		double now = 0.0;
+		double lastWake = 0.0;
+		double worst = 0.0;
+		double sum = 0.0;
+		int wakes = 0;
+		while (now < 60.0) {
+			const double afterWork = now + 0.0002;
+			const double requested = std::floor(waitSeconds(afterWork, now, wanted) * 1e3) / 1e3;
+			const double next = TimerWake(afterWork + requested, granularity);
+			const double gap = next - lastWake;
+			worst = std::max(worst, gap);
+			sum += gap * gap / 2.0;
+			lastWake = next;
+			now = next;
+			++wakes;
+		}
+		return {wakes / 60.0, sum / now, worst};
+	}
+
+	void TestDashboardPacing()
+	{
+		const double work = 0.0015;
+		for (const double granularity : {0.001, 1.0 / 64.0}) {
+			const bool coarse = granularity > 0.01;
+			const double before = SimulateDashboardFps(legacy_pacing::DashboardWait, work, granularity);
+			const double after = SimulateDashboardFps(DashboardWait, work, granularity);
+			perf::Report(coarse ? "dashboard open, 15.6 ms timer: frames/s before (wait after work)"
+			                    : "dashboard open, 1 ms timer: frames/s before (wait after work)",
+			             before, "fps");
+			perf::Report(coarse ? "dashboard open, 15.6 ms timer: frames/s after (deadline wait)"
+			                    : "dashboard open, 1 ms timer: frames/s after (deadline wait)",
+			             after, "fps");
+			PERF_CHECK(after >= before);
+			if (!coarse) {
+				PERF_CHECK(after >= 90.0);
+				PERF_CHECK(after <= 91.0);
+			}
+		}
+
+		const double fresh = SimulateMinimizedDashboardFps(0.0, true, work, 0.001);
+		const double freshNoCap = SimulateMinimizedDashboardFps(0.0, false, work, 0.001);
+		const double longRun = SimulateMinimizedDashboardFps(600.0, true, work, 0.001);
+		const double longRunNoCap = SimulateMinimizedDashboardFps(600.0, false, work, 0.001);
+		perf::Report("minimized, dashboard opened at start: frames/s (iconified cap)", fresh, "fps");
+		perf::Report("minimized, dashboard opened at start: frames/s (no cap)", freshNoCap, "fps");
+		perf::Report("minimized, dashboard opened after 10 min: frames/s (iconified cap)", longRun, "fps");
+		perf::Report("minimized, dashboard opened after 10 min: frames/s (no cap)", longRunNoCap, "fps");
+
+		for (const double granularity : {0.001, 1.0 / 64.0}) {
+			const bool coarse = granularity > 0.01;
+			const IdleRun before = SimulateIdleHidden(legacy_pacing::HiddenWait, 1.0, granularity);
+			const IdleRun after = SimulateIdleHidden(HiddenWait, 1.0, granularity);
+			perf::Report(coarse ? "idle hidden loop, 15.6 ms timer: wakes/s before" : "idle hidden loop, 1 ms timer: wakes/s before",
+			             before.wakesPerSecond, "/s");
+			perf::Budget(coarse ? "idle hidden loop, 15.6 ms timer: wakes/s" : "idle hidden loop, 1 ms timer: wakes/s",
+			             after.wakesPerSecond, 4.0, "/s");
+			perf::Report(coarse ? "idle, 15.6 ms timer: dashboard-open to first frame, mean before (ms)"
+			                    : "idle, 1 ms timer: dashboard-open to first frame, mean before (ms)",
+			             before.meanOpenLatency * 1000.0, "ms");
+			perf::Report(coarse ? "idle, 15.6 ms timer: dashboard-open to first frame, mean after (ms)"
+			                    : "idle, 1 ms timer: dashboard-open to first frame, mean after (ms)",
+			             after.meanOpenLatency * 1000.0, "ms");
+			perf::Report(coarse ? "idle, 15.6 ms timer: dashboard-open to first frame, worst before (ms)"
+			                    : "idle, 1 ms timer: dashboard-open to first frame, worst before (ms)",
+			             before.worstOpenLatency * 1000.0, "ms");
+			perf::Budget(coarse ? "idle, 15.6 ms timer: dashboard-open to first frame, worst (ms)"
+			                    : "idle, 1 ms timer: dashboard-open to first frame, worst (ms)",
+			             after.worstOpenLatency * 1000.0, coarse ? 270.0 : 255.0, "ms");
+		}
+
+		const int waits = 40;
+		const DWORD timeoutMs = (DWORD)(spacecal::pacing::kDashboardFrameSeconds * 1e3);
+		const double start = perf::QpcSeconds();
+		for (int i = 0; i < waits; ++i)
+			MsgWaitForMultipleObjects(0, nullptr, FALSE, timeoutMs, QS_ALLINPUT);
+		perf::Report("real MsgWaitForMultipleObjects(11 ms) wake interval here (ms)", (perf::QpcSeconds() - start) / waits * 1000.0, "ms");
 	}
 
 	void TestProcessWatch()
@@ -545,6 +715,7 @@ int main(int argc, char** argv)
 	TestSolverMatchesPreviousImplementation();
 	TestSolverCost();
 	TestLoopPacing();
+	TestDashboardPacing();
 	TestProcessWatch();
 	TestDriverRequestCache();
 	TestRegistryWriteFilter();

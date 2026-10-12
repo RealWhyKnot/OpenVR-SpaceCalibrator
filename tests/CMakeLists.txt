@@ -142,3 +142,9 @@ set_target_properties(utf8_acp_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQ
 add_test(NAME utf8_acp COMMAND utf8_acp_tests)
 add_test(NAME utf8_acp_overlay COMMAND utf8_acp_tests $<TARGET_FILE:SpaceCalibratorOverlay>)
 set_tests_properties(utf8_acp_overlay PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(keyboard_text_tests keyboard_text_tests.cpp)
+target_include_directories(keyboard_text_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/overlay ${CMAKE_SOURCE_DIR}/lib)
+target_link_libraries(keyboard_text_tests PRIVATE imgui)
+set_target_properties(keyboard_text_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
+add_test(NAME keyboard_text COMMAND keyboard_text_tests)

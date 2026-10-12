@@ -5,6 +5,7 @@
 #include "Calibration.h"
 #include "CalibrationMetrics.h"
 #include "DashboardPointer.h"
+#include "KeyboardText.h"
 #include "LegacyInstall.h"
 #include "LoopPacing.h"
 #include "Updater.h"
@@ -26,7 +27,6 @@
 #include <thread>
 
 static char textBuf[0x400] = {};
-static const float MINIMIZED_MAX_FPS = 60.0f;
 static DashboardPointer dashboardPointer;
 
 static void DrawGithubConflictPopup()
@@ -61,8 +61,6 @@ static void DrawGithubConflictPopup()
 
 void RunLoop()
 {
-	double lastFrameStartTime = glfwGetTime();
-
 	while (!glfwWindowShouldClose(AppWindow.window)) {
 		double time = glfwGetTime();
 		VRSessionTick(time);
@@ -102,16 +100,14 @@ void RunLoop()
 				auto textInfo = ImGui::GetInputTextState(id);
 
 				if (textInfo != nullptr) {
-					textBuf[0] = 0;
-					int len = WideCharToMultiByte(CP_UTF8, 0, (LPCWCH)textInfo->TextA.Data, textInfo->TextA.Size, textBuf, sizeof(textBuf),
-					                              nullptr, nullptr);
-					textBuf[std::min(static_cast<size_t>(len), sizeof(textBuf) - 1)] = 0;
+					spacecal::keyboard::CopyPrefill(textInfo->TextA.Data, textInfo->CurLenA, textBuf, sizeof textBuf);
+					const uint32_t maxChars = static_cast<uint32_t>(std::clamp(textInfo->BufCapacityA - 1, 1, (int)sizeof textBuf - 1));
 
 					uint32_t unFlags = 0;
 
 					vr::VROverlay()->ShowKeyboardForOverlay(VRSess.overlayMainHandle, vr::k_EGamepadTextInputModeNormal,
 					                                        vr::k_EGamepadTextInputLineModeSingleLine, unFlags, "Space Calibrator Overlay",
-					                                        sizeof textBuf, textBuf, 0);
+					                                        maxChars, textBuf, 0);
 					keyboardOpen = true;
 				}
 			}
@@ -136,16 +132,12 @@ void RunLoop()
 						break;
 					}
 					case vr::VREvent_KeyboardDone: {
+						textBuf[0] = 0;
 						vr::VROverlay()->GetKeyboardText(textBuf, sizeof textBuf);
+						textBuf[sizeof textBuf - 1] = 0;
 
 						int id = ImGui::GetActiveID();
-						auto textInfo = ImGui::GetInputTextState(id);
-						int bufSize = MultiByteToWideChar(CP_UTF8, 0, textBuf, -1, nullptr, 0);
-						textInfo->TextA.resize(bufSize);
-						MultiByteToWideChar(CP_UTF8, 0, textBuf, -1, (LPWSTR)textInfo->TextA.Data, bufSize);
-						textInfo->CurLenA = bufSize;
-						textInfo->CurLenA = WideCharToMultiByte(CP_UTF8, 0, (LPCWCH)textInfo->TextA.Data, textInfo->TextA.Size, nullptr, 0,
-						                                        nullptr, nullptr);
+						spacecal::keyboard::ApplyDone(ImGui::GetInputTextState(id), textBuf);
 
 						keyboardJustClosed = true;
 						break;
@@ -229,18 +221,7 @@ void RunLoop()
 		}
 
 		const bool immediateRedraw = ConsumeImmediateRedraw();
-		glfwWaitEventsTimeout(spacecal::pacing::WaitSeconds(glfwGetTime(), CalCtx.timeLastTick, CalCtx.wantedUpdateInterval,
+		glfwWaitEventsTimeout(spacecal::pacing::WaitSeconds(glfwGetTime(), time, CalCtx.timeLastTick, CalCtx.wantedUpdateInterval,
 		                                                    dashboardVisible, immediateRedraw));
-
-		// If we're minimized rendering won't limit our frame rate so we need to do it ourselves.
-		if (glfwGetWindowAttrib(AppWindow.window, GLFW_ICONIFIED)) {
-			double targetFrameTime = 1 / MINIMIZED_MAX_FPS;
-			double waitTime = targetFrameTime - (glfwGetTime() - lastFrameStartTime);
-			if (waitTime > 0) {
-				std::this_thread::sleep_for(std::chrono::duration<double>(waitTime));
-			}
-
-			lastFrameStartTime += targetFrameTime;
-		}
 	}
 }

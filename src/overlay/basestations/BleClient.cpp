@@ -54,6 +54,7 @@ namespace spacecal::basestations {
 
 		constexpr int kWriteRetries = 2;
 		constexpr auto kWriteRetryDelay = std::chrono::milliseconds(250);
+		constexpr auto kWorkerExitWait = std::chrono::milliseconds(500);
 
 		bool ParseGuid(std::string_view canonical, winrt::guid& out)
 		{
@@ -72,23 +73,129 @@ namespace spacecal::basestations {
 			return true;
 		}
 
+		bool PerformWrite(const BleWriteRequest& request)
+		{
+			winrt::guid serviceGuid{};
+			winrt::guid charGuid{};
+			if (!ParseGuid(request.serviceUuid, serviceGuid) || !ParseGuid(request.characteristicUuid, charGuid)) {
+				return false;
+			}
+			try {
+				auto device = winrt_ble::BluetoothLEDevice::FromBluetoothAddressAsync(request.address).get();
+				if (!device) return false;
+				auto servicesResult = device.GetGattServicesForUuidAsync(serviceGuid, winrt_ble::BluetoothCacheMode::Uncached).get();
+				if (servicesResult.Status() != winrt_gatt::GattCommunicationStatus::Success || servicesResult.Services().Size() == 0) {
+					device.Close();
+					return false;
+				}
+				auto service = servicesResult.Services().GetAt(0);
+				auto charsResult = service.GetCharacteristicsForUuidAsync(charGuid).get();
+				if (charsResult.Status() != winrt_gatt::GattCommunicationStatus::Success || charsResult.Characteristics().Size() == 0) {
+					device.Close();
+					return false;
+				}
+				auto characteristic = charsResult.Characteristics().GetAt(0);
+
+				bool allOk = true;
+				for (const std::vector<uint8_t>& payload : request.writes) {
+					winrt_streams::DataWriter writer;
+					writer.WriteBytes(payload);
+					const auto status =
+					    characteristic.WriteValueAsync(writer.DetachBuffer(), winrt_gatt::GattWriteOption::WriteWithResponse).get();
+					if (status != winrt_gatt::GattCommunicationStatus::Success) {
+						allOk = false;
+						break;
+					}
+				}
+				device.Close();
+				return allOk;
+			}
+			catch (const winrt::hresult_error& ex) {
+				fprintf(stderr, "basestations: BLE write '%s' failed: 0x%08X %s\n", request.label.c_str(), static_cast<unsigned>(ex.code()),
+				        winrt::to_string(ex.message()).c_str());
+				return false;
+			}
+		}
+
+		struct BleShared
+		{
+			std::mutex mutex;
+			std::condition_variable cv;
+			bool shutdown = false;
+			bool workerDone = false;
+			std::deque<BleWriteRequest> writeQueue;
+			std::deque<DiscoveredAdvert> adverts;
+			std::deque<BleWriteResult> writeResults;
+
+			bool ShuttingDown()
+			{
+				std::lock_guard<std::mutex> lock(mutex);
+				return shutdown;
+			}
+		};
+
+		void WorkerMain(const std::shared_ptr<BleShared>& shared)
+		{
+			winrt::init_apartment(winrt::apartment_type::multi_threaded);
+			for (;;) {
+				BleWriteRequest request;
+				{
+					std::unique_lock<std::mutex> lock(shared->mutex);
+					shared->cv.wait(lock, [&] { return shared->shutdown || !shared->writeQueue.empty(); });
+					if (shared->shutdown) break;
+					request = std::move(shared->writeQueue.front());
+					shared->writeQueue.pop_front();
+				}
+
+				BleWriteResult result;
+				result.address = request.address;
+				result.label = request.label;
+				for (int attempt = 0; attempt <= kWriteRetries && !result.ok; ++attempt) {
+					if (attempt > 0) {
+						std::this_thread::sleep_for(kWriteRetryDelay);
+						if (shared->ShuttingDown()) break;
+					}
+					result.ok = PerformWrite(request);
+				}
+				{
+					std::lock_guard<std::mutex> lock(shared->mutex);
+					shared->writeResults.push_back(std::move(result));
+				}
+			}
+			winrt::uninit_apartment();
+			{
+				std::lock_guard<std::mutex> lock(shared->mutex);
+				shared->workerDone = true;
+			}
+			shared->cv.notify_all();
+		}
+
 		class WinRtBleClient final : public IBleClient
 		{
 		public:
-			WinRtBleClient()
+			WinRtBleClient() : m_shared(std::make_shared<BleShared>())
 			{
-				m_worker = std::thread([this] { WorkerMain(); });
+				m_worker = std::thread([shared = m_shared] { WorkerMain(shared); });
 			}
 
 			~WinRtBleClient() override
 			{
-				{
-					std::lock_guard<std::mutex> lock(m_mutex);
-					m_shutdown = true;
-				}
-				m_cv.notify_all();
-				if (m_worker.joinable()) m_worker.join();
 				StopScan();
+				bool workerDone = false;
+				{
+					std::unique_lock<std::mutex> lock(m_shared->mutex);
+					m_shared->shutdown = true;
+					m_shared->cv.notify_all();
+					workerDone = m_shared->cv.wait_for(lock, kWorkerExitWait, [this] { return m_shared->workerDone; });
+				}
+				if (!m_worker.joinable()) return;
+				if (workerDone) {
+					m_worker.join();
+				}
+				else {
+					fprintf(stderr, "basestations: BLE worker still busy at exit, detaching\n");
+					m_worker.detach();
+				}
 			}
 
 			bool StartScan() override
@@ -97,21 +204,22 @@ namespace spacecal::basestations {
 					if (m_watcher) return true;
 					m_watcher = winrt_adv::BluetoothLEAdvertisementWatcher();
 					m_watcher.ScanningMode(winrt_adv::BluetoothLEScanningMode::Active);
-					m_receivedToken = m_watcher.Received([this](const winrt_adv::BluetoothLEAdvertisementWatcher&,
-					                                            const winrt_adv::BluetoothLEAdvertisementReceivedEventArgs& args) {
-						DiscoveredAdvert advert;
-						advert.address = args.BluetoothAddress();
-						advert.name = winrt::to_string(args.Advertisement().LocalName());
-						const auto sections = args.Advertisement().ManufacturerData();
-						if (sections.Size() > 0) {
-							const auto data = sections.GetAt(0).Data();
-							advert.manufacturerData.resize(data.Length());
-							const auto reader = winrt_streams::DataReader::FromBuffer(data);
-							reader.ReadBytes(advert.manufacturerData);
-						}
-						std::lock_guard<std::mutex> lock(m_mutex);
-						m_adverts.push_back(std::move(advert));
-					});
+					m_receivedToken =
+					    m_watcher.Received([shared = m_shared](const winrt_adv::BluetoothLEAdvertisementWatcher&,
+					                                           const winrt_adv::BluetoothLEAdvertisementReceivedEventArgs& args) {
+						    DiscoveredAdvert advert;
+						    advert.address = args.BluetoothAddress();
+						    advert.name = winrt::to_string(args.Advertisement().LocalName());
+						    const auto sections = args.Advertisement().ManufacturerData();
+						    if (sections.Size() > 0) {
+							    const auto data = sections.GetAt(0).Data();
+							    advert.manufacturerData.resize(data.Length());
+							    const auto reader = winrt_streams::DataReader::FromBuffer(data);
+							    reader.ReadBytes(advert.manufacturerData);
+						    }
+						    std::lock_guard<std::mutex> lock(shared->mutex);
+						    shared->adverts.push_back(std::move(advert));
+					    });
 					m_watcher.Start();
 					m_scanFailed = false;
 					return true;
@@ -143,109 +251,32 @@ namespace spacecal::basestations {
 			void EnqueueWrite(BleWriteRequest request) override
 			{
 				{
-					std::lock_guard<std::mutex> lock(m_mutex);
-					m_writeQueue.push_back(std::move(request));
+					std::lock_guard<std::mutex> lock(m_shared->mutex);
+					m_shared->writeQueue.push_back(std::move(request));
 				}
-				m_cv.notify_all();
+				m_shared->cv.notify_all();
 			}
 
 			std::vector<DiscoveredAdvert> DrainAdverts() override
 			{
-				std::lock_guard<std::mutex> lock(m_mutex);
-				std::vector<DiscoveredAdvert> out(m_adverts.begin(), m_adverts.end());
-				m_adverts.clear();
+				std::lock_guard<std::mutex> lock(m_shared->mutex);
+				std::vector<DiscoveredAdvert> out(m_shared->adverts.begin(), m_shared->adverts.end());
+				m_shared->adverts.clear();
 				return out;
 			}
 
 			std::vector<BleWriteResult> DrainWriteResults() override
 			{
-				std::lock_guard<std::mutex> lock(m_mutex);
-				std::vector<BleWriteResult> out(m_writeResults.begin(), m_writeResults.end());
-				m_writeResults.clear();
+				std::lock_guard<std::mutex> lock(m_shared->mutex);
+				std::vector<BleWriteResult> out(m_shared->writeResults.begin(), m_shared->writeResults.end());
+				m_shared->writeResults.clear();
 				return out;
 			}
 
 		private:
-			void WorkerMain()
-			{
-				winrt::init_apartment(winrt::apartment_type::multi_threaded);
-				for (;;) {
-					BleWriteRequest request;
-					{
-						std::unique_lock<std::mutex> lock(m_mutex);
-						m_cv.wait(lock, [this] { return m_shutdown || !m_writeQueue.empty(); });
-						if (m_shutdown) break;
-						request = std::move(m_writeQueue.front());
-						m_writeQueue.pop_front();
-					}
-
-					BleWriteResult result;
-					result.address = request.address;
-					result.label = request.label;
-					for (int attempt = 0; attempt <= kWriteRetries && !result.ok; ++attempt) {
-						if (attempt > 0) std::this_thread::sleep_for(kWriteRetryDelay);
-						result.ok = PerformWrite(request);
-					}
-					{
-						std::lock_guard<std::mutex> lock(m_mutex);
-						m_writeResults.push_back(std::move(result));
-					}
-				}
-				winrt::uninit_apartment();
-			}
-
-			bool PerformWrite(const BleWriteRequest& request)
-			{
-				winrt::guid serviceGuid{};
-				winrt::guid charGuid{};
-				if (!ParseGuid(request.serviceUuid, serviceGuid) || !ParseGuid(request.characteristicUuid, charGuid)) {
-					return false;
-				}
-				try {
-					auto device = winrt_ble::BluetoothLEDevice::FromBluetoothAddressAsync(request.address).get();
-					if (!device) return false;
-					auto servicesResult = device.GetGattServicesForUuidAsync(serviceGuid, winrt_ble::BluetoothCacheMode::Uncached).get();
-					if (servicesResult.Status() != winrt_gatt::GattCommunicationStatus::Success || servicesResult.Services().Size() == 0) {
-						device.Close();
-						return false;
-					}
-					auto service = servicesResult.Services().GetAt(0);
-					auto charsResult = service.GetCharacteristicsForUuidAsync(charGuid).get();
-					if (charsResult.Status() != winrt_gatt::GattCommunicationStatus::Success || charsResult.Characteristics().Size() == 0) {
-						device.Close();
-						return false;
-					}
-					auto characteristic = charsResult.Characteristics().GetAt(0);
-
-					bool allOk = true;
-					for (const std::vector<uint8_t>& payload : request.writes) {
-						winrt_streams::DataWriter writer;
-						writer.WriteBytes(payload);
-						const auto status =
-						    characteristic.WriteValueAsync(writer.DetachBuffer(), winrt_gatt::GattWriteOption::WriteWithResponse).get();
-						if (status != winrt_gatt::GattCommunicationStatus::Success) {
-							allOk = false;
-							break;
-						}
-					}
-					device.Close();
-					return allOk;
-				}
-				catch (const winrt::hresult_error& ex) {
-					fprintf(stderr, "basestations: BLE write '%s' failed: 0x%08X %s\n", request.label.c_str(),
-					        static_cast<unsigned>(ex.code()), winrt::to_string(ex.message()).c_str());
-					return false;
-				}
-			}
-
+			std::shared_ptr<BleShared> m_shared;
 			std::thread m_worker;
-			mutable std::mutex m_mutex;
-			std::condition_variable m_cv;
-			bool m_shutdown = false;
 			bool m_scanFailed = false;
-			std::deque<BleWriteRequest> m_writeQueue;
-			std::deque<DiscoveredAdvert> m_adverts;
-			std::deque<BleWriteResult> m_writeResults;
 			winrt_adv::BluetoothLEAdvertisementWatcher m_watcher{nullptr};
 			winrt::event_token m_receivedToken{};
 		};

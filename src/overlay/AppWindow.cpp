@@ -109,7 +109,6 @@ void CreateGLFWWindow(bool startMinimized)
 	ImPlot::CreateContext();
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 	io.IniFilename = nullptr;
 	ui::LoadFonts();
 
