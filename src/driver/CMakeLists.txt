@@ -116,6 +116,7 @@ target_include_directories(SpaceCalibratorDriver
     PRIVATE ${CMAKE_SOURCE_DIR}/lib/Eigen)
 
 target_link_libraries(SpaceCalibratorDriver
+	PRIVATE spacecal_warnings
 	PRIVATE ${OPENVR_LIBRARIES}
 	PRIVATE minhook)
 

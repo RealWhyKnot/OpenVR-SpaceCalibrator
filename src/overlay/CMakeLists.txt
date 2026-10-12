@@ -73,6 +73,7 @@ target_include_directories(SpaceCalibratorOverlay
 )
 
 target_link_libraries(SpaceCalibratorOverlay
+    PRIVATE spacecal_warnings
     PRIVATE opengl32.lib
     PRIVATE dwmapi.lib
     PRIVATE winhttp.lib
