@@ -662,6 +662,7 @@ namespace {
 		g_input->CreateSkeletonComponent(kRightController, "/input/skeleton/right", "/skeleton/hand/right", "/pose/raw",
 		                                 vr::VRSkeletalTracking_Full, nullptr, 0, &right);
 		std::vector<std::vector<vr::VRBoneTransform_t>> frames;
+		frames.reserve(64);
 		for (int f = 0; f < 64; ++f)
 			frames.push_back(MakeHandFrame(f));
 		auto update = [&](vr::VRInputComponentHandle_t handle, int i) {

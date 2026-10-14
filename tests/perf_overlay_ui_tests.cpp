@@ -916,9 +916,8 @@ namespace {
 	void FillMetrics()
 	{
 		const double end = Metrics::timestamp();
-		int i = 0;
-		for (double t = end - 30.0; t <= end; t += 0.5, ++i) {
-			Metrics::CurrentTime = t;
+		for (int i = 0; i <= 60; ++i) {
+			Metrics::CurrentTime = end - 30.0 + i * 0.5;
 			Metrics::posOffset_rawComputed.Push(Eigen::Vector3d(1.0, 2.0, 3.0));
 			Metrics::posOffset_currentCal.Push(Eigen::Vector3d(1.5, 2.5, 3.5));
 			Metrics::posOffset_lastSample.Push(Eigen::Vector3d(0.5, 1.0, 1.5));
@@ -941,6 +940,7 @@ namespace {
 		const char* serials[] = {"LHB-1A2B3C4D", "LHB-4DE2A1F0", "LHB-9C31B7E2", "LHB-E5F60718"};
 		const uint8_t channels[] = {1, 2, 3, 3};
 		std::vector<DiscoveredAdvert> adverts;
+		adverts.reserve(4);
 		for (int i = 0; i < 4; ++i) {
 			adverts.push_back(
 			    fakeble::V2Advert(serials[i], 0xC0FFEE000000ull + i, channels[i], i == 0 ? firstPower : PowerState::AwakeFromSleep));
@@ -1354,7 +1354,7 @@ namespace {
 		current::RefreshSmoothingStats(rowsBefore);
 		const fakevr::Calls before = fakevr::calls;
 		const int queriesBefore = stubs::smoothingQueries;
-		const VRState state = LoadVRState();
+		const VRState& state = LoadVRState();
 		fakevr::calls = {};
 		stubs::smoothingQueries = 0;
 		candidate::RefreshSmoothingStats(state, rowsAfter);
@@ -1452,11 +1452,12 @@ namespace {
 				ctl.Tick(false);
 		});
 		const std::vector<DiscoveredAdvert> batch = StationAdverts(PowerState::AwakeFromSleep);
+		size_t copied = 0;
 		const auto copies = perf::MeasureHeap([&] {
-			for (int i = 0; i < ticks; ++i) {
-				std::vector<DiscoveredAdvert> copy = batch;
-			}
+			for (int i = 0; i < ticks; ++i)
+				copied += std::vector<DiscoveredAdvert>(batch).size();
 		});
+		PERF_CHECK(copied == ticks * batch.size());
 		const auto repeated = perf::MeasureHeap([&] {
 			for (int i = 0; i < ticks; ++i) {
 				fakeble::queued = batch;
