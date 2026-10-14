@@ -1451,24 +1451,18 @@ namespace {
 			for (int i = 0; i < ticks; ++i)
 				ctl.Tick(false);
 		});
-		const std::vector<DiscoveredAdvert> batch = StationAdverts(PowerState::AwakeFromSleep);
-		size_t copied = 0;
-		const auto copies = perf::MeasureHeap([&] {
-			for (int i = 0; i < ticks; ++i)
-				copied += std::vector<DiscoveredAdvert>(batch).size();
-		});
-		PERF_CHECK(copied == ticks * batch.size());
+		std::vector<std::vector<DiscoveredAdvert>> batches(ticks, StationAdverts(PowerState::AwakeFromSleep));
 		const auto repeated = perf::MeasureHeap([&] {
 			for (int i = 0; i < ticks; ++i) {
-				fakeble::queued = batch;
+				fakeble::queued = std::move(batches[i]);
 				ctl.Tick(false);
 			}
 		});
-		std::printf("INFO base stations Tick (4 stations): %.1f allocs per idle tick; %.1f allocs per tick with repeated adverts, of "
-		            "which %.1f are the fake client's copies\n",
-		            idle.allocations / (double)ticks, repeated.allocations / (double)ticks, copies.allocations / (double)ticks);
+		std::printf("INFO base stations Tick (4 stations): %llu allocs over %d idle ticks; %llu allocs over %d ticks with repeated "
+		            "adverts\n",
+		            (unsigned long long)idle.allocations, ticks, (unsigned long long)repeated.allocations, ticks);
 		PERF_CHECK(idle.allocations == 0);
-		PERF_CHECK(repeated.allocations == copies.allocations);
+		PERF_CHECK(repeated.allocations == 0);
 
 		auto find = [&ctl](const char* serial) -> const Station* {
 			for (const Station& station : ctl.Stations()) {
