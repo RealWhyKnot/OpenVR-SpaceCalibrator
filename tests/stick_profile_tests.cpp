@@ -45,19 +45,19 @@ namespace {
 
 	bool IsDefault(const protocol::StickRampConfig& a)
 	{
-		return Same(a, 4000, 1500, 100) && a.delayMs == 0;
+		return Same(a, 4000, 1500, 75) && a.delayMs == 0;
 	}
 
 	void TestOldSliderNumberKeepsItsFeel()
 	{
 		const Loaded sixty = LoadJson("60");
-		CHECK(Same(sixty.stick, 2400, 900, 100));
+		CHECK(Same(sixty.stick, 2400, 900, 75));
 		CHECK(sixty.on);
 		const Loaded full = LoadJson("100");
-		CHECK(Same(full.stick, 4000, 1500, 100));
+		CHECK(Same(full.stick, 4000, 1500, 75));
 		CHECK(full.on);
 		const Loaded capped = LoadJson("250");
-		CHECK(Same(capped.stick, 4000, 1500, 100));
+		CHECK(Same(capped.stick, 4000, 1500, 75));
 		CHECK(capped.on);
 	}
 
@@ -73,7 +73,7 @@ namespace {
 	void TestOldSliderNumberClearsTheDelay()
 	{
 		const Loaded loaded = LoadOver("60", {0, 0, 100, 0, 500}, false);
-		CHECK(Same(loaded.stick, 2400, 900, 100));
+		CHECK(Same(loaded.stick, 2400, 900, 75));
 		CHECK(loaded.stick.delayMs == 0);
 	}
 
@@ -86,6 +86,7 @@ namespace {
 			CHECK(text.find("\"timer_ms\":3000") != std::string::npos);
 			CHECK(text.find("\"stop_ms\":1250") != std::string::npos);
 			CHECK(text.find("\"strength\":60") != std::string::npos);
+			CHECK(text.find("\"start_pct\":40") != std::string::npos);
 			CHECK(text.find("\"delay_ms\":350") != std::string::npos);
 			const Loaded loaded = LoadOver(text.c_str(), DefaultStick(), !on);
 			CHECK(Same(loaded.stick, 3000, 1250, 60));
@@ -102,7 +103,7 @@ namespace {
 		CHECK(timed.stick.delayMs == 300);
 		const Loaded glideOnly = LoadJson("{\"timer_ms\":0,\"strength\":100,\"delay_ms\":0,\"stop_ms\":700}");
 		CHECK(glideOnly.on);
-		CHECK(Same(glideOnly.stick, 0, 700, 100));
+		CHECK(Same(glideOnly.stick, 0, 700, 75));
 		const Loaded off = LoadJson("{\"timer_ms\":0,\"strength\":100,\"delay_ms\":0,\"stop_ms\":0}");
 		CHECK(!off.on);
 		CHECK(IsDefault(off.stick));
@@ -129,10 +130,10 @@ namespace {
 	{
 		const protocol::StickRampConfig zero{0, 0, 100, 0};
 		const Loaded timerOnly = LoadOver("{\"timer_ms\":2000}", zero, false);
-		CHECK(Same(timerOnly.stick, 2000, 0, 100));
+		CHECK(Same(timerOnly.stick, 2000, 0, 75));
 		CHECK(timerOnly.on);
 		const Loaded stopOnly = LoadOver("{\"stop_ms\":700}", zero, false);
-		CHECK(Same(stopOnly.stick, 0, 700, 100));
+		CHECK(Same(stopOnly.stick, 0, 700, 75));
 		CHECK(stopOnly.on);
 		const Loaded empty = LoadJson("{}");
 		CHECK(IsDefault(empty.stick));
@@ -149,9 +150,9 @@ namespace {
 
 	void TestOutOfRangeValuesAreClamped()
 	{
-		CHECK(Same(LoadJson("{\"timer_ms\":99999,\"stop_ms\":-5,\"strength\":140}").stick, 8000, 0, 100));
+		CHECK(Same(LoadJson("{\"timer_ms\":99999,\"stop_ms\":-5,\"strength\":140}").stick, 8000, 0, 75));
 		CHECK(Same(LoadJson("{\"timer_ms\":1234.4,\"stop_ms\":6000,\"strength\":-3}").stick, 1234, 6000, 0));
-		CHECK(Same(LoadJson("{\"timer_ms\":8000,\"stop_ms\":99999}").stick, 8000, 6000, 100));
+		CHECK(Same(LoadJson("{\"timer_ms\":8000,\"stop_ms\":99999}").stick, 8000, 6000, 75));
 	}
 
 	void TestStrengthMapsToBuildUpTime()
@@ -182,14 +183,27 @@ namespace {
 		CHECK(SnapPercent(-4) == 0);
 	}
 
-	void TestDefaultIsTheOldFullSlider()
+	void TestDefaultBuildsUpLikeTheOldFullSlider()
 	{
 		const protocol::StickRampConfig stick = DefaultStick();
 		CHECK(StrengthForPushMs(stick.pushMs) == kDefaultStrengthPercent);
 		CHECK(stick.pushMs == spacecal::stick::LegacyPushMs(100));
 		CHECK(stick.releaseMs == spacecal::stick::LegacyReleaseMs(100));
-		CHECK(stick.strength == 100);
+		CHECK(stick.strength == 100 - kDefaultStartPercent);
 		CHECK(stick.delayMs == 0);
+	}
+
+	void TestStartSpeedMovesOffZeroOnce()
+	{
+		CHECK(LoadJson("{\"timer_ms\":4000,\"strength\":100,\"stop_ms\":1500}").stick.strength == 100 - kDefaultStartPercent);
+		CHECK(LoadJson("{\"timer_ms\":4000,\"strength\":100,\"start_pct\":0,\"stop_ms\":1500}").stick.strength == 100);
+		CHECK(LoadJson("{\"timer_ms\":4000,\"strength\":60,\"stop_ms\":1500}").stick.strength == 60);
+		CHECK(LoadJson("{\"timer_ms\":4000,\"strength\":60,\"start_pct\":10}").stick.strength == 90);
+		CHECK(LoadJson("{\"timer_ms\":4000,\"start_pct\":150}").stick.strength == 0);
+		CHECK(LoadJson("{\"timer_ms\":4000,\"start_pct\":-5}").stick.strength == 100);
+		const protocol::StickRampConfig chosenZero{4000, 1500, 100, 0, 0};
+		const std::string text = spacecal::stick_profile::Save(chosenZero, true).serialize();
+		CHECK(LoadOver(text.c_str(), DefaultStick(), false).stick.strength == 100);
 	}
 
 	void TestTurningOnFillsDefaultsOnlyWhenEmpty()
@@ -235,7 +249,8 @@ int main()
 	TestOutOfRangeValuesAreClamped();
 	TestStrengthMapsToBuildUpTime();
 	TestSnapPercent();
-	TestDefaultIsTheOldFullSlider();
+	TestDefaultBuildsUpLikeTheOldFullSlider();
+	TestStartSpeedMovesOffZeroOnce();
 	TestTurningOnFillsDefaultsOnlyWhenEmpty();
 	TestOffSticksReachTheDriverAsOff();
 

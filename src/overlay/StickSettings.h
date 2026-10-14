@@ -10,6 +10,7 @@ namespace spacecal::stick_settings {
 
 	constexpr int kPercentStep = 5;
 	constexpr int kDefaultStrengthPercent = 50;
+	constexpr int kDefaultStartPercent = 25;
 	constexpr uint16_t kDefaultStopMs = 1500;
 
 	inline int ClampPercent(int percent)
@@ -37,7 +38,7 @@ namespace spacecal::stick_settings {
 		protocol::StickRampConfig stick{};
 		stick.pushMs = PushMsForStrength(kDefaultStrengthPercent);
 		stick.releaseMs = kDefaultStopMs;
-		stick.strength = 100;
+		stick.strength = (uint8_t)(100 - kDefaultStartPercent);
 		return stick;
 	}
 

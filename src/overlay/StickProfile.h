@@ -28,7 +28,7 @@ namespace spacecal::stick_profile {
 			stick.pushMs = spacecal::stick::LegacyPushMs(legacy);
 			stick.releaseMs = spacecal::stick::LegacyReleaseMs(legacy);
 			stick.delayMs = 0;
-			stick.strength = 100;
+			stick.strength = (uint8_t)(100 - spacecal::stick_settings::kDefaultStartPercent);
 			on = true;
 		}
 		else if (value.is<picojson::object>()) {
@@ -48,6 +48,12 @@ namespace spacecal::stick_profile {
 				stick.releaseMs = ClampMs(ramp["stop_ms"].get<double>(), spacecal::stick::kMaxReleaseSeconds);
 				timed |= stick.releaseMs > 0;
 			}
+			if (ramp["start_pct"].is<double>()) {
+				stick.strength = (uint8_t)(100 - ClampPercent(ramp["start_pct"].get<double>()));
+			}
+			else if (stick.strength == 100) {
+				stick.strength = (uint8_t)(100 - spacecal::stick_settings::kDefaultStartPercent);
+			}
 			on = ramp["on"].is<bool>() ? ramp["on"].get<bool>() : timed;
 		}
 		if (spacecal::stick_settings::IsEmpty(stick)) {
@@ -64,6 +70,8 @@ namespace spacecal::stick_profile {
 		ramp["timer_ms"].set<double>(timerMs);
 		const double strength = stick.strength;
 		ramp["strength"].set<double>(strength);
+		const double startPct = 100 - (stick.strength > 100 ? 100 : stick.strength);
+		ramp["start_pct"].set<double>(startPct);
 		const double delayMs = stick.delayMs;
 		ramp["delay_ms"].set<double>(delayMs);
 		const double stopMs = stick.releaseMs;

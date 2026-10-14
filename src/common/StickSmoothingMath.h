@@ -14,6 +14,7 @@ namespace spacecal::stick {
 	constexpr double kTimeConstantsTo95Percent = 4.7439;
 	constexpr double kBrakeToAccelRatio = 4.0;
 	constexpr double kReverseHandoff = 0.02;
+	constexpr double kReverseThreshold = 0.1;
 	constexpr double kSettleEpsilon = 1e-4;
 	constexpr double kPumpAfterIdleSeconds = 0.02;
 
@@ -102,10 +103,19 @@ namespace spacecal::stick {
 		if (floor >= r) filter.velocity = 0.0;
 	}
 
+	inline bool IsCrossing(const AxisFilter& filter)
+	{
+		return filter.target != 0.0 && filter.stage2 != 0.0 && (filter.target > 0.0) != (filter.stage2 > 0.0);
+	}
+
+	inline bool IsReversing(const AxisFilter& filter)
+	{
+		return IsCrossing(filter) && std::fabs(filter.target) >= kReverseThreshold;
+	}
+
 	inline void DropToReleaseGoal(AxisFilter& filter)
 	{
-		const bool crossing = filter.target != 0.0 && filter.stage2 != 0.0 && (filter.target > 0.0) != (filter.stage2 > 0.0);
-		filter.stage2 = crossing ? 0.0 : filter.target;
+		filter.stage2 = IsCrossing(filter) ? 0.0 : filter.target;
 		filter.stage1 = filter.stage2;
 		filter.velocity = 0.0;
 		filter.held = 0.0;
@@ -113,7 +123,7 @@ namespace spacecal::stick {
 
 	inline void ApplyInstantSteps(AxisFilter& filter, const Ramp& ramp)
 	{
-		if (!IsPushing(filter) && ReleaseIsInstant(ramp)) DropToReleaseGoal(filter);
+		if (!IsPushing(filter) && (ReleaseIsInstant(ramp) || IsReversing(filter))) DropToReleaseGoal(filter);
 		if (IsPushing(filter)) LiftToPushFloor(filter, ramp);
 	}
 
@@ -167,8 +177,7 @@ namespace spacecal::stick {
 	{
 		filter.velocity = 0.0;
 		filter.held = 0.0;
-		const bool crossing = filter.target != 0.0 && filter.stage2 != 0.0 && (filter.target > 0.0) != (filter.stage2 > 0.0);
-		const double goal = crossing ? 0.0 : filter.target;
+		const double goal = IsCrossing(filter) ? 0.0 : filter.target;
 		const double x = dt * kTimeConstantsTo95Percent / releaseSeconds;
 		const double decay = std::exp(-x);
 		const double e1 = filter.stage1 - goal;

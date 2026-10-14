@@ -303,11 +303,11 @@ namespace {
 		AdvanceMs(1100);
 		spacecal::stick_hook::Pump();
 		g_input->UpdateScalarComponent(trackerX, -0.6f, 0.0);
-		CHECK(g_fakeInput.lastValue[trackerX] == 0.6f);
+		CHECK(g_fakeInput.lastValue[trackerX] == 0.0f);
 		AdvanceMs(25);
 		spacecal::stick_hook::Pump();
-		CHECK(g_fakeInput.lastValue[trackerX] < 0.6f);
-		CHECK(g_fakeInput.lastValue[trackerX] > 0.0f);
+		CHECK(g_fakeInput.lastValue[trackerX] < 0.0f);
+		CHECK(g_fakeInput.lastValue[trackerX] > -0.6f);
 	}
 
 }

@@ -226,27 +226,57 @@ namespace {
 		CHECK(filter.stage2 == 0.0);
 	}
 
-	void TestReversalSlowsDownThenRampsUpTheOtherWay()
+	void TestReversalStopsThenBuildsUpLikeAFreshPush()
+	{
+		for (const Ramp& ramp : {kFull, Custom(4.0, 0.75, 1.5), Custom(2.0, 0.5, 1.0, 0.3)}) {
+			AxisFilter reversed;
+			Run(reversed, 1.0, 10.0, 0.011, ramp);
+			CHECK(reversed.stage2 == 1.0);
+			AxisFilter fresh;
+			for (int i = 1; i <= 800; ++i) {
+				const double out = Step(reversed, -1.0, 0.011, ramp);
+				const double expected = Step(fresh, -1.0, 0.011, ramp);
+				CHECK(out <= 0.0);
+				CHECK(std::fabs(out - expected) < 1e-12);
+			}
+			CHECK(reversed.stage2 == -1.0);
+		}
+	}
+
+	void TestReversalFromADriverSampleStopsAtOnce()
+	{
+		const Ramp ramp = Custom(4.0, 0.75, 1.5);
+		AxisFilter filter;
+		Run(filter, 0.8, 10.0, 0.011, ramp);
+		CHECK(std::fabs(OnDriverSample(filter, -0.8, 0.011, ramp) + 0.2) < 1e-12);
+		AxisFilter partial;
+		Run(partial, 1.0, 10.0, 0.011, kFull);
+		CHECK(OnDriverSample(partial, -0.5, 0.011, kFull) == 0.0);
+	}
+
+	void TestRestNoiseAfterReleaseStillGlides()
+	{
+		for (double rest : {-0.004, -0.026, -0.09}) {
+			AxisFilter noisy;
+			Run(noisy, 1.0, 10.0, 0.011, kFull);
+			AxisFilter clean = noisy;
+			for (int i = 0; i < 40; ++i) {
+				const double out = Step(noisy, rest, 0.011, kFull);
+				const double expected = Step(clean, 0.0, 0.011, kFull);
+				CHECK(std::fabs(out - expected) < 1e-12);
+			}
+			CHECK(noisy.stage2 > 0.5);
+			Run(noisy, rest, 10.0, 0.011, kFull);
+			CHECK(noisy.stage2 <= kReverseHandoff);
+			CHECK(noisy.stage2 >= rest - 1e-9);
+		}
+	}
+
+	void TestSmallestDeliberateReversalStopsAtOnce()
 	{
 		AxisFilter filter;
 		Run(filter, 1.0, 10.0, 0.011, kFull);
-		const double dt = 0.011;
-		const double maxStep = (4.6 / kFull.pushSeconds + 2.0 * kTimeConstantsTo95Percent / kFull.releaseSeconds) * dt;
-		double previous = filter.stage2;
-		double handoffAt = -1.0;
-		double oneSecondAfterHandoff = 0.0;
-		for (int i = 1; i <= 1200; ++i) {
-			const double out = Step(filter, -1.0, dt, kFull);
-			CHECK(out <= previous);
-			CHECK(previous - out <= maxStep);
-			if (handoffAt < 0.0 && std::fabs(out) < kReverseHandoff) handoffAt = i * dt;
-			if (handoffAt > 0.0 && oneSecondAfterHandoff == 0.0 && i * dt >= handoffAt + 1.0) oneSecondAfterHandoff = out;
-			previous = out;
-		}
-		CHECK(handoffAt > 1.0);
-		CHECK(oneSecondAfterHandoff < 0.0);
-		CHECK(oneSecondAfterHandoff > -0.1);
-		CHECK(filter.stage2 == -1.0);
+		CHECK(OnDriverSample(filter, -kReverseThreshold, 0.011, kFull) == 0.0);
 	}
 
 	void TestRandomInputNeverJumps()
@@ -267,7 +297,10 @@ namespace {
 				const double step = dt(rng);
 				const double out = Step(filter, goal, step, ramp);
 				if (out < -1.0 || out > 1.0) outside = true;
-				if (std::fabs(out - before) > maxRate * step + kSettleEpsilon) jumped = true;
+				const double bound = maxRate * step + kSettleEpsilon;
+				const bool stoppedForReversal =
+				    (goal > 0.0) != (before > 0.0) && std::fabs(goal) >= kReverseThreshold && std::fabs(out) <= bound;
+				if (std::fabs(out - before) > bound && !stoppedForReversal) jumped = true;
 			}
 		}
 		CHECK(!outside);
@@ -544,7 +577,10 @@ int main()
 	TestReleaseKeepsTodaysStop();
 	TestEasesOutWithoutCrossingZero();
 	TestReleaseMidRampStaysOnItsSide();
-	TestReversalSlowsDownThenRampsUpTheOtherWay();
+	TestReversalStopsThenBuildsUpLikeAFreshPush();
+	TestReversalFromADriverSampleStopsAtOnce();
+	TestRestNoiseAfterReleaseStillGlides();
+	TestSmallestDeliberateReversalStopsAtOnce();
 	TestRandomInputNeverJumps();
 	TestDroppingStrengthMidRampSnaps();
 	TestZeroAndBadTimeSteps();
