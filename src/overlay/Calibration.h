@@ -88,6 +88,7 @@ struct CalibrationContext
 	protocol::FingerSmoothingConfig fingerSmoothing;
 	protocol::StickSmoothingConfig stickSmoothing{};
 	bool stickOn[spacecal::stick::kHandCount] = {};
+	bool stickLocked[spacecal::stick::kHandCount] = {};
 	bool smoothControllers = false;
 	bool enableStaticRecalibration;
 	bool lockRelativePosition = false;
@@ -145,6 +146,7 @@ struct CalibrationContext
 		for (int hand = 0; hand < spacecal::stick::kHandCount; ++hand) {
 			stickSmoothing.sticks[hand] = spacecal::stick_settings::DefaultStick();
 			stickOn[hand] = false;
+			stickLocked[hand] = false;
 		}
 	}
 

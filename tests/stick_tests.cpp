@@ -545,6 +545,217 @@ namespace {
 		}
 	}
 
+	Ramp Locked(uint8_t percent, uint16_t stopMs = 1500)
+	{
+		return RampFromSettings(4000, stopMs, 75, 500, percent);
+	}
+
+	void TestLockedSettingsSkipTheBuildUp()
+	{
+		const Ramp ramp = Locked(60, 900);
+		CHECK(ramp.pushSeconds == 0.0);
+		CHECK(ramp.delaySeconds == 0.0);
+		CHECK(std::fabs(ramp.scale - 0.6) < 1e-12);
+		CHECK(std::fabs(ramp.releaseSeconds - 0.9) < 1e-12);
+		CHECK(Locked(255).scale == 1.0);
+		const Ramp buildUp = Locked(0);
+		CHECK(buildUp.scale == 1.0);
+		CHECK(buildUp.pushSeconds == 4.0);
+		CHECK(std::fabs(buildUp.heldBack - 0.75) < 1e-12);
+		CHECK(std::fabs(buildUp.delaySeconds - 0.5) < 1e-12);
+		CHECK(IsOff(Locked(50, 0)));
+		CHECK(!IsOff(Locked(50)));
+	}
+
+	void TestLockedSpeedNeverGrowsWhileHeld()
+	{
+		for (int percent : {25, 50, 80, 100}) {
+			const Ramp ramp = Locked((uint8_t)percent);
+			const double lock = percent / 100.0;
+			AxisFilter filter;
+			CHECK(std::fabs(OnDriverSample(filter, 1.0, 0.0, ramp) - lock) < 1e-12);
+			double worst = 0.0;
+			for (int i = 0; i < 60 * 90; ++i) {
+				const double out = OnDriverSample(filter, 1.0, 1.0 / 90.0, ramp);
+				worst = std::fmax(worst, std::fabs(out - lock));
+			}
+			CHECK(worst < 1e-12);
+			CHECK(IsSettled(filter));
+		}
+	}
+
+	void TestLockedSpeedScalesPartialPushesAndDiagonals()
+	{
+		const Ramp ramp = Locked(50);
+		AxisFilter single;
+		CHECK(std::fabs(OnDriverSample(single, 0.6, 0.0, ramp) - 0.3) < 1e-12);
+		AxisFilter negative;
+		CHECK(std::fabs(OnDriverSample(negative, -0.8, 0.0, ramp) + 0.4) < 1e-12);
+		AxisFilter x, y;
+		const double outX = OnDriverSample(x, 0.3, 0.0, ramp);
+		const double outY = OnDriverSample(y, 0.95, 0.0, ramp);
+		CHECK(std::fabs(std::atan2(outY, outX) - std::atan2(0.95, 0.3)) < 1e-12);
+		CHECK(std::fabs(std::hypot(outX, outY) - 0.5 * std::hypot(0.3, 0.95)) < 1e-12);
+	}
+
+	void TestLockedStopGlidesFromTheLockedSpeed()
+	{
+		const Ramp ramp = Locked(50);
+		AxisFilter filter;
+		Run(filter, 1.0, 2.0, 0.011, ramp);
+		double previous = Output(filter, ramp);
+		CHECK(std::fabs(previous - 0.5) < 1e-12);
+		const double dt = ramp.releaseSeconds / 1000.0;
+		bool monotonic = true;
+		for (int i = 0; i < 1000; ++i) {
+			const double out = Step(filter, 0.0, dt, ramp);
+			monotonic &= out <= previous && out >= 0.0;
+			previous = out;
+		}
+		CHECK(monotonic);
+		CHECK(std::fabs(previous - 0.025) < 1e-3);
+
+		const Ramp instant = Locked(50, 0);
+		AxisFilter stopped;
+		Run(stopped, 1.0, 1.0, 0.011, instant);
+		CHECK(Step(stopped, 0.0, 0.011, instant) == 0.0);
+	}
+
+	void TestLockedReversalStopsAtOnce()
+	{
+		const Ramp ramp = Locked(50);
+		AxisFilter filter;
+		Run(filter, 1.0, 1.0, 0.011, ramp);
+		CHECK(std::fabs(OnDriverSample(filter, -1.0, 0.011, ramp) + 0.5) < 1e-12);
+	}
+
+	void TestLockedStopDoesNotDependOnUpdateRate()
+	{
+		const Ramp ramp = Locked(40);
+		AxisFilter fast, slow;
+		Run(fast, 1.0, 1.0, 0.011, ramp);
+		Run(slow, 1.0, 1.0, 0.011, ramp);
+		const double atFast = Run(fast, 0.0, 0.6, 0.001, ramp);
+		const double atSlow = Run(slow, 0.0, 0.6, 0.012, ramp);
+		CHECK(atFast > 0.0 && atFast < 0.4);
+		CHECK(std::fabs(atFast - atSlow) < 1e-9);
+	}
+
+	Ramp LockedTurn(uint8_t percent, uint16_t stopMs = 1500)
+	{
+		return RampFromSettings(4000, stopMs, 75, 500, percent, true);
+	}
+
+	void TestLockedRandomInputStaysUnderTheLock()
+	{
+		std::mt19937 rng(7);
+		std::uniform_real_distribution<double> value(-1.0, 1.0);
+		std::uniform_real_distribution<double> dt(0.0, 0.03);
+		for (int percent : {25, 60, 100}) {
+			for (const Ramp& ramp : {Locked((uint8_t)percent), LockedTurn((uint8_t)percent)}) {
+				const double lock = percent / 100.0;
+				AxisFilter filter;
+				bool inRange = true;
+				for (int i = 0; i < 20000; ++i) {
+					const double out = OnDriverSample(filter, value(rng), dt(rng), ramp);
+					inRange &= std::isfinite(out) && std::fabs(out) <= lock + 1e-12;
+				}
+				CHECK(inRange);
+			}
+		}
+	}
+
+	void TestLockedTurnCapsInsteadOfScaling()
+	{
+		const Ramp ramp = LockedTurn(60, 900);
+		CHECK(ramp.scale == 1.0);
+		CHECK(std::fabs(ramp.limit - 0.6) < 1e-12);
+		CHECK(ramp.pushSeconds == 0.0);
+		CHECK(ramp.delaySeconds == 0.0);
+		CHECK(std::fabs(ramp.releaseSeconds - 0.9) < 1e-12);
+		CHECK(Locked(60).limit == 1.0);
+		CHECK(LockedTurn(255).limit == 1.0);
+		const Ramp buildUp = LockedTurn(0);
+		CHECK(buildUp.scale == 1.0 && buildUp.limit == 1.0);
+		CHECK(buildUp.pushSeconds == 4.0);
+		CHECK(IsOff(LockedTurn(50, 0)));
+		CHECK(!IsOff(LockedTurn(50)));
+	}
+
+	void TestLockedTurnPassesGentlePushesUnchanged()
+	{
+		for (int percent : {25, 50, 80, 100}) {
+			const double lock = percent / 100.0;
+			for (const Ramp& ramp : {LockedTurn((uint8_t)percent), LockedTurn((uint8_t)percent, 0)}) {
+				bool exact = true;
+				for (int step = 1; step <= 20; ++step) {
+					const double push = step / 20.0;
+					AxisFilter right, left;
+					const double outRight = OnDriverSample(right, push, 0.0, ramp);
+					const double outLeft = OnDriverSample(left, -push, 0.0, ramp);
+					const double expected = push < lock ? push : lock;
+					exact &= std::fabs(outRight - expected) < 1e-12 && std::fabs(outLeft + expected) < 1e-12;
+				}
+				CHECK(exact);
+			}
+		}
+	}
+
+	void TestLockedTurnNeverGrowsWhileHeld()
+	{
+		const Ramp ramp = LockedTurn(50);
+		AxisFilter filter;
+		CHECK(std::fabs(OnDriverSample(filter, 1.0, 0.0, ramp) - 0.5) < 1e-12);
+		double worst = 0.0;
+		for (int i = 0; i < 60 * 90; ++i) {
+			const double out = OnDriverSample(filter, 1.0, 1.0 / 90.0, ramp);
+			worst = std::fmax(worst, std::fabs(out - 0.5));
+		}
+		CHECK(worst < 1e-12);
+		CHECK(IsSettled(filter));
+	}
+
+	void TestLockedTurnStopGlidesFromTheCap()
+	{
+		const Ramp ramp = LockedTurn(50);
+		AxisFilter filter;
+		for (int i = 0; i < 100; ++i)
+			OnDriverSample(filter, 1.0, 0.011, ramp);
+		double previous = Output(filter, ramp);
+		CHECK(std::fabs(previous - 0.5) < 1e-12);
+		CHECK(std::fabs(OnDriverSample(filter, 0.0, 0.011, ramp) - 0.5) < 1e-12);
+		const double dt = ramp.releaseSeconds / 1000.0;
+		bool monotonic = true;
+		for (int i = 0; i < 1000; ++i) {
+			const double out = Advance(filter, dt, ramp);
+			monotonic &= out <= previous && out >= 0.0;
+			previous = out;
+		}
+		CHECK(monotonic);
+		CHECK(std::fabs(previous - 0.025) < 1e-3);
+
+		AxisFilter reversing;
+		for (int i = 0; i < 100; ++i)
+			OnDriverSample(reversing, 1.0, 0.011, ramp);
+		CHECK(std::fabs(OnDriverSample(reversing, -1.0, 0.011, ramp) + 0.5) < 1e-12);
+	}
+
+	void TestBuildUpOutputIsTheFilterItself()
+	{
+		std::mt19937 rng(11);
+		std::uniform_real_distribution<double> value(-1.0, 1.0);
+		std::uniform_real_distribution<double> dt(0.0, 0.03);
+		for (const Ramp& ramp : {kFull, kHalf, Locked(0), Custom(2.0, 0.6, 0.9, 0.3)}) {
+			AxisFilter filter;
+			bool same = true;
+			for (int i = 0; i < 5000; ++i) {
+				const double out = OnDriverSample(filter, value(rng), dt(rng), ramp);
+				same &= out == filter.stage2;
+			}
+			CHECK(same);
+		}
+	}
+
 	void TestStickPaths()
 	{
 		CHECK(IsStickAxisPath("/input/joystick/x"));
@@ -599,6 +810,18 @@ int main()
 	TestDelayStartsOverForEachPush();
 	TestDelayDoesNotRestartMidRamp();
 	TestDelayDoesNotDependOnUpdateRate();
+	TestLockedSettingsSkipTheBuildUp();
+	TestLockedSpeedNeverGrowsWhileHeld();
+	TestLockedSpeedScalesPartialPushesAndDiagonals();
+	TestLockedStopGlidesFromTheLockedSpeed();
+	TestLockedReversalStopsAtOnce();
+	TestLockedStopDoesNotDependOnUpdateRate();
+	TestLockedRandomInputStaysUnderTheLock();
+	TestLockedTurnCapsInsteadOfScaling();
+	TestLockedTurnPassesGentlePushesUnchanged();
+	TestLockedTurnNeverGrowsWhileHeld();
+	TestLockedTurnStopGlidesFromTheCap();
+	TestBuildUpOutputIsTheFilterItself();
 	TestStickPaths();
 
 	if (failures == 0) {

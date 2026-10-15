@@ -30,6 +30,7 @@ namespace {
 		w.stickRampSize = sizeof(protocol::StickRampConfig);
 		w.stickRelease = offsetof(protocol::StickRampConfig, releaseMs);
 		w.stickStrength = offsetof(protocol::StickRampConfig, strength);
+		w.stickLocked = offsetof(protocol::StickRampConfig, lockedPct);
 		w.stickDelay = offsetof(protocol::StickRampConfig, delayMs);
 		w.statsSize = sizeof(protocol::SmoothingStats);
 		w.statsActive = offsetof(protocol::SmoothingStats, active);

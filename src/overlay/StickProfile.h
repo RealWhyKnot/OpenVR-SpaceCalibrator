@@ -21,8 +21,9 @@ namespace spacecal::stick_profile {
 		return (uint16_t)std::lround(spacecal::stick::ClampSeconds(ms / 1000.0, maxSeconds) * 1000.0);
 	}
 
-	inline void Load(protocol::StickRampConfig& stick, bool& on, picojson::value& value)
+	inline void Load(protocol::StickRampConfig& stick, bool& on, bool& locked, picojson::value& value)
 	{
+		locked = false;
 		if (value.is<double>()) {
 			const uint8_t legacy = ClampPercent(value.get<double>());
 			stick.pushMs = spacecal::stick::LegacyPushMs(legacy);
@@ -55,17 +56,28 @@ namespace spacecal::stick_profile {
 				stick.strength = (uint8_t)(100 - spacecal::stick_settings::kDefaultStartPercent);
 			}
 			on = ramp["on"].is<bool>() ? ramp["on"].get<bool>() : timed;
+			if (ramp["locked_pct"].is<double>()) {
+				stick.lockedPct = spacecal::stick_settings::ClampLockedPercent(ClampPercent(ramp["locked_pct"].get<double>()));
+			}
+			locked = ramp["locked"].is<bool>() && ramp["locked"].get<bool>();
 		}
-		if (spacecal::stick_settings::IsEmpty(stick)) {
+		if (stick.lockedPct < spacecal::stick_settings::kMinLockedPercent || stick.lockedPct > 100) {
+			stick.lockedPct = (uint8_t)spacecal::stick_settings::kDefaultLockedPercent;
+		}
+		if (!locked && spacecal::stick_settings::IsEmpty(stick)) {
 			stick = spacecal::stick_settings::DefaultStick();
 			on = false;
+			locked = false;
 		}
 	}
 
-	inline picojson::value Save(const protocol::StickRampConfig& stick, bool on)
+	inline picojson::value Save(const protocol::StickRampConfig& stick, bool on, bool locked)
 	{
 		picojson::object ramp;
 		ramp["on"].set<bool>(on);
+		ramp["locked"].set<bool>(locked);
+		const double lockedPct = spacecal::stick_settings::ClampLockedPercent(stick.lockedPct);
+		ramp["locked_pct"].set<double>(lockedPct);
 		const double timerMs = stick.pushMs;
 		ramp["timer_ms"].set<double>(timerMs);
 		const double strength = stick.strength;

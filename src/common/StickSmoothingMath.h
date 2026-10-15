@@ -6,6 +6,7 @@
 namespace spacecal::stick {
 
 	constexpr int kHandCount = 2;
+	constexpr int kTurnHand = 1;
 	constexpr double kMaxPushSeconds = 8.0;
 	constexpr double kMaxReleaseSeconds = 6.0;
 	constexpr double kMaxDelaySeconds = 2.0;
@@ -33,6 +34,8 @@ namespace spacecal::stick {
 		double releaseSeconds = 0.0;
 		double heldBack = 1.0;
 		double delaySeconds = 0.0;
+		double scale = 1.0;
+		double limit = 1.0;
 	};
 
 	inline double ClampSeconds(double seconds, double maxSeconds)
@@ -40,10 +43,16 @@ namespace spacecal::stick {
 		return seconds > 0.0 ? (seconds < maxSeconds ? seconds : maxSeconds) : 0.0;
 	}
 
-	inline Ramp RampFromSettings(uint16_t pushMs, uint16_t releaseMs, uint8_t strength, uint16_t delayMs)
+	inline Ramp RampFromSettings(uint16_t pushMs, uint16_t releaseMs, uint8_t strength, uint16_t delayMs, uint8_t lockedPct = 0,
+	                             bool turning = false)
 	{
-		return {ClampSeconds(pushMs / 1000.0, kMaxPushSeconds), ClampSeconds(releaseMs / 1000.0, kMaxReleaseSeconds),
-		        strength > 100 ? 1.0 : strength / 100.0, ClampSeconds(delayMs / 1000.0, kMaxDelaySeconds)};
+		const double releaseSeconds = ClampSeconds(releaseMs / 1000.0, kMaxReleaseSeconds);
+		if (lockedPct > 0) {
+			const double speed = lockedPct > 100 ? 1.0 : lockedPct / 100.0;
+			return {0.0, releaseSeconds, 1.0, 0.0, turning ? 1.0 : speed, turning ? speed : 1.0};
+		}
+		return {ClampSeconds(pushMs / 1000.0, kMaxPushSeconds), releaseSeconds, strength > 100 ? 1.0 : strength / 100.0,
+		        ClampSeconds(delayMs / 1000.0, kMaxDelaySeconds)};
 	}
 
 	inline uint16_t LegacyPushMs(uint8_t strength)
@@ -186,11 +195,16 @@ namespace spacecal::stick {
 		filter.stage1 = goal + e1 * decay;
 	}
 
+	inline double Output(const AxisFilter& filter, const Ramp& ramp)
+	{
+		return filter.stage2 * ramp.scale;
+	}
+
 	inline double Advance(AxisFilter& filter, double dt, const Ramp& ramp)
 	{
 		if (IsOff(ramp) || !std::isfinite(dt)) {
 			Snap(filter);
-			return filter.stage2;
+			return Output(filter, ramp);
 		}
 		ApplyInstantSteps(filter, ramp);
 		if (dt > 0.0) {
@@ -200,18 +214,23 @@ namespace spacecal::stick {
 				StepRelease(filter, dt, ramp.releaseSeconds);
 		}
 		if (IsSettled(filter)) Snap(filter);
-		return filter.stage2;
+		return Output(filter, ramp);
+	}
+
+	inline double Limit(double value, const Ramp& ramp)
+	{
+		return value > ramp.limit ? ramp.limit : (value < -ramp.limit ? -ramp.limit : value);
 	}
 
 	inline double OnDriverSample(AxisFilter& filter, double value, double dtSinceLastStep, const Ramp& ramp)
 	{
 		Advance(filter, dtSinceLastStep, ramp);
-		filter.target = value;
+		filter.target = Limit(value, ramp);
 		if (IsOff(ramp))
 			Snap(filter);
 		else
 			ApplyInstantSteps(filter, ramp);
-		return filter.stage2;
+		return Output(filter, ramp);
 	}
 
 	inline bool NeedsPump(const AxisFilter& filter, double secondsSinceDriverUpdate)

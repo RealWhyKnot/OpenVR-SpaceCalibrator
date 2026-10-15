@@ -9,7 +9,7 @@ struct WireLayout
 	size_t transformSize, transformTranslation, transformRotation, transformScale, transformLerp, transformQuash, transformSmooth;
 	size_t alignmentSize, smoothingSize, statsRequestSize;
 	size_t fingerSize, fingerPerFinger, fingerMask;
-	size_t stickSize, stickRampSize, stickRelease, stickStrength, stickDelay;
+	size_t stickSize, stickRampSize, stickRelease, stickStrength, stickLocked, stickDelay;
 	size_t statsSize, statsActive, statsReseeds, statsRawJitter, statsSmoothJitter;
 	size_t poseSize, poseAlign;
 	size_t poseFields[16];

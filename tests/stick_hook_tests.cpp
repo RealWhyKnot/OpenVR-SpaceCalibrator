@@ -242,6 +242,36 @@ namespace {
 		CHECK(g_fakeInput.lastValue[leftThumbX] < 1.0f);
 	}
 
+	void TestLockedSpeedHoldsThroughTheHook(vr::VRInputComponentHandle_t leftX)
+	{
+		protocol::StickSmoothingConfig config{};
+		config.sticks[0] = {3000, 500, 60, 50, 400};
+		spacecal::stick_hook::SetConfig(config);
+		g_input->UpdateScalarComponent(leftX, 1.0f, 0.0);
+		CHECK(std::fabs(g_fakeInput.lastValue[leftX] - 0.5f) < 1e-6f);
+		for (int i = 0; i < 200; ++i) {
+			AdvanceMs(50);
+			g_input->UpdateScalarComponent(leftX, 1.0f, 0.0);
+		}
+		CHECK(std::fabs(g_fakeInput.lastValue[leftX] - 0.5f) < 1e-6f);
+		const int driverUpdates = g_fakeInput.updates[leftX];
+		AdvanceMs(25);
+		spacecal::stick_hook::Pump();
+		CHECK(g_fakeInput.updates[leftX] == driverUpdates);
+
+		g_input->UpdateScalarComponent(leftX, 0.0f, 0.0);
+		CHECK(std::fabs(g_fakeInput.lastValue[leftX] - 0.5f) < 1e-6f);
+		AdvanceMs(100);
+		spacecal::stick_hook::Pump();
+		CHECK(g_fakeInput.lastValue[leftX] > 0.0f);
+		CHECK(g_fakeInput.lastValue[leftX] < 0.5f);
+
+		SetStrengths(0, 0);
+		g_input->UpdateScalarComponent(leftX, 0.8f, 0.0);
+		CHECK(g_fakeInput.lastValue[leftX] == 0.8f);
+		g_input->UpdateScalarComponent(leftX, 0.0f, 0.0);
+	}
+
 	void TestPumpKeepsRampingWhenDriverGoesQuiet(vr::VRInputComponentHandle_t rightY)
 	{
 		SetStrengths(0, 50);
@@ -285,6 +315,69 @@ namespace {
 		AdvanceMs(25);
 		spacecal::stick_hook::Pump();
 		CHECK(g_fakeInput.lastValue[rightY] == 0.0f);
+	}
+
+	void TestNewSettingsReachAHeldStick(vr::VRInputComponentHandle_t leftX)
+	{
+		protocol::StickSmoothingConfig config{};
+		config.sticks[0] = {0, 500, 75, 50, 0};
+		spacecal::stick_hook::SetConfig(config);
+		g_input->UpdateScalarComponent(leftX, 1.0f, 0.0);
+		CHECK(std::fabs(g_fakeInput.lastValue[leftX] - 0.5f) < 1e-6f);
+		AdvanceMs(25);
+		spacecal::stick_hook::Pump();
+		const int driverUpdates = g_fakeInput.updates[leftX];
+
+		spacecal::stick_hook::SetConfig(config);
+		spacecal::stick_hook::Pump();
+		CHECK(g_fakeInput.updates[leftX] == driverUpdates);
+
+		config.sticks[0].lockedPct = 80;
+		spacecal::stick_hook::SetConfig(config);
+		spacecal::stick_hook::Pump();
+		CHECK(g_fakeInput.updates[leftX] == driverUpdates + 1);
+		CHECK(std::fabs(g_fakeInput.lastValue[leftX] - 0.8f) < 1e-6f);
+		AdvanceMs(25);
+		spacecal::stick_hook::Pump();
+		CHECK(g_fakeInput.updates[leftX] == driverUpdates + 1);
+
+		SetStrengths(0, 0);
+		spacecal::stick_hook::Pump();
+		CHECK(g_fakeInput.lastValue[leftX] == 1.0f);
+		g_input->UpdateScalarComponent(leftX, 0.0f, 0.0);
+	}
+
+	void TestTurnStickCapsAtTheLockedSpeed(vr::VRInputComponentHandle_t rightX)
+	{
+		SetStrengths(0, 0);
+		g_input->UpdateScalarComponent(rightX, 0.0f, 0.0);
+		protocol::StickSmoothingConfig config{};
+		config.sticks[1] = {3000, 500, 60, 50, 400};
+		spacecal::stick_hook::SetConfig(config);
+		g_input->UpdateScalarComponent(rightX, 0.3f, 0.0);
+		CHECK(std::fabs(g_fakeInput.lastValue[rightX] - 0.3f) < 1e-6f);
+		AdvanceMs(20);
+		g_input->UpdateScalarComponent(rightX, -0.45f, 0.0);
+		CHECK(std::fabs(g_fakeInput.lastValue[rightX] + 0.45f) < 1e-6f);
+		AdvanceMs(20);
+		g_input->UpdateScalarComponent(rightX, 1.0f, 0.0);
+		CHECK(std::fabs(g_fakeInput.lastValue[rightX] - 0.5f) < 1e-6f);
+		for (int i = 0; i < 200; ++i) {
+			AdvanceMs(50);
+			g_input->UpdateScalarComponent(rightX, 1.0f, 0.0);
+		}
+		CHECK(std::fabs(g_fakeInput.lastValue[rightX] - 0.5f) < 1e-6f);
+
+		config.sticks[1].lockedPct = 80;
+		spacecal::stick_hook::SetConfig(config);
+		AdvanceMs(25);
+		spacecal::stick_hook::Pump();
+		CHECK(std::fabs(g_fakeInput.lastValue[rightX] - 0.8f) < 1e-6f);
+
+		SetStrengths(0, 0);
+		spacecal::stick_hook::Pump();
+		CHECK(g_fakeInput.lastValue[rightX] == 1.0f);
+		g_input->UpdateScalarComponent(rightX, 0.0f, 0.0);
 	}
 
 	void TestOtherAxesAndUnknownDevicesPassThrough(vr::VRInputComponentHandle_t trigger, vr::VRInputComponentHandle_t trackerX)
@@ -337,8 +430,11 @@ int main()
 	TestEachHandUsesItsOwnSlider(leftX, rightX);
 	TestStrengthSendsTheStartSpeedOnTheFirstSample(leftY);
 	TestDelayHoldsTheStartSpeedThroughTheHook(leftThumbX);
+	TestLockedSpeedHoldsThroughTheHook(leftX);
 	TestPumpKeepsRampingWhenDriverGoesQuiet(rightY);
 	TestTurningOffMidRampSnapsToTheStick(rightY);
+	TestNewSettingsReachAHeldStick(leftX);
+	TestTurnStickCapsAtTheLockedSpeed(rightX);
 	TestOtherAxesAndUnknownDevicesPassThrough(trigger, trackerX);
 	TestLateRoleIsPickedUpByThePump(trackerX);
 

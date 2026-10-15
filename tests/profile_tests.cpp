@@ -77,8 +77,8 @@ namespace {
 			obj["fingers"].set<picojson::object>(fingers);
 
 			picojson::object sticks;
-			sticks["left"] = spacecal::stick_profile::Save(ctx.stickSmoothing.sticks[0], ctx.stickOn[0]);
-			sticks["right"] = spacecal::stick_profile::Save(ctx.stickSmoothing.sticks[1], ctx.stickOn[1]);
+			sticks["left"] = spacecal::stick_profile::Save(ctx.stickSmoothing.sticks[0], ctx.stickOn[0], ctx.stickLocked[0]);
+			sticks["right"] = spacecal::stick_profile::Save(ctx.stickSmoothing.sticks[1], ctx.stickOn[1], ctx.stickLocked[1]);
 			obj["sticks"].set<picojson::object>(sticks);
 
 			return obj;
@@ -331,8 +331,12 @@ namespace {
 		ctx.stickSmoothing.sticks[0].releaseMs = 900;
 		ctx.stickSmoothing.sticks[0].strength = 80;
 		ctx.stickSmoothing.sticks[0].delayMs = 150;
+		ctx.stickSmoothing.sticks[0].lockedPct = 70;
+		ctx.stickSmoothing.sticks[1].lockedPct = 35;
 		ctx.stickOn[0] = true;
 		ctx.stickOn[1] = false;
+		ctx.stickLocked[0] = false;
+		ctx.stickLocked[1] = true;
 		ctx.chaperone.valid = true;
 		ctx.chaperone.autoApply = false;
 		ctx.chaperone.geometry.resize(3);
@@ -473,7 +477,10 @@ namespace {
 		CHECK(loaded->fingerSmoothing.fingerMask == 0x01F5);
 		CHECK(std::memcmp(loaded->fingerSmoothing.perFinger, saved->fingerSmoothing.perFinger, 10) == 0);
 		CHECK(std::memcmp(&loaded->stickSmoothing.sticks[0], &saved->stickSmoothing.sticks[0], sizeof(protocol::StickRampConfig)) == 0);
+		CHECK(std::memcmp(&loaded->stickSmoothing.sticks[1], &saved->stickSmoothing.sticks[1], sizeof(protocol::StickRampConfig)) == 0);
 		CHECK(loaded->stickOn[0] && !loaded->stickOn[1]);
+		CHECK(!loaded->stickLocked[0] && loaded->stickLocked[1]);
+		CHECK(loaded->stickSmoothing.sticks[0].lockedPct == 70 && loaded->stickSmoothing.sticks[1].lockedPct == 35);
 		CHECK(loaded->chaperone.valid && !loaded->chaperone.autoApply);
 		CHECK(loaded->chaperone.geometry.size() == 3);
 		CHECK(std::memcmp(loaded->chaperone.geometry.data(), saved->chaperone.geometry.data(), 3 * sizeof(vr::HmdQuad_t)) == 0);
@@ -977,6 +984,7 @@ namespace {
 		ctx->fingerSmoothing = filled->fingerSmoothing;
 		ctx->stickSmoothing = filled->stickSmoothing;
 		ctx->stickOn[0] = true;
+		ctx->stickLocked[1] = true;
 		ctx->quashTargetInContinuous = true;
 		ctx->requireTriggerPressToApply = true;
 		ctx->ignoreOutliers = true;
@@ -1009,7 +1017,9 @@ namespace {
 		CHECK(loaded->fingerSmoothing.fingerMask == ctx->fingerSmoothing.fingerMask);
 		CHECK(std::memcmp(loaded->fingerSmoothing.perFinger, ctx->fingerSmoothing.perFinger, 10) == 0);
 		CHECK(std::memcmp(&loaded->stickSmoothing.sticks[0], &ctx->stickSmoothing.sticks[0], sizeof(protocol::StickRampConfig)) == 0);
+		CHECK(std::memcmp(&loaded->stickSmoothing.sticks[1], &ctx->stickSmoothing.sticks[1], sizeof(protocol::StickRampConfig)) == 0);
 		CHECK(loaded->stickOn[0] && !loaded->stickOn[1]);
+		CHECK(!loaded->stickLocked[0] && loaded->stickLocked[1]);
 		CHECK(loaded->quashTargetInContinuous && loaded->requireTriggerPressToApply && loaded->ignoreOutliers);
 		CHECK(SameBits(loaded->continuousCalibrationOffset, ctx->continuousCalibrationOffset));
 		CHECK(loaded->enableStaticRecalibration);

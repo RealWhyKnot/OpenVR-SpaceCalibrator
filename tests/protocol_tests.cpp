@@ -26,17 +26,18 @@ namespace {
 		}                                                                                                                                  \
 	} while (0)
 
-	static_assert(protocol::Version != 9 || sizeof(protocol::Request) == 88, "Request changed size without a protocol::Version bump");
-	static_assert(protocol::Version != 9 || sizeof(protocol::Response) == 40, "Response changed size without a protocol::Version bump");
-	static_assert(protocol::Version != 9 || sizeof(protocol::SetDeviceTransform) == 80, "SetDeviceTransform changed size");
-	static_assert(protocol::Version != 9 || sizeof(protocol::AlignmentSpeedParams) == 72, "AlignmentSpeedParams changed size");
-	static_assert(protocol::Version != 9 || sizeof(protocol::FingerSmoothingConfig) == 14, "FingerSmoothingConfig changed size");
-	static_assert(protocol::Version != 9 || sizeof(protocol::StickSmoothingConfig) == 16, "StickSmoothingConfig changed size");
-	static_assert(protocol::Version != 9 || sizeof(protocol::SmoothingStats) == 32, "SmoothingStats changed size");
-	static_assert(protocol::Version != 9 || sizeof(protocol::DriverPoseShmem::AugmentedPose) == 296, "AugmentedPose changed size");
-	static_assert(protocol::Version != 9 || offsetof(protocol::Request, setDeviceTransform) == 8, "Request payload moved");
-	static_assert(protocol::Version != 9 || protocol::RequestSetStickSmoothing == 8, "RequestType values are wire values");
-	static_assert(protocol::Version != 9 || protocol::ResponseSmoothingStats == 3, "ResponseType values are wire values");
+	static_assert(protocol::Version != 10 || sizeof(protocol::Request) == 88, "Request changed size without a protocol::Version bump");
+	static_assert(protocol::Version != 10 || sizeof(protocol::Response) == 40, "Response changed size without a protocol::Version bump");
+	static_assert(protocol::Version != 10 || sizeof(protocol::SetDeviceTransform) == 80, "SetDeviceTransform changed size");
+	static_assert(protocol::Version != 10 || sizeof(protocol::AlignmentSpeedParams) == 72, "AlignmentSpeedParams changed size");
+	static_assert(protocol::Version != 10 || sizeof(protocol::FingerSmoothingConfig) == 14, "FingerSmoothingConfig changed size");
+	static_assert(protocol::Version != 10 || sizeof(protocol::StickSmoothingConfig) == 16, "StickSmoothingConfig changed size");
+	static_assert(protocol::Version != 10 || offsetof(protocol::StickRampConfig, lockedPct) == 5, "StickRampConfig.lockedPct moved");
+	static_assert(protocol::Version != 10 || sizeof(protocol::SmoothingStats) == 32, "SmoothingStats changed size");
+	static_assert(protocol::Version != 10 || sizeof(protocol::DriverPoseShmem::AugmentedPose) == 296, "AugmentedPose changed size");
+	static_assert(protocol::Version != 10 || offsetof(protocol::Request, setDeviceTransform) == 8, "Request payload moved");
+	static_assert(protocol::Version != 10 || protocol::RequestSetStickSmoothing == 8, "RequestType values are wire values");
+	static_assert(protocol::Version != 10 || protocol::ResponseSmoothingStats == 3, "ResponseType values are wire values");
 	static_assert(sizeof(protocol::RequestType) == 4 && sizeof(protocol::ResponseType) == 4, "wire enums are 32-bit");
 	static_assert(protocol::kAllFingersMask == (1u << 10) - 1, "ten fingers");
 

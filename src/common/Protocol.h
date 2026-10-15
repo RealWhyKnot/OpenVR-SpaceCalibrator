@@ -92,7 +92,7 @@ namespace vr {
 #endif
 
 namespace protocol {
-	const uint32_t Version = 9;
+	const uint32_t Version = 10;
 
 	enum RequestType
 	{
@@ -140,7 +140,7 @@ namespace protocol {
 		uint16_t pushMs;
 		uint16_t releaseMs;
 		uint8_t strength;
-		uint8_t _pad;
+		uint8_t lockedPct;
 		uint16_t delayMs;
 	};
 

@@ -646,7 +646,7 @@ namespace current {
 		setFingerReq.setFingerSmoothing = ctx.fingerSmoothing;
 		link.Send(setFingerReq);
 		protocol::Request setStickReq(protocol::RequestSetStickSmoothing);
-		setStickReq.setStickSmoothing = spacecal::stick_settings::ForDriver(ctx.stickSmoothing, ctx.stickOn);
+		setStickReq.setStickSmoothing = spacecal::stick_settings::ForDriver(ctx.stickSmoothing, ctx.stickOn, ctx.stickLocked);
 		link.Send(setStickReq);
 	}
 

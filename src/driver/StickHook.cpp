@@ -28,10 +28,12 @@ namespace spacecal::stick_hook {
 			int64_t nextRoleQueryQpc = 0;
 			vr::IVRDriverInput* iface = nullptr;
 			math::AxisFilter filter;
+			float lastInput = 0.0f;
 			int64_t lastStepQpc = 0;
 			int64_t lastDriverUpdateQpc = 0;
 			bool loggedFirstUpdate = false;
 			bool loggedFirstPump = false;
+			bool configChanged = false;
 		};
 
 		struct PendingUpdate
@@ -151,14 +153,17 @@ namespace spacecal::stick_hook {
 			AxisState& state = it->second;
 			state.iface = iface;
 			state.lastDriverUpdateQpc = now;
+			state.lastInput = value;
+			state.configChanged = false;
 			const math::Ramp ramp = RampFor(state.hand);
 			const double dt = SecondsBetween(state.lastStepQpc, now);
 			state.lastStepQpc = now;
 			if (!state.loggedFirstUpdate) {
 				state.loggedFirstUpdate = true;
-				LOG("[stick] first update handle=%llu hand=%s value=%.3f push=%.2fs held_back=%.2f delay=%.2fs release=%.2fs",
+				LOG("[stick] first update handle=%llu hand=%s value=%.3f push=%.2fs held_back=%.2f delay=%.2fs release=%.2fs scale=%.2f "
+				    "limit=%.2f",
 				    (unsigned long long)handle, HandName(state.hand), value, ramp.pushSeconds, ramp.heldBack, ramp.delaySeconds,
-				    ramp.releaseSeconds);
+				    ramp.releaseSeconds, ramp.scale, ramp.limit);
 			}
 			return (float)math::OnDriverSample(state.filter, value, dt, ramp);
 		}
@@ -199,18 +204,23 @@ namespace spacecal::stick_hook {
 						}
 						continue;
 					}
-					if (!state.iface || !math::NeedsPump(state.filter, SecondsBetween(state.lastDriverUpdateQpc, now))) {
+					const bool quiet = math::NeedsPump(state.filter, SecondsBetween(state.lastDriverUpdateQpc, now));
+					const bool resend = state.configChanged;
+					state.configChanged = false;
+					if (!state.iface || !(quiet || resend)) {
 						continue;
 					}
 					const math::Ramp ramp = RampFor(state.hand);
 					const double dt = SecondsBetween(state.lastStepQpc, now);
 					state.lastStepQpc = now;
-					if (!state.loggedFirstPump) {
+					if (quiet && !state.loggedFirstPump) {
 						state.loggedFirstPump = true;
 						LOG("[stick] driver went quiet mid-ramp on handle=%llu hand=%s; easing from the frame loop",
 						    (unsigned long long)handle, HandName(state.hand));
 					}
-					g_pumpUpdates.push_back({state.iface, handle, (float)math::Advance(state.filter, dt, ramp)});
+					const double eased =
+					    resend ? math::OnDriverSample(state.filter, state.lastInput, dt, ramp) : math::Advance(state.filter, dt, ramp);
+					g_pumpUpdates.push_back({state.iface, handle, (float)eased});
 				}
 			}
 
@@ -257,17 +267,23 @@ namespace spacecal::stick_hook {
 				const protocol::StickRampConfig& stick = config.sticks[hand];
 				const protocol::StickRampConfig& previous = g_config.sticks[hand];
 				changed |= stick.pushMs != previous.pushMs || stick.releaseMs != previous.releaseMs || stick.delayMs != previous.delayMs ||
-				           stick.strength != previous.strength;
-				g_ramps[hand] = math::RampFromSettings(stick.pushMs, stick.releaseMs, stick.strength, stick.delayMs);
+				           stick.strength != previous.strength || stick.lockedPct != previous.lockedPct;
+				g_ramps[hand] = math::RampFromSettings(stick.pushMs, stick.releaseMs, stick.strength, stick.delayMs, stick.lockedPct,
+				                                       hand == math::kTurnHand);
 				ramps[hand] = g_ramps[hand];
 			}
 			g_config = config;
+			if (changed) {
+				for (auto& [handle, state] : g_axes)
+					state.configChanged = true;
+			}
 		}
 		if (changed) {
-			LOG("[stick] joystick acceleration left: build-up=%.2fs start=%.0f%% delay=%.2fs stop=%.2fs, right: build-up=%.2fs "
-			    "start=%.0f%% delay=%.2fs stop=%.2fs",
+			LOG("[stick] joystick acceleration left: build-up=%.2fs start=%.0f%% delay=%.2fs stop=%.2fs locked=%u%% (scaled), right: "
+			    "build-up=%.2fs start=%.0f%% delay=%.2fs stop=%.2fs locked=%u%% (capped)",
 			    ramps[0].pushSeconds, (1.0 - ramps[0].heldBack) * 100.0, ramps[0].delaySeconds, ramps[0].releaseSeconds,
-			    ramps[1].pushSeconds, (1.0 - ramps[1].heldBack) * 100.0, ramps[1].delaySeconds, ramps[1].releaseSeconds);
+			    (unsigned)config.sticks[0].lockedPct, ramps[1].pushSeconds, (1.0 - ramps[1].heldBack) * 100.0, ramps[1].delaySeconds,
+			    ramps[1].releaseSeconds, (unsigned)config.sticks[1].lockedPct);
 		}
 	}
 
