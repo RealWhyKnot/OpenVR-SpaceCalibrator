@@ -97,7 +97,7 @@ namespace {
 	void PlotVector(const char* namePrefix, const Metrics::TimeSeries<Eigen::Vector3d>& ts)
 	{
 		std::string name(namePrefix);
-		name += "X";
+		name += 'X';
 		PlotLineG(
 		    name.c_str(),
 		    [&](int index) {
@@ -107,7 +107,7 @@ namespace {
 		    ts.size());
 
 		name.pop_back();
-		name += "Y";
+		name += 'Y';
 		PlotLineG(
 		    name.c_str(),
 		    [&](int index) {
@@ -117,7 +117,7 @@ namespace {
 		    ts.size());
 
 		name.pop_back();
-		name += "Z";
+		name += 'Z';
 		PlotLineG(
 		    name.c_str(),
 		    [&](int index) {

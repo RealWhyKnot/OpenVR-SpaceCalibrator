@@ -194,7 +194,7 @@ namespace Metrics {
 
 		path += LR"(\spacecal_log.)";
 		path += &dateBuf[0];
-		path += L"T";
+		path += L'T';
 		path += &timeBuf[0];
 		path += L".txt";
 

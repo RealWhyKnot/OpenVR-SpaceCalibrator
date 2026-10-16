@@ -13,6 +13,7 @@
 #include <string>
 #include <system_error>
 #include <typeinfo>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -1098,7 +1099,7 @@ namespace {
 			for (int i = 0; i < floats; ++i) {
 				geometry += (i ? ",1" : "1");
 			}
-			geometry += "]";
+			geometry += ']';
 			std::string text = std::string(kProfile2020);
 			text = ReplaceOnce(text, "[1,0,1, 1,2.4300000667572021,1, -1,2.4300000667572021,1, -1,0,1]", geometry);
 			text = ReplaceOnce(text, "\"pitch\": 0.5,",
@@ -1271,7 +1272,7 @@ namespace {
 		{
 			RegistryStore detached;
 			detached.root = nullptr;
-			registryStore = detached;
+			registryStore = std::move(detached);
 			if (root) RegCloseKey(root);
 			RemoveFiles();
 		}
@@ -1281,7 +1282,7 @@ namespace {
 			RegistryStore session;
 			session.root = root;
 			session.legacyCodePage = legacyCodePage;
-			registryStore = session;
+			registryStore = std::move(session);
 		}
 
 		void RemoveFiles() const

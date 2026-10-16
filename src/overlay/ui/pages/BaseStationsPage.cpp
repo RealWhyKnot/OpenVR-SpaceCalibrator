@@ -301,7 +301,7 @@ void DrawBaseStationsPage()
 			for (const auto& [serial, channel] : pendingFix) {
 				for (const Station& station : stations) {
 					if (station.serial != serial) continue;
-					if (!pendingFixText.empty()) pendingFixText += "\n";
+					if (!pendingFixText.empty()) pendingFixText += '\n';
 					pendingFixText += ChannelMoveText(station, channel);
 				}
 			}
