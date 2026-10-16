@@ -202,7 +202,7 @@ void VerifySetupCorrect()
 		char manifestPathBuffer[MAX_PATH + 32] = {};
 		uint32_t szBufferSize =
 		    vr::VRApplications()->GetApplicationPropertyString(LEGACY_OPENVR_APPLICATION_KEY, vr::VRApplicationProperty_BinaryPath_String,
-		                                                       manifestPathBuffer, sizeof(manifestPathBuffer), &appErr);
+			                                                   manifestPathBuffer, sizeof(manifestPathBuffer), &appErr);
 		if (appErr != vr::VRApplicationError_None) {
 			std::cout << "Failed to get binary path of " << LEGACY_OPENVR_APPLICATION_KEY << '\n';
 			return;

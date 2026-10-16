@@ -119,11 +119,11 @@ LegacyInstallInfo DetectLegacyInstalls()
 	};
 	const UninstallKey uninstallKeys[] = {
 	    {HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator",
-	     "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator"},
+		 "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator"},
 	    {HKEY_LOCAL_MACHINE, "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator",
-	     "HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator"},
+		 "HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator"},
 	    {HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator",
-	     "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator"},
+		 "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator"},
 	};
 
 	for (const auto& key : uninstallKeys) {
@@ -243,7 +243,7 @@ void CheckGithubVersionInstalledOnSteam()
 
 	uninstallKeyValue =
 	    GetRegistryString(HKEY_LOCAL_MACHINE, "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OpenVRSpaceCalibrator",
-	                      "UninstallString");
+		                  "UninstallString");
 	if (!uninstallKeyValue.empty()) {
 		s_isGitHubVersionInstalled = true;
 		return;

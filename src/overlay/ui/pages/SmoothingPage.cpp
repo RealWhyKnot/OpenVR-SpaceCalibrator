@@ -271,7 +271,7 @@ void DrawStickSmoothingPanel(ImVec2 panel_size)
 				ImGui::TableSetColumnIndex(3);
 				dirty |=
 				    StickSecondsSlider("##stop", stick.releaseMs, spacecal::stick::kMaxReleaseSeconds, 250,
-				                       "How long the stick takes to glide to a stop after you let go.\nOff = stops instantly.", offWhy);
+					                   "How long the stick takes to glide to a stop after you let go.\nOff = stops instantly.", offWhy);
 				ImGui::EndDisabled();
 				ImGui::PopID();
 			}

@@ -31,7 +31,7 @@ namespace {
 		    {L"C:\\Users\\\u0141ukasz\\x", "C:\\Users\\\xC5\x81ukasz\\x"},
 		    {L"C:\\Users\\J\u00F6rg\\AppData\\Local", "C:\\Users\\J\xC3\xB6rg\\AppData\\Local"},
 		    {L"C:\\Users\\O\u2019Brien\\x", "C:\\Users\\O\xE2\x80\x99"
-		                                    "Brien\\x"},
+			                                "Brien\\x"},
 		    {L"C:\\Users\\\u4E2D\u6587\\x", "C:\\Users\\\xE4\xB8\xAD\xE6\x96\x87\\x"},
 		    {L"C:\\Users\\\U0001F600\\x", "C:\\Users\\\xF0\x9F\x98\x80\\x"},
 		};

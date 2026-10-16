@@ -226,7 +226,7 @@ namespace spacecal::skeletal_hook {
 			hook_gate::Scope gate;
 			auto result =
 			    PublicCreateSkeletonHook.Original()(_this, ulContainer, pchName, pchSkeletonPath, pchBasePosePath, eSkeletalTrackingLevel,
-			                                        pGripLimitTransforms, unGripLimitTransformCount, pHandle);
+				                                    pGripLimitTransforms, unGripLimitTransformCount, pHandle);
 			if (!gate.Open()) return result;
 			try {
 				MapCreatedSkeleton(result, pchSkeletonPath, pHandle);

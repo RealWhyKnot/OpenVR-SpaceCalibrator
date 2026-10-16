@@ -206,7 +206,7 @@ namespace spacecal::basestations {
 					m_watcher.ScanningMode(winrt_adv::BluetoothLEScanningMode::Active);
 					m_receivedToken =
 					    m_watcher.Received([shared = m_shared](const winrt_adv::BluetoothLEAdvertisementWatcher&,
-					                                           const winrt_adv::BluetoothLEAdvertisementReceivedEventArgs& args) {
+						                                       const winrt_adv::BluetoothLEAdvertisementReceivedEventArgs& args) {
 						    DiscoveredAdvert advert;
 						    advert.address = args.BluetoothAddress();
 						    advert.name = winrt::to_string(args.Advertisement().LocalName());

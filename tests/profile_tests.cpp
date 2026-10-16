@@ -145,7 +145,7 @@ namespace {
 
 				chaperone["geometry"].set<picojson::array>(
 				    previous::FloatArray((float*)ctx.chaperone.geometry.data(),
-				                         sizeof(ctx.chaperone.geometry[0]) / sizeof(float) * ctx.chaperone.geometry.size()));
+					                     sizeof(ctx.chaperone.geometry[0]) / sizeof(float) * ctx.chaperone.geometry.size()));
 
 				profile["chaperone"].set<picojson::object>(chaperone);
 			}
@@ -359,7 +359,7 @@ namespace {
 		ctx.refToTargetPose = Eigen::AffineCompact3d::Identity();
 		ctx.refToTargetPose.linear() =
 		    (Eigen::AngleAxisd(0.1, Eigen::Vector3d::UnitX()) * Eigen::AngleAxisd(-0.2, Eigen::Vector3d::UnitY()) *
-		     Eigen::AngleAxisd(0.3, Eigen::Vector3d::UnitZ()))
+			 Eigen::AngleAxisd(0.3, Eigen::Vector3d::UnitZ()))
 		        .toRotationMatrix();
 		ctx.refToTargetPose.translation() = Eigen::Vector3d(0.05, -0.1, 0.2);
 	}

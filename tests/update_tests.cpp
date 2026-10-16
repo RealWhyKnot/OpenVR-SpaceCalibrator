@@ -233,11 +233,11 @@ namespace {
 
 		UpdateLogSummary zip =
 		    SummarizeUpdateLog("2026-09-04T20:59:42 downloading "
-		                       "https://github.com/RealWhyKnot/OpenVR-SpaceCalibrator/releases/download/v2026.9.4.0-beta/"
-		                       "OpenVR-SpaceCalibrator-2026.9.4.0-beta.zip\r\n"
-		                       "2026-09-04T20:59:45 waiting for overlay 28364\r\n"
-		                       "2026-09-04T20:59:51 waiting for vrserver\r\n"
-		                       "2026-09-04T20:59:53 installed\r\n");
+			                   "https://github.com/RealWhyKnot/OpenVR-SpaceCalibrator/releases/download/v2026.9.4.0-beta/"
+			                   "OpenVR-SpaceCalibrator-2026.9.4.0-beta.zip\r\n"
+			                   "2026-09-04T20:59:45 waiting for overlay 28364\r\n"
+			                   "2026-09-04T20:59:51 waiting for vrserver\r\n"
+			                   "2026-09-04T20:59:53 installed\r\n");
 		CHECK(zip.finished && zip.targetTag == "v2026.9.4.0-beta");
 
 		UpdateLogSummary laterRun = SummarizeUpdateLog(head + "2026-10-10T18:00:42 failed: setup exited with code 2\r\n"

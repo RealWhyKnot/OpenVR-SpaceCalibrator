@@ -206,9 +206,9 @@ void RunLoop()
 				vr::Texture_t vrTex = {
 				    .handle = (void*)
 #if defined _WIN64 || defined _LP64
-				                  (uint64_t)
+					              (uint64_t)
 #endif
-				                      AppWindow.fboTexture,
+					                  AppWindow.fboTexture,
 				    .eType = vr::TextureType_OpenGL,
 				    .eColorSpace = vr::ColorSpace_Auto,
 				};

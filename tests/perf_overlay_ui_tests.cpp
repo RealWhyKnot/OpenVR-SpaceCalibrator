@@ -1179,7 +1179,7 @@ namespace {
 		    {"calibration (idle, connected)", ui::Page::Calibration, [] {}},
 		    {"calibration (idle, smoothing 50%)", ui::Page::Calibration, [] { CalCtx.smoothingParams.strength = 50; }},
 		    {"calibration (continuous, status tab)", ui::Page::Calibration,
-		     [] {
+			 [] {
 			     CalCtx.state = CalibrationState::Continuous;
 			     CalCtx.referenceID = 0;
 			     CalCtx.targetID = 5;
@@ -1291,18 +1291,18 @@ namespace {
 		const Case cases[] = {
 		    {"idle profile", [] {}},
 		    {"continuous, hide tracker",
-		     [] {
+			 [] {
 			     CalCtx.state = CalibrationState::Continuous;
 			     CalCtx.targetID = 5;
 			     CalCtx.quashTargetInContinuous = true;
 		     }},
 		    {"smoothing controllers too",
-		     [] {
+			 [] {
 			     CalCtx.smoothControllers = true;
 			     CalCtx.smoothingParams.strength = 40;
 		     }},
 		    {"headset in another space",
-		     [] {
+			 [] {
 			     CalCtx.referenceTrackingSystem = "lighthouse";
 			     CalCtx.targetTrackingSystem = "oculus";
 		     }},

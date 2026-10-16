@@ -237,7 +237,7 @@ static void BuildDeviceSelection(const VRState& state, int& initialSelected, con
 		ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 		ImGui::TextWrapped(state.trackingSystems.empty()
 		                       ? "Turn on your headset, controllers and trackers."
-		                       : "Turn on the trackers you want to line up. Only one tracking system is connected.");
+							   : "Turn on the trackers you want to line up. Only one tracking system is connected.");
 		ImGui::PopStyleColor();
 		return;
 	}
@@ -311,7 +311,7 @@ static void BuildDeviceSelection(const VRState& state, int& initialSelected, con
 		if (!DeviceIsSelectable(device)) {
 			ImGui::PushStyleColor(ImGuiCol_Text, VRSess.state == VRConnectionState::Connected
 			                                         ? ImVec4(0.9f, 0.35f, 0.35f, 1.0f)
-			                                         : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+													 : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 			ImGui::Selectable(DeviceLabel(device, true), device.id >= 0 && selected == device.id, ImGuiSelectableFlags_Disabled);
 			ImGui::PopStyleColor();
 		}
