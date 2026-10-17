@@ -244,11 +244,21 @@ namespace {
 
 	void TestLockedSpeedHoldsThroughTheHook(vr::VRInputComponentHandle_t leftX)
 	{
+		SetStrengths(0, 0);
+		g_input->UpdateScalarComponent(leftX, 0.0f, 0.0);
+		CHECK(g_fakeInput.lastValue[leftX] == 0.0f);
 		protocol::StickSmoothingConfig config{};
 		config.sticks[0] = {3000, 500, 60, 50, 400};
 		spacecal::stick_hook::SetConfig(config);
 		g_input->UpdateScalarComponent(leftX, 1.0f, 0.0);
-		CHECK(std::fabs(g_fakeInput.lastValue[leftX] - 0.5f) < 1e-6f);
+		CHECK(std::fabs(g_fakeInput.lastValue[leftX] - 0.4f) < 1e-6f);
+		AdvanceMs(300);
+		g_input->UpdateScalarComponent(leftX, 1.0f, 0.0);
+		CHECK(std::fabs(g_fakeInput.lastValue[leftX] - 0.4f) < 1e-6f);
+		AdvanceMs(1600);
+		g_input->UpdateScalarComponent(leftX, 1.0f, 0.0);
+		CHECK(g_fakeInput.lastValue[leftX] > 0.4f);
+		CHECK(g_fakeInput.lastValue[leftX] < 0.5f);
 		for (int i = 0; i < 200; ++i) {
 			AdvanceMs(50);
 			g_input->UpdateScalarComponent(leftX, 1.0f, 0.0);
@@ -355,13 +365,13 @@ namespace {
 		config.sticks[1] = {3000, 500, 60, 50, 400};
 		spacecal::stick_hook::SetConfig(config);
 		g_input->UpdateScalarComponent(rightX, 0.3f, 0.0);
-		CHECK(std::fabs(g_fakeInput.lastValue[rightX] - 0.3f) < 1e-6f);
+		CHECK(std::fabs(g_fakeInput.lastValue[rightX] - 0.12f) < 1e-6f);
 		AdvanceMs(20);
 		g_input->UpdateScalarComponent(rightX, -0.45f, 0.0);
-		CHECK(std::fabs(g_fakeInput.lastValue[rightX] + 0.45f) < 1e-6f);
+		CHECK(std::fabs(g_fakeInput.lastValue[rightX] + 0.18f) < 1e-6f);
 		AdvanceMs(20);
 		g_input->UpdateScalarComponent(rightX, 1.0f, 0.0);
-		CHECK(std::fabs(g_fakeInput.lastValue[rightX] - 0.5f) < 1e-6f);
+		CHECK(std::fabs(g_fakeInput.lastValue[rightX] - 0.4f) < 1e-6f);
 		for (int i = 0; i < 200; ++i) {
 			AdvanceMs(50);
 			g_input->UpdateScalarComponent(rightX, 1.0f, 0.0);
@@ -372,6 +382,11 @@ namespace {
 		spacecal::stick_hook::SetConfig(config);
 		AdvanceMs(25);
 		spacecal::stick_hook::Pump();
+		CHECK(std::fabs(g_fakeInput.lastValue[rightX] - 0.5f) < 1e-6f);
+		for (int i = 0; i < 200; ++i) {
+			AdvanceMs(25);
+			spacecal::stick_hook::Pump();
+		}
 		CHECK(std::fabs(g_fakeInput.lastValue[rightX] - 0.8f) < 1e-6f);
 
 		SetStrengths(0, 0);

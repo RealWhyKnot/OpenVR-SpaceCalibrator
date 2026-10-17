@@ -117,11 +117,11 @@ static bool StickSecondsSlider(const char* id, uint16_t& ms, double maxSeconds, 
 	return changed;
 }
 
-static bool StickStrengthSlider(uint16_t& pushMs, const char* why)
+static bool StickStrengthSlider(uint16_t& pushMs, bool locked, float width, const char* why)
 {
 	using namespace spacecal::stick_settings;
 	int percent = StrengthForPushMs(pushMs);
-	ImGui::SetNextItemWidth(-FLT_MIN);
+	ImGui::SetNextItemWidth(width);
 	if (ImGui::SliderInt("##strength", &percent, kPercentStep, 100, pushMs > 0 ? "%d%%" : "no build-up", ImGuiSliderFlags_AlwaysClamp)) {
 		pushMs = PushMsForStrength(SnapPercent(percent));
 	}
@@ -129,8 +129,8 @@ static bool StickStrengthSlider(uint16_t& pushMs, const char* why)
 	if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
 		const double fullSeconds = spacecal::stick::kMaxPushSeconds;
 		ImGui::SetTooltip("How gently speed builds up when you push the stick.\n"
-		                  "Higher takes longer to reach full speed: 50%% takes %.0f s, 100%% takes %.0f s.%s",
-		                  fullSeconds * 0.5, fullSeconds, why);
+		                  "Higher takes longer to reach %s: 50%% takes %.0f s, 100%% takes %.0f s.%s",
+		                  locked ? "the locked speed" : "full speed", fullSeconds * 0.5, fullSeconds, why);
 	}
 	return changed;
 }
@@ -145,10 +145,10 @@ static bool StickLockedSlider(uint8_t& lockedPct, bool turning, const char* why)
 	}
 	const bool changed = ImGui::IsItemDeactivatedAfterEdit();
 	SmoothingTooltip(turning ? "The fastest the stick turns, however long you hold it.\n"
-	                           "Gentle pushes turn as they normally would, up to this speed.\n"
+	                           "Gentle pushes work the same as in Build up.\n"
 	                           "If turning stops working, raise it."
-	                         : "How fast the stick moves, however long you hold it.\n"
-	                           "A full push moves at this speed and smaller pushes move slower.\n"
+	                         : "The fastest the stick moves, however long you hold it.\n"
+	                           "A full push builds up to this speed and smaller pushes level off lower.\n"
 	                           "If a game stops reacting to the stick, raise it.",
 	                 why);
 	return changed;
@@ -157,7 +157,7 @@ static bool StickLockedSlider(uint8_t& lockedPct, bool turning, const char* why)
 static bool StickModePicker(bool& locked, const char* why)
 {
 	static const char* kModeNote = "Build up: speed rises the longer you hold the stick.\n"
-	                               "Locked: the stick keeps one steady speed.";
+	                               "Locked: speed builds up the same way, then levels off at the speed you set.";
 	bool changed = false;
 	if (ImGui::RadioButton("Build up", !locked)) {
 		changed = locked;
@@ -195,15 +195,15 @@ void DrawStickSmoothingPanel(ImVec2 panel_size)
 	static const char* kStickNotes[2] = {
 	    "Turns this stick's speed setting on. Applies to every app, including SteamVR menus.",
 	    "Turns this stick's speed setting on. Applies to every app, including SteamVR menus.\n"
-	    "With snap turning, Build up makes each snap fire later, and a low Locked speed can stop snaps firing."};
+	    "With snap turning, the build-up makes each snap fire later, and a low Locked speed can stop snaps firing."};
 	static const char* kTurnOnFirst = "\nTurn this stick on first.";
-	static const char* kBuildUpOnly = "\nOnly used with Build up.";
+	static const char* kBuildUpOnly = "\nOnly used when the stick builds up.";
 	static const char* kStartUnderFull = "\nOnly used when Start speed is under 100%.";
 
 	ImGui::BeginGroupPanel("Joystick acceleration", panel_size);
 
 	ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-	ImGui::TextWrapped("Speed eases in and out instead of jumping, or stays locked at one speed. Useful for filming.");
+	ImGui::TextWrapped("Speed eases in and out instead of jumping. Locked also caps it at a speed you set. Useful for filming.");
 	ImGui::PopStyleColor();
 
 	bool dirty = false;
@@ -227,10 +227,15 @@ void DrawStickSmoothingPanel(ImVec2 panel_size)
 			ImGui::TableSetColumnIndex(1);
 			dirty |= StickModePicker(CalCtx.stickLocked[hand], offWhy);
 			ImGui::TableSetColumnIndex(2);
-			if (CalCtx.stickLocked[hand])
+			if (CalCtx.stickLocked[hand]) {
+				const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+				dirty |= StickStrengthSlider(stick.pushMs, true, half, offWhy);
+				ImGui::SameLine();
 				dirty |= StickLockedSlider(stick.lockedPct, hand == spacecal::stick::kTurnHand, offWhy);
-			else
-				dirty |= StickStrengthSlider(stick.pushMs, offWhy);
+			}
+			else {
+				dirty |= StickStrengthSlider(stick.pushMs, false, -FLT_MIN, offWhy);
+			}
 			ImGui::EndDisabled();
 			ImGui::PopID();
 		}
@@ -254,7 +259,7 @@ void DrawStickSmoothingPanel(ImVec2 panel_size)
 				const char* offWhy = CalCtx.stickOn[hand] ? "" : kTurnOnFirst;
 				ImGui::BeginDisabled(!CalCtx.stickOn[hand]);
 				ImGui::TableSetColumnIndex(1);
-				const bool buildsUp = !CalCtx.stickLocked[hand] && stick.pushMs > 0;
+				const bool buildsUp = stick.pushMs > 0;
 				const char* startWhy = offWhy[0] ? offWhy : (buildsUp ? "" : kBuildUpOnly);
 				ImGui::BeginDisabled(!buildsUp);
 				dirty |= StickStartSpeedSlider(stick.strength, startWhy);

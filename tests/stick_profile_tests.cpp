@@ -329,7 +329,8 @@ namespace {
 		const spacecal::stick::Ramp lockedRamp =
 		    spacecal::stick::RampFromSettings(l.pushMs, l.releaseMs, l.strength, l.delayMs, l.lockedPct);
 		CHECK(std::fabs(lockedRamp.scale - 0.7) < 1e-12);
-		CHECK(spacecal::stick::PushIsInstant(lockedRamp));
+		CHECK(!spacecal::stick::PushIsInstant(lockedRamp));
+		CHECK(lockedRamp.pushSeconds == 3.0 && std::fabs(lockedRamp.delaySeconds - 0.3) < 1e-12);
 
 		const bool rightOn[2] = {false, true};
 		const bool bothLocked[2] = {true, true};

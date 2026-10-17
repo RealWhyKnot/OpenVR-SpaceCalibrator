@@ -24,6 +24,7 @@ namespace spacecal::stick {
 		double stage1 = 0.0;
 		double stage2 = 0.0;
 		double target = 0.0;
+		double input = 0.0;
 		double velocity = 0.0;
 		double held = 0.0;
 	};
@@ -46,13 +47,16 @@ namespace spacecal::stick {
 	inline Ramp RampFromSettings(uint16_t pushMs, uint16_t releaseMs, uint8_t strength, uint16_t delayMs, uint8_t lockedPct = 0,
 	                             bool turning = false)
 	{
-		const double releaseSeconds = ClampSeconds(releaseMs / 1000.0, kMaxReleaseSeconds);
+		Ramp ramp{ClampSeconds(pushMs / 1000.0, kMaxPushSeconds), ClampSeconds(releaseMs / 1000.0, kMaxReleaseSeconds),
+		          strength > 100 ? 1.0 : strength / 100.0, ClampSeconds(delayMs / 1000.0, kMaxDelaySeconds)};
 		if (lockedPct > 0) {
 			const double speed = lockedPct > 100 ? 1.0 : lockedPct / 100.0;
-			return {0.0, releaseSeconds, 1.0, 0.0, turning ? 1.0 : speed, turning ? speed : 1.0};
+			if (turning)
+				ramp.limit = speed;
+			else
+				ramp.scale = speed;
 		}
-		return {ClampSeconds(pushMs / 1000.0, kMaxPushSeconds), releaseSeconds, strength > 100 ? 1.0 : strength / 100.0,
-		        ClampSeconds(delayMs / 1000.0, kMaxDelaySeconds)};
+		return ramp;
 	}
 
 	inline uint16_t LegacyPushMs(uint8_t strength)
@@ -101,11 +105,21 @@ namespace spacecal::stick {
 		return along >= -kReverseHandoff && along < std::fabs(filter.target);
 	}
 
+	inline double HeldBack(const AxisFilter& filter, const Ramp& ramp)
+	{
+		const double r = std::fabs(filter.target);
+		const double input = std::fabs(filter.input);
+		if (ramp.scale == 1.0 && (ramp.limit >= 1.0 || input <= r)) return ramp.heldBack;
+		const double push = input > r ? (input < 1.0 ? input : 1.0) : r;
+		const double start = (1.0 - ramp.heldBack) * push / (ramp.scale * r);
+		return start < 1.0 ? 1.0 - start : 0.0;
+	}
+
 	inline void LiftToPushFloor(AxisFilter& filter, const Ramp& ramp)
 	{
 		const double dir = filter.target > 0.0 ? 1.0 : -1.0;
 		const double r = std::fabs(filter.target);
-		const double floor = PushIsInstant(ramp) ? r : (1.0 - ramp.heldBack) * r;
+		const double floor = PushIsInstant(ramp) ? r : (1.0 - HeldBack(filter, ramp)) * r;
 		if (!(floor > 0.0) || dir * filter.stage2 >= floor) return;
 		filter.stage2 = dir * floor;
 		filter.stage1 = filter.stage2;
@@ -143,7 +157,7 @@ namespace spacecal::stick {
 		double y = dir * filter.stage2;
 		double v = dir * filter.velocity;
 		if (v < 0.0) v = 0.0;
-		const double a = 2.0 * (1.0 + 1.0 / kBrakeToAccelRatio) * ramp.heldBack * r / (ramp.pushSeconds * ramp.pushSeconds);
+		const double a = 2.0 * (1.0 + 1.0 / kBrakeToAccelRatio) * HeldBack(filter, ramp) * r / (ramp.pushSeconds * ramp.pushSeconds);
 		const double b = kBrakeToAccelRatio * a;
 		double remaining = dt;
 
@@ -225,6 +239,7 @@ namespace spacecal::stick {
 	inline double OnDriverSample(AxisFilter& filter, double value, double dtSinceLastStep, const Ramp& ramp)
 	{
 		Advance(filter, dtSinceLastStep, ramp);
+		filter.input = value;
 		filter.target = Limit(value, ramp);
 		if (IsOff(ramp))
 			Snap(filter);
