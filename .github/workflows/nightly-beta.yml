@@ -10,8 +10,12 @@ permissions:
 
 jobs:
   tag:
+    permissions:
+      contents: write
+      actions: read
     uses: RealWhyKnot/workflows/.github/workflows/nightly-beta.yml@v1
     with:
+      ci-workflow: ci.yml
       prerelease-suffix: 'beta'
       ignore-paths: |
         lint.ps1

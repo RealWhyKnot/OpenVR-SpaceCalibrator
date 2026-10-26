@@ -57,10 +57,16 @@ jobs:
           tag: ${{ steps.tag.outputs.tag }}
           prerelease-suffix: 'beta'
 
+      - name: Wait for CI on the release commit
+        uses: RealWhyKnot/workflows/wait-for-ci@v1
+        with:
+          sha: ${{ steps.tag.outputs.sha }}
+          workflow: ci.yml
+          timeout-minutes: '30'
+
       - name: Script self-tests
         shell: pwsh
         run: |
-          ./.github/scripts/Test-WorkflowSyntax.ps1
           ./.github/scripts/Test-AssertNoUpstreamReferences.ps1
 
       - name: Build and test
@@ -74,16 +80,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "tests failed ($LASTEXITCODE)" }
 
       - name: Install NSIS
-        shell: pwsh
-        run: |
-          $want = 'v3.12'
-          $have = ''
-          $exe = 'C:\Program Files (x86)\NSIS\makensis.exe'
-          if (Test-Path -LiteralPath $exe) { $have = (& $exe /VERSION) }
-          if ($have -ne $want) {
-            choco install nsis --version 3.12.0 --force -y --no-progress
-            if ($LASTEXITCODE -ne 0) { throw "choco install nsis failed ($LASTEXITCODE)" }
-          }
+        uses: RealWhyKnot/workflows/setup-nsis@v1
+        with:
+          version: '3.12'
 
       - name: Package
         id: package
@@ -136,34 +135,6 @@ jobs:
       - name: Check the notes for upstream references
         shell: pwsh
         run: ./.github/scripts/Assert-NoUpstreamReferences.ps1 -Path '${{ steps.notes.outputs.file }}'
-
-      - name: Wait for CI on the release commit
-        shell: pwsh
-        run: |
-          $sha = '${{ steps.tag.outputs.sha }}'
-          if (-not $sha) { throw "The release tag did not resolve to a commit." }
-          $deadline = (Get-Date).AddMinutes(30)
-          while ($true) {
-            $json = gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$sha&per_page=100" 2>$null
-            $fetched = $LASTEXITCODE -eq 0
-            $global:LASTEXITCODE = 0
-            if ($fetched) {
-              $runs = @(($json | ConvertFrom-Json).workflow_runs | Where-Object { $_.event -ne 'pull_request' })
-              $passed = @($runs | Where-Object { $_.status -eq 'completed' -and $_.conclusion -eq 'success' })
-              $running = @($runs | Where-Object { $_.status -ne 'completed' })
-              if ($passed.Count -gt 0) {
-                Write-Host "CI passed for $sha (run $($passed[0].id))"
-                break
-              }
-              if ($runs.Count -gt 0 -and $running.Count -eq 0) {
-                $summary = ($runs | ForEach-Object { "run $($_.id) $($_.conclusion)" }) -join ', '
-                throw "CI did not pass for $sha ($summary). Re-run CI on that commit, then re-run this release."
-              }
-              Write-Host "Waiting for CI on $sha ($($runs.Count) run(s), $($running.Count) still going)"
-            }
-            if ((Get-Date) -ge $deadline) { throw "No passing CI run for $sha after 30 minutes." }
-            Start-Sleep -Seconds 30
-          }
 
       - name: Claim the release
         id: claim
