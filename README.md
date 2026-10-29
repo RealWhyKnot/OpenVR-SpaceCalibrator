@@ -28,7 +28,7 @@ cd OpenVR-SpaceCalibrator
 ./build.ps1
 ```
 
-`build.ps1` builds and runs the tests. `scripts/install.ps1` registers that build with SteamVR. `lint.ps1` fixes formatting.
+`build.ps1` builds and runs the tests. `scripts/install.ps1` registers that build with SteamVR. `.github/lint/lint.ps1` fixes formatting.
 
 Pushing a `vYYYY.M.D.N` tag publishes a release, and a `-beta` suffix makes it a prerelease.
 

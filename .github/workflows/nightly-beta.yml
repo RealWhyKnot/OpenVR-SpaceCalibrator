@@ -18,7 +18,6 @@ jobs:
       ci-workflow: ci.yml
       prerelease-suffix: 'beta'
       ignore-paths: |
-        lint.ps1
         .clang-format
         .clang-tidy
 

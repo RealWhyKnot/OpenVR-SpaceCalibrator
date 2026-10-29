@@ -8,7 +8,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-Set-Location $PSScriptRoot
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
+Set-Location $RepoRoot
 
 function Resolve-RequiredCommand {
 	param([string]$Name, [string]$InstallHint)
@@ -83,7 +84,7 @@ $clangFormat = Resolve-RequiredCommand "clang-format" "Install LLVM and put clan
 if ($files.Count -eq 0) {
 	Write-Host "clang-format: no project C++ files to check."
 } else {
-	$listDir = Join-Path $PSScriptRoot "build\lint"
+	$listDir = Join-Path $RepoRoot "build\lint"
 	New-Item -ItemType Directory -Force -Path $listDir | Out-Null
 	$listPath = Join-Path $listDir "clang-format-files.txt"
 	[System.IO.File]::WriteAllLines($listPath, $files, (New-Object System.Text.UTF8Encoding($false)))
@@ -109,10 +110,10 @@ if ($FormatOnly) {
 		$ninja = Resolve-RequiredCommand "ninja" "Install Ninja."
 		$python = Resolve-RequiredCommand "python" "Install Python."
 		$runClangTidy = Resolve-RunClangTidy -ClangTidy $clangTidy
-		$buildDir = Join-Path $PSScriptRoot "build\lint-tidy"
+		$buildDir = Join-Path $RepoRoot "build\lint-tidy"
 		Write-Host "clang-tidy: configuring compile database in $buildDir"
-		Invoke-NativeQuiet -Command { & $cmake "-G" "Ninja" "-B" $buildDir "-S" $PSScriptRoot "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON" "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DSPACECAL_BUILD_TESTS=ON" "-Wno-dev" } -FailureMessage "clang-tidy compile database configure failed"
-		$tidyArgs = @($runClangTidy, "-p", $buildDir, "-config-file", (Join-Path $PSScriptRoot ".clang-tidy"),
+		Invoke-NativeQuiet -Command { & $cmake "-G" "Ninja" "-B" $buildDir "-S" $RepoRoot "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON" "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DSPACECAL_BUILD_TESTS=ON" "-Wno-dev" } -FailureMessage "clang-tidy compile database configure failed"
+		$tidyArgs = @($runClangTidy, "-p", $buildDir, "-config-file", (Join-Path $RepoRoot ".clang-tidy"),
 			"-header-filter", ".*OpenVR-SpaceCalibrator[/\\](src|tests)[/\\].*",
 			"-clang-tidy-binary", $clangTidy, "-quiet", "-hide-progress",
 			"-j", [string][Math]::Max(1, [Math]::Min([Environment]::ProcessorCount, 8)))

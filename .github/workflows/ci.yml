@@ -64,7 +64,7 @@ jobs:
         run: |
           $env:PATH = 'C:\Program Files\LLVM\bin;' + $env:PATH
           $base = if ('${{ github.event_name }}' -eq 'pull_request') { '${{ github.event.pull_request.base.sha }}' } elseif ('${{ github.event.before }}' -match '^0+$' -or -not '${{ github.event.before }}') { 'origin/main' } else { '${{ github.event.before }}' }
-          ./lint.ps1 -Check -ChangedOnly -ChangedBase $base
+          ./.github/lint/lint.ps1 -Check -ChangedOnly -ChangedBase $base
 
   build:
     name: Build ${{ matrix.channel }}

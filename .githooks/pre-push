@@ -2,7 +2,7 @@
 set -uo pipefail
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
-[ -f "$repo_root/lint.ps1" ] || exit 0
+[ -f "$repo_root/.github/lint/lint.ps1" ] || exit 0
 
 pwsh_bin=""
 for c in pwsh pwsh.exe powershell.exe powershell; do
@@ -29,14 +29,14 @@ for c in clang-tidy cmake ninja python; do
   fi
 done
 
-echo "pre-push: checking $lint_label (lint.ps1 ${lint_args[*]})..." >&2
-"$pwsh_bin" -NoProfile -ExecutionPolicy Bypass -File "$repo_root/lint.ps1" "${lint_args[@]}"
+echo "pre-push: checking $lint_label (.github/lint/lint.ps1 ${lint_args[*]})..." >&2
+"$pwsh_bin" -NoProfile -ExecutionPolicy Bypass -File "$repo_root/.github/lint/lint.ps1" "${lint_args[@]}"
 if [ "$?" -ne 0 ]; then
   {
     echo ""
     echo "pre-push BLOCKED: changed files would fail CI's lint job."
-    echo "  Fix format:  pwsh ./lint.ps1 -FormatOnly -ChangedOnly"
-    echo "  Check again: pwsh ./lint.ps1 -Check -ChangedOnly"
+    echo "  Fix format:  pwsh ./.github/lint/lint.ps1 -FormatOnly -ChangedOnly"
+    echo "  Check again: pwsh ./.github/lint/lint.ps1 -Check -ChangedOnly"
     echo "  Bypass:      git push --no-verify"
   } >&2
   exit 1
