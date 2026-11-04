@@ -325,6 +325,8 @@ void CCal_DrawSettings()
 
 	DrawLegacyInstallPanel(panel_size);
 
+	DrawRawPosePanel(panel_size);
+
 	ImGui::NewLine();
 	ImGui::Indent();
 	if (ImGui::Button("Reset settings")) {

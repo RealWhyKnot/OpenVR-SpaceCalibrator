@@ -30,11 +30,14 @@
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -1955,6 +1958,273 @@ namespace {
 		PERF_CHECK(balanced);
 	}
 
+	ImGuiWindow* ContentWindow()
+	{
+		for (ImGuiWindow* window : GImGui->Windows) {
+			if (window->ParentWindow && strcmp(window->ParentWindow->Name, "SpaceCalibrator") == 0 && strstr(window->Name, "/content_"))
+				return window;
+		}
+		return nullptr;
+	}
+
+	void SettingsAtBottom()
+	{
+		if (ImGuiWindow* content = ContentWindow()) ImGui::SetScrollY(content, content->ScrollMax.y);
+		MainFrame();
+	}
+
+	struct GlyphCount
+	{
+		int total = 0;
+		int clipped = 0;
+		ImVec2 firstPos;
+		ImVec4 firstClip;
+	};
+
+	GlyphCount CountClippedGlyphs(const char* ownerPrefix, float minY)
+	{
+		const ImFontAtlas* atlas = ImGui::GetIO().Fonts;
+		const ImVec2 white = atlas->TexUvWhitePixel;
+		ImVec4 lines(white.x, white.y, white.x, white.y);
+		if (atlas->PackIdLines >= 0) {
+			const ImFontAtlasCustomRect& r = atlas->CustomRects[atlas->PackIdLines];
+			lines = ImVec4(r.X * atlas->TexUvScale.x, r.Y * atlas->TexUvScale.y, (r.X + r.Width) * atlas->TexUvScale.x,
+			               (r.Y + r.Height) * atlas->TexUvScale.y);
+		}
+		const size_t prefixLength = strlen(ownerPrefix);
+		GlyphCount count;
+		for (const ImDrawList* list : ImGui::GetDrawData()->CmdLists) {
+			if (!list->_OwnerName || strncmp(list->_OwnerName, ownerPrefix, prefixLength) != 0) continue;
+			for (const ImDrawCmd& cmd : list->CmdBuffer) {
+				if (cmd.UserCallback) continue;
+				for (unsigned int i = 0; i < cmd.ElemCount; ++i) {
+					const ImDrawVert& v = list->VtxBuffer[cmd.VtxOffset + list->IdxBuffer[cmd.IdxOffset + i]];
+					const bool solid = (v.uv.x == white.x && v.uv.y == white.y) ||
+					                   (v.uv.x >= lines.x && v.uv.x <= lines.z && v.uv.y >= lines.y && v.uv.y <= lines.w);
+					if (solid || v.pos.y < minY) continue;
+					++count.total;
+					const ImVec4& clip = cmd.ClipRect;
+					if (v.pos.x < clip.x - 0.5f || v.pos.x > clip.z + 0.5f || v.pos.y < clip.y - 0.5f || v.pos.y > clip.w + 0.5f) {
+						if (count.clipped++ == 0) {
+							count.firstPos = v.pos;
+							count.firstClip = clip;
+						}
+					}
+				}
+			}
+		}
+		return count;
+	}
+
+	struct PosePanelLayout
+	{
+		ImRect tree;
+		ImRect reset;
+		ImVec2 content;
+		GlyphCount glyphs;
+	};
+
+	PosePanelLayout MeasurePosePanel()
+	{
+		for (int i = 0; i < 3; ++i)
+			SettingsAtBottom();
+		GImGui->TestEngineHookItems = true;
+		SettingsAtBottom();
+		GImGui->TestEngineHookItems = false;
+		PosePanelLayout layout;
+		if (const items::Item* tree = items::Find("Show raw poses")) layout.tree = tree->rect;
+		if (const items::Item* reset = items::Find("Reset settings")) layout.reset = reset->rect;
+		if (ImGuiWindow* content = ContentWindow()) {
+			layout.content = content->ContentSize;
+			layout.glyphs = CountClippedGlyphs(content->Name, layout.tree.Min.y);
+		}
+		return layout;
+	}
+
+	bool SameLayout(const PosePanelLayout& a, const PosePanelLayout& b)
+	{
+		auto same = [](float x, float y) {
+			return std::fabs(x - y) < 0.01f;
+		};
+		return same(a.tree.Min.x, b.tree.Min.x) && same(a.tree.Min.y, b.tree.Min.y) && same(a.reset.Min.x, b.reset.Min.x) &&
+		       same(a.reset.Min.y, b.reset.Min.y) && same(a.content.x, b.content.x) && same(a.content.y, b.content.y);
+	}
+
+	void FillPoses(int count, bool extreme)
+	{
+		const double nan = std::numeric_limits<double>::quiet_NaN();
+		const double inf = std::numeric_limits<double>::infinity();
+		const double values[] = {1e300,
+		                         -1e300,
+		                         nan,
+		                         inf,
+		                         -inf,
+		                         -0.0,
+		                         std::numeric_limits<double>::denorm_min(),
+		                         999.96,
+		                         -999.96,
+		                         std::numeric_limits<double>::max(),
+		                         -std::numeric_limits<double>::max()};
+		const int results[] = {12345,
+		                       INT_MIN,
+		                       0,
+		                       vr::TrackingResult_Calibrating_OutOfRange,
+		                       vr::TrackingResult_Running_OK,
+		                       vr::TrackingResult_Fallback_RotationOnly,
+		                       INT_MAX};
+		constexpr int kValues = (int)(sizeof values / sizeof values[0]);
+		constexpr int kResults = (int)(sizeof results / sizeof results[0]);
+		for (int id = 0; id < count; ++id) {
+			vr::DriverPose_t pose{};
+			pose.qRotation = {1.0, 0.0, 0.0, 0.0};
+			pose.qDriverFromHeadRotation = {1.0, 0.0, 0.0, 0.0};
+			if (!extreme) {
+				pose.poseIsValid = true;
+				pose.deviceIsConnected = true;
+				pose.result = vr::TrackingResult_Running_OK;
+				pose.poseTimeOffset = -0.012;
+				pose.vecVelocity[0] = 0.01 * id;
+				pose.vecVelocity[1] = -0.02;
+				pose.vecVelocity[2] = 0.03;
+				pose.vecAngularVelocity[0] = 0.1;
+				pose.vecAngularVelocity[2] = -0.2;
+				pose.vecWorldFromDriverTranslation[0] = 0.1;
+				pose.vecWorldFromDriverTranslation[1] = 1.2;
+				pose.vecWorldFromDriverTranslation[2] = -0.3;
+				pose.qWorldFromDriverRotation = {0.98, 0.0, 0.199, 0.0};
+			}
+			else {
+				auto value = [&](int k) {
+					return values[(id + k) % kValues];
+				};
+				pose.poseIsValid = id % 2 == 0;
+				pose.deviceIsConnected = id % 3 != 0;
+				pose.willDriftInYaw = true;
+				const int result = results[id % kResults];
+				memcpy(&pose.result, &result, sizeof result);
+				pose.poseTimeOffset = value(0);
+				for (int i = 0; i < 3; ++i) {
+					pose.vecVelocity[i] = value(1 + i);
+					pose.vecAngularVelocity[i] = value(4 + i);
+					pose.vecWorldFromDriverTranslation[i] = value(7 + i);
+				}
+				pose.qWorldFromDriverRotation = {value(2), value(5), value(8), value(10)};
+			}
+			CalCtx.devicePoses[id] = pose;
+		}
+	}
+
+	void UseDevices(int count, bool longNames)
+	{
+		fakevr::Clear();
+		const std::string model = longNames ? std::string(300, 'W') + " Tracker" : "VIVE Tracker 3.0 MV";
+		const std::string serial = longNames ? "LHR-" + std::string(300, 'M') : "LHR-1A2B3C4D";
+		for (int id = 0; id < count; ++id) {
+			fakevr::Set(id, id == 0 ? vr::TrackedDeviceClass_HMD : vr::TrackedDeviceClass_GenericTracker, "lighthouse", model.c_str(),
+			            serial.c_str());
+		}
+		InvalidateVRStateCache();
+	}
+
+	struct TooltipSweep
+	{
+		int points = 0;
+		int shown = 0;
+		int outOfBounds = 0;
+		float widest = 0.0f;
+	};
+
+	TooltipSweep SweepPosePanelTooltips(const PosePanelLayout& layout)
+	{
+		TooltipSweep sweep;
+		ImGuiWindow* content = ContentWindow();
+		if (!content) return sweep;
+		ImGuiIO& io = ImGui::GetIO();
+		const float maxWidth = ImGui::GetFontSize() * 20.0f + ImGui::GetStyle().WindowPadding.x * 2.0f + 1.0f;
+		const float left = content->InnerRect.Min.x + 4.0f;
+		for (int row = 0; layout.tree.Min.y + (float)row * 12.0f < layout.reset.Min.y; ++row) {
+			const float y = layout.tree.Min.y + (float)row * 12.0f;
+			for (int column = 0; left + (float)column * 40.0f < content->InnerRect.Max.x; ++column) {
+				io.AddMousePosEvent(left + (float)column * 40.0f, y);
+				for (int i = 0; i < 3; ++i)
+					SettingsAtBottom();
+				++sweep.points;
+				for (ImGuiWindow* window : GImGui->Windows) {
+					if (!(window->Flags & ImGuiWindowFlags_Tooltip) || !window->Active) continue;
+					++sweep.shown;
+					sweep.widest = std::max(sweep.widest, window->Size.x);
+					const bool inside = window->Pos.x >= -0.5f && window->Pos.y >= -0.5f &&
+					                    window->Pos.x + window->Size.x <= io.DisplaySize.x + 0.5f &&
+					                    window->Pos.y + window->Size.y <= io.DisplaySize.y + 0.5f;
+					if (!inside || window->Size.x > maxWidth) ++sweep.outOfBounds;
+				}
+			}
+		}
+		io.AddMousePosEvent(-1000.0f, -1000.0f);
+		SettingsAtBottom();
+		return sweep;
+	}
+
+	void TestRawPosePanel()
+	{
+		Connect();
+		ResetCalibration();
+		InvalidateVRStateCache();
+		ui::SetPage(ui::Page::Settings);
+		UseDevices(8, false);
+		FillPoses(8, false);
+		const PosePanelLayout closed = MeasurePosePanel();
+		ClickItem("Show raw poses", SettingsAtBottom);
+		const PosePanelLayout normal = MeasurePosePanel();
+		const Cost openCost = Measure(kFramesPerSecond * 2, SettingsAtBottom);
+		Print("settings (raw poses open, 8 devices)", openCost);
+		perf::Budget("ui: settings with raw poses open (us/frame)", openCost.usPerFrame, 20000.0, "us");
+
+		UseDevices(8, true);
+		FillPoses(8, true);
+		const PosePanelLayout oversized = MeasurePosePanel();
+		const TooltipSweep sweep = SweepPosePanelTooltips(oversized);
+
+		UseDevices(9, true);
+		FillPoses(9, true);
+		const PosePanelLayout nine = MeasurePosePanel();
+		UseDevices(64, true);
+		FillPoses(64, true);
+		const PosePanelLayout many = MeasurePosePanel();
+
+		std::printf(
+		    "INFO raw poses: panel grows %.0f px when opened; 8 devices %.0fx%.0f, oversized %.0fx%.0f, 9 devices %.0f, 64 devices %.0f "
+		    "px tall\n",
+		    normal.content.y - closed.content.y, normal.content.x, normal.content.y, oversized.content.x, oversized.content.y,
+		    nine.content.y, many.content.y);
+		std::printf("INFO raw poses: clipped glyph vertices normal %d/%d, oversized %d/%d, 9 devices %d/%d, 64 devices %d/%d\n",
+		            normal.glyphs.clipped, normal.glyphs.total, oversized.glyphs.clipped, oversized.glyphs.total, nine.glyphs.clipped,
+		            nine.glyphs.total, many.glyphs.clipped, many.glyphs.total);
+		for (const PosePanelLayout* layout : {&normal, &oversized, &nine, &many}) {
+			const GlyphCount& g = layout->glyphs;
+			if (g.clipped == 0) continue;
+			std::printf("INFO raw poses: first clipped glyph vertex at %.1f, %.1f outside clip %.1f, %.1f to %.1f, %.1f (table top %.1f)\n",
+			            g.firstPos.x, g.firstPos.y, g.firstClip.x, g.firstClip.y, g.firstClip.z, g.firstClip.w, layout->tree.Max.y);
+		}
+		std::printf("INFO raw poses tooltips: %d of %d hover points showed one, %d out of bounds, widest %.0f px\n", sweep.shown,
+		            sweep.points, sweep.outOfBounds, sweep.widest);
+		PERF_CHECK(normal.content.y - closed.content.y > ImGui::GetTextLineHeight() * 8.0f);
+		PERF_CHECK(SameLayout(normal, oversized));
+		PERF_CHECK(SameLayout(nine, many));
+		PERF_CHECK(many.content.y - normal.content.y < ImGui::GetTextLineHeightWithSpacing() * 2.0f);
+		PERF_CHECK(normal.glyphs.total > 0 && normal.glyphs.clipped == 0);
+		PERF_CHECK(oversized.glyphs.total > 0 && oversized.glyphs.clipped == 0);
+		PERF_CHECK(nine.glyphs.clipped == 0);
+		PERF_CHECK(many.glyphs.clipped == 0);
+		PERF_CHECK(sweep.shown > 0);
+		PERF_CHECK(sweep.outOfBounds == 0);
+
+		Connect();
+		ResetCalibration();
+		InvalidateVRStateCache();
+		ClickItem("Show raw poses", SettingsAtBottom);
+	}
+
 	void TestAutoDetectTick()
 	{
 		Connect();
@@ -2022,6 +2292,7 @@ int main()
 	TestChaperoneCopyKeepsSavedBounds();
 	TestUpdatePromptWaitsForOtherPopups();
 	TestDebugGraphEarlyReturn();
+	TestRawPosePanel();
 	TestAutoDetectTick();
 	TestStartupAndFirstUse();
 

@@ -116,6 +116,7 @@ set(PERF_OVERLAY_UI_SOURCES
 	${CMAKE_SOURCE_DIR}/src/overlay/ui/Widgets.cpp
 	${CMAKE_SOURCE_DIR}/src/overlay/ui/UpdateUI.cpp
 	${CMAKE_SOURCE_DIR}/src/overlay/ui/DriverConflictUI.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/ui/PosePanel.cpp
 	${CMAKE_SOURCE_DIR}/src/overlay/ui/pages/AboutPage.cpp
 	${CMAKE_SOURCE_DIR}/src/overlay/ui/pages/BaseStationsPage.cpp
 	${CMAKE_SOURCE_DIR}/src/overlay/ui/pages/CalibrationPage.cpp
