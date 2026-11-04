@@ -9,6 +9,7 @@ const double CalibrationCalc::AxisVarianceThreshold = 0.001;
 void CalibrationCalc::PushSample(const Sample& sample)
 {
 	m_samples.push_back(sample);
+	if (observer) observer->OnSample(sample);
 }
 
 void CalibrationCalc::Clear()
@@ -19,6 +20,21 @@ void CalibrationCalc::Clear()
 	m_axisVariance = 0.0;
 	m_refToTargetPose = Eigen::AffineCompact3d::Identity();
 	m_relativePosCalibrated = false;
+	if (observer) observer->OnClear();
+}
+
+bool CalibrationCalc::ComputeOneshot(const bool ignoreOutliers)
+{
+	const bool returned = ComputeOneshotImpl(ignoreOutliers);
+	if (observer) observer->OnSolve(*this, SolveCall{false, 0.0, 0.0, ignoreOutliers}, returned, false);
+	return returned;
+}
+
+bool CalibrationCalc::ComputeIncremental(bool& lerp, double threshold, double relPoseMaxError, const bool ignoreOutliers)
+{
+	const bool returned = ComputeIncrementalImpl(lerp, threshold, relPoseMaxError, ignoreOutliers);
+	if (observer) observer->OnSolve(*this, SolveCall{true, threshold, relPoseMaxError, ignoreOutliers}, returned, lerp);
+	return returned;
 }
 
 namespace {
@@ -240,7 +256,7 @@ bool CalibrationCalc::CalibrateByRelPose(Eigen::AffineCompact3d& out) const
 	return true;
 }
 
-bool CalibrationCalc::ComputeOneshot(const bool ignoreOutliers)
+bool CalibrationCalc::ComputeOneshotImpl(const bool ignoreOutliers)
 {
 	auto calibration = ComputeCalibration(ignoreOutliers);
 
@@ -270,7 +286,7 @@ void CalibrationCalc::ComputeInstantOffset()
 	Metrics::posOffset_lastSample.Push(hmdSpace * 1000);
 }
 
-bool CalibrationCalc::ComputeIncremental(bool& lerp, double threshold, double relPoseMaxError, const bool ignoreOutliers)
+bool CalibrationCalc::ComputeIncrementalImpl(bool& lerp, double threshold, double relPoseMaxError, const bool ignoreOutliers)
 {
 	Metrics::RecordTimestamp();
 

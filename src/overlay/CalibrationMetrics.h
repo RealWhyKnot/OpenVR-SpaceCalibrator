@@ -1,6 +1,7 @@
 #pragma once
 
 #include <deque>
+#include <iosfwd>
 #include <utility>
 #include <Eigen/Dense>
 
@@ -54,6 +55,7 @@ namespace Metrics {
 
 	extern bool enableLogs;
 
+	bool OpenLogStream(const wchar_t* prefix, std::ofstream& out);
 	void WriteLogAnnotation(const char* s);
 	void WriteLogEntry();
 }

@@ -4,6 +4,7 @@
 #include "CalibrationCalc.h"
 #include "CalibrationMath.h"
 #include "IsometryTransform.h"
+#include "calibration_scenario.h"
 #include "PoseHealth.h"
 #include "UpdateVersion.h"
 
@@ -37,14 +38,6 @@ namespace {
 	bool AllFinite(const Eigen::AffineCompact3d& t)
 	{
 		return t.matrix().allFinite();
-	}
-
-	Eigen::Quaterniond RandomRotation(std::mt19937& rng)
-	{
-		std::uniform_real_distribution<double> unit(-1.0, 1.0);
-		Eigen::Vector3d axis(unit(rng), unit(rng), unit(rng));
-		if (axis.norm() < 1e-3) axis = Eigen::Vector3d::UnitX();
-		return Eigen::Quaterniond(Eigen::AngleAxisd(unit(rng) * EIGEN_PI, axis.normalized()));
 	}
 
 	void TestIsoTranslationConstructorKeepsTranslation()
@@ -124,29 +117,6 @@ namespace {
 		CHECK(MaxAbs(quaternionRotateMatrix(q) - expected) < 1e-15);
 		const vr::HmdVector3d_t t = VRTranslationVec(Eigen::Vector3d(100.0, -50.0, 2.5));
 		CHECK(t.v[0] == 1.0 && t.v[1] == -0.5 && t.v[2] == 0.025);
-	}
-
-	struct Scenario
-	{
-		Eigen::AffineCompact3d calibration;
-		std::vector<Sample> samples;
-	};
-
-	Scenario MakeScenario(int count, unsigned seed)
-	{
-		Scenario s;
-		s.calibration = Eigen::Translation3d(0.5, 0.2, -1.0) * Eigen::AngleAxisd(30.0 * EIGEN_PI / 180.0, Eigen::Vector3d::UnitY());
-		const Eigen::AffineCompact3d mount =
-		    Eigen::Translation3d(0.03, -0.05, 0.08) * Eigen::AngleAxisd(0.4, Eigen::Vector3d(1, 1, 0).normalized());
-		std::mt19937 rng(seed);
-		std::uniform_real_distribution<double> unit(-1.0, 1.0);
-		for (int i = 0; i < count; ++i) {
-			const Eigen::AffineCompact3d ref =
-			    Eigen::Translation3d(unit(rng), 1.5 + 0.3 * unit(rng), unit(rng)) * Eigen::AffineCompact3d(RandomRotation(rng));
-			const Eigen::AffineCompact3d target = s.calibration.inverse() * ref * mount;
-			s.samples.emplace_back(Pose(ref), Pose(target), i * 0.01);
-		}
-		return s;
 	}
 
 	void TestOneshotRecoversAKnownCalibration()

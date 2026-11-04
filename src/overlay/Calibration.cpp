@@ -5,6 +5,7 @@
 #include "IPCClient.h"
 #include "CalibrationCalc.h"
 #include "CalibrationMath.h"
+#include "CalibrationRecording.h"
 #include "DriverRequestCache.h"
 #include "PoseHealth.h"
 #include "TrackingSystemFixups.h"
@@ -419,6 +420,7 @@ void CalibrationTick(double time)
 	}
 
 	ctx.timeLastTick = time;
+	calrec::SyncWithLogging(calibration);
 	MaintainKnownDevices(time);
 	shmem.ReadNewPoses([&](const protocol::DriverPoseShmem::AugmentedPose& augmented_pose) {
 		if (augmented_pose.deviceId >= 0 && augmented_pose.deviceId < vr::k_unMaxTrackedDeviceCount) {

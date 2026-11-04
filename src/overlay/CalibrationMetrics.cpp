@@ -126,9 +126,9 @@ namespace Metrics {
 	                                   }}};
 
 
-	static void ClearOldLogs(const std::wstring& path)
+	static void ClearOldLogs(const std::wstring& path, const wchar_t* prefix)
 	{
-		std::wstring search_path = path + L"\\spacecal_log.*.txt";
+		std::wstring search_path = path + L"\\" + prefix + L".*.txt";
 		WIN32_FIND_DATA find_data;
 
 		SYSTEMTIME st_now;
@@ -156,8 +156,7 @@ namespace Metrics {
 		}
 	}
 
-	// %userprofile%\LocalLow\SpaceCalibrator\Logs
-	static bool OpenLogFile()
+	bool OpenLogStream(const wchar_t* prefix, std::ofstream& out)
 	{
 		PWSTR RootPath = nullptr;
 		if (S_OK != SHGetKnownFolderPath(FOLDERID_LocalAppDataLow, 0, nullptr, &RootPath)) {
@@ -178,7 +177,7 @@ namespace Metrics {
 			return false;
 		}
 
-		ClearOldLogs(path);
+		ClearOldLogs(path, prefix);
 
 		SYSTEMTIME now{};
 		GetSystemTime(&now);
@@ -192,14 +191,21 @@ namespace Metrics {
 		std::vector<WCHAR> timeBuf(timeBufLen);
 		if (!GetTimeFormatEx(LOCALE_NAME_INVARIANT, 0, &now, L"HH-mm-ss", &timeBuf[0], static_cast<int>(timeBufLen))) return false;
 
-		path += LR"(\spacecal_log.)";
+		path += L'\\';
+		path += prefix;
+		path += L'.';
 		path += &dateBuf[0];
 		path += L'T';
 		path += &timeBuf[0];
 		path += L".txt";
 
-		logFile.open(path);
-		if (logFile.fail()) {
+		out.open(path);
+		return !out.fail();
+	}
+
+	static bool OpenLogFile()
+	{
+		if (!OpenLogStream(L"spacecal_log", logFile)) {
 			return false;
 		}
 

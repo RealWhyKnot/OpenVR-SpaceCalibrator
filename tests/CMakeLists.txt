@@ -177,6 +177,21 @@ target_compile_definitions(math_tests PRIVATE NOMINMAX UNICODE _CRT_SECURE_NO_WA
 set_target_properties(math_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
 add_test(NAME math COMMAND math_tests)
 
+set(CALIBRATION_REPLAY_SOURCES
+	${CMAKE_SOURCE_DIR}/src/overlay/CalibrationCalc.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/CalibrationValidity.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/CalibrationMetrics.cpp
+	${CMAKE_SOURCE_DIR}/src/overlay/CalibrationRecording.cpp)
+
+foreach(replay_target calibration_replay_tests calibration_replay_tool)
+	add_executable(${replay_target} ${replay_target}.cpp ${CALIBRATION_REPLAY_SOURCES})
+	target_include_directories(${replay_target} PRIVATE ${CMAKE_SOURCE_DIR}/src/overlay ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/src/driver ${CMAKE_SOURCE_DIR}/lib ${CMAKE_SOURCE_DIR}/lib/openvr/headers)
+	target_link_libraries(${replay_target} PRIVATE shell32 ole32)
+	target_compile_definitions(${replay_target} PRIVATE NOMINMAX UNICODE _CRT_SECURE_NO_WARNINGS)
+	set_target_properties(${replay_target} PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
+endforeach()
+add_test(NAME calibration_replay COMMAND calibration_replay_tests)
+
 add_executable(perf_overlay_config_tests perf_overlay_config_tests.cpp)
 target_include_directories(perf_overlay_config_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/overlay ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/lib ${CMAKE_SOURCE_DIR}/lib/openvr/headers ${CMAKE_SOURCE_DIR}/lib/minhook/include)
 target_link_libraries(perf_overlay_config_tests PRIVATE minhook)

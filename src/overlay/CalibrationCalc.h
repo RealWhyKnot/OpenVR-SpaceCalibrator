@@ -58,13 +58,53 @@ struct Sample
 	Sample(Pose ref, Pose target, double timestamp) : valid(true), ref(ref), target(target), timestamp(timestamp) {}
 };
 
+class CalibrationCalc;
+
+struct SolveCall
+{
+	bool incremental = false;
+	double threshold = 0.0;
+	double relPoseMaxError = 0.0;
+	bool ignoreOutliers = false;
+};
+
+class CalibrationObserver
+{
+public:
+	virtual ~CalibrationObserver() = default;
+	virtual void OnClear() = 0;
+	virtual void OnSample(const Sample& sample) = 0;
+	virtual void OnShift() = 0;
+	virtual void OnRelative(const Eigen::AffineCompact3d& transform, bool calibrated) = 0;
+	virtual void OnSolve(const CalibrationCalc& calc, const SolveCall& call, bool returned, bool lerp) = 0;
+};
+
 class CalibrationCalc
 {
 public:
 	static const double AxisVarianceThreshold;
 
+	struct SolveState
+	{
+		bool valid = false;
+		Eigen::AffineCompact3d transformation = Eigen::AffineCompact3d::Identity();
+		double axisVariance = 0.0;
+	};
+
 	bool enableStaticRecalibration;
 	bool lockRelativePosition = false;
+	CalibrationObserver* observer = nullptr;
+
+	SolveState GetSolveState() const { return {m_isValid, m_estimatedTransformation, m_axisVariance}; }
+
+	void SetSolveState(const SolveState& state)
+	{
+		m_isValid = state.valid;
+		m_estimatedTransformation = state.transformation;
+		m_axisVariance = state.axisVariance;
+	}
+
+	const std::deque<Sample>& Samples() const { return m_samples; }
 
 	const Eigen::AffineCompact3d Transformation() const { return m_estimatedTransformation; }
 
@@ -84,6 +124,7 @@ public:
 	{
 		m_refToTargetPose = transform;
 		m_relativePosCalibrated = calibrated;
+		if (observer) observer->OnRelative(transform, calibrated);
 	}
 
 	void PushSample(const Sample& sample);
@@ -100,6 +141,7 @@ public:
 	void ShiftSample()
 	{
 		if (!m_samples.empty()) m_samples.pop_front();
+		if (observer) observer->OnShift();
 	}
 
 	CalibrationCalc() : m_isValid(false), m_calcCycle(0), enableStaticRecalibration(true) {}
@@ -111,7 +153,7 @@ public:
 
 private:
 	bool m_isValid;
-	Eigen::AffineCompact3d m_estimatedTransformation;
+	Eigen::AffineCompact3d m_estimatedTransformation = Eigen::AffineCompact3d::Identity();
 	bool m_relativePosCalibrated = false;
 
 	/*
@@ -121,6 +163,9 @@ private:
 	Eigen::AffineCompact3d m_refToTargetPose = Eigen::AffineCompact3d::Identity();
 
 	std::deque<Sample> m_samples;
+
+	bool ComputeOneshotImpl(const bool ignoreOutliers);
+	bool ComputeIncrementalImpl(bool& lerp, double threshold, double relPoseMaxError, const bool ignoreOutliers);
 
 	std::vector<bool> DetectOutliers() const;
 	Eigen::Vector3d CalibrateRotation(const bool ignoreOutliers) const;
