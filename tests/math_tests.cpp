@@ -291,6 +291,20 @@ namespace {
 		CHECK(spacecal::ClassifySamplePose(pose) != spacecal::SampleVerdict::Use);
 	}
 
+	void TestPoseChecksStayInsideDeviceArray()
+	{
+		const int last = (int)vr::k_unMaxTrackedDeviceCount - 1;
+		CalibrationContext ctx;
+		ctx.devicePoses[last].poseIsValid = true;
+		ctx.devicePoses[last].result = vr::TrackingResult_Running_OK;
+		ctx.targetID = ctx.referenceID = last;
+		CHECK(ctx.TargetPoseIsValidSimple());
+		CHECK(ctx.ReferencePoseIsValidSimple());
+		ctx.targetID = ctx.referenceID = last + 1;
+		CHECK(!ctx.TargetPoseIsValidSimple());
+		CHECK(!ctx.ReferencePoseIsValidSimple());
+	}
+
 	void TestUpdateVersionEdges()
 	{
 		using namespace spacecal;
@@ -337,6 +351,7 @@ int main()
 	TestJitterIsTheSampleStandardDeviation();
 	TestJitterOfStillDevicesIsZero();
 	TestSampleWithNaNPositionIsNotUsed();
+	TestPoseChecksStayInsideDeviceArray();
 	TestUpdateVersionEdges();
 
 	if (failures == 0) {
