@@ -192,6 +192,13 @@ target_compile_definitions(blend_tests PRIVATE NOMINMAX UNICODE _CRT_SECURE_NO_W
 set_target_properties(blend_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
 add_test(NAME blend COMMAND blend_tests)
 
+add_executable(smoothing_pose_tests smoothing_pose_tests.cpp ${PERF_DRIVER_SOURCES})
+target_include_directories(smoothing_pose_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/driver ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/lib/openvr/headers ${CMAKE_SOURCE_DIR}/lib/minhook/include ${CMAKE_SOURCE_DIR}/lib)
+target_link_libraries(smoothing_pose_tests PRIVATE minhook)
+target_compile_definitions(smoothing_pose_tests PRIVATE NOMINMAX UNICODE _CRT_SECURE_NO_WARNINGS)
+set_target_properties(smoothing_pose_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
+add_test(NAME smoothing_pose COMMAND smoothing_pose_tests)
+
 add_executable(utf8_acp_tests utf8_acp_tests.cpp ${CMAKE_SOURCE_DIR}/src/overlay/spacecal.manifest)
 target_compile_definitions(utf8_acp_tests PRIVATE NOMINMAX UNICODE)
 set_target_properties(utf8_acp_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")

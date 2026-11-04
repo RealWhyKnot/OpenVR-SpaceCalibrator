@@ -385,10 +385,7 @@ void ServerTrackedDeviceProvider::ApplySmoothing(DeviceTransform& device, vr::Dr
 		devicePose.vecPosition[i] = device.filter.pos[i];
 		devicePose.vecVelocity[i] *= scale;
 		devicePose.vecAcceleration[i] *= scale;
-		devicePose.vecAngularVelocity[i] *= scale;
-		devicePose.vecAngularAcceleration[i] *= scale;
 	}
-	devicePose.poseTimeOffset *= scale;
 }
 
 void ServerTrackedDeviceProvider::SyncDeviceState(uint32_t openVRID, DeviceTransform& tf)
