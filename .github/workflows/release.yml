@@ -118,11 +118,27 @@ jobs:
         run: |
           ./.github/scripts/Test-Installer.ps1 -Setup '${{ steps.package.outputs.setup }}' -Version '${{ steps.tag.outputs.version }}'
 
+      - name: Pick the release notes base
+        id: base
+        shell: pwsh
+        run: |
+          $tag = '${{ steps.tag.outputs.tag }}'
+          $base = ''
+          if ($tag -notmatch '-') {
+            $previous = git describe --tags --abbrev=0 --exclude '*-*' "$tag^" 2>$null
+            $global:LASTEXITCODE = 0
+            if ("$previous" -notmatch '^v\d{4}\.') {
+              $base = (Get-Content -LiteralPath .github/release-base -Raw).Trim()
+            }
+          }
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "previous=$base"
+
       - name: Build release notes
         id: notes
         uses: RealWhyKnot/workflows/release-notes@v1
         with:
           tag: ${{ env.RELEASE_TAG }}
+          previous-tag: ${{ steps.base.outputs.previous }}
           title: Space Calibrator ${{ env.RELEASE_TAG }}
           extra: |
             ### Download
