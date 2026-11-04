@@ -3,6 +3,7 @@
 #include "BleTypes.h"
 
 #include <algorithm>
+#include <chrono>
 #include <map>
 #include <optional>
 #include <set>
@@ -332,6 +333,29 @@ namespace spacecal::basestations {
 			return settings.useStandby ? AutomationAction::StandbyAll : AutomationAction::SleepAll;
 		}
 		return AutomationAction::None;
+	}
+
+	inline constexpr int kWriteRetries = 8;
+	inline constexpr std::chrono::milliseconds kWriteRetryDelay{1000};
+
+	struct RetryOutcome
+	{
+		bool ok = false;
+		int attempts = 0;
+	};
+
+	template <typename Write, typename Wait> RetryOutcome WriteWithRetries(Write&& write, Wait&& waitBeforeRetry)
+	{
+		RetryOutcome outcome;
+		while (outcome.attempts <= kWriteRetries) {
+			if (outcome.attempts > 0 && !waitBeforeRetry(kWriteRetryDelay)) break;
+			++outcome.attempts;
+			if (write()) {
+				outcome.ok = true;
+				break;
+			}
+		}
+		return outcome;
 	}
 
 }

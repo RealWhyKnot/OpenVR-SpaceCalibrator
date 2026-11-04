@@ -1,4 +1,5 @@
 #include "BleClient.h"
+#include "BaseStationsLogic.h"
 
 #include <cstdio>
 
@@ -52,8 +53,6 @@ namespace spacecal::basestations {
 		namespace winrt_gatt = winrt::Windows::Devices::Bluetooth::GenericAttributeProfile;
 		namespace winrt_streams = winrt::Windows::Storage::Streams;
 
-		constexpr int kWriteRetries = 2;
-		constexpr auto kWriteRetryDelay = std::chrono::milliseconds(250);
 		constexpr auto kWorkerExitWait = std::chrono::milliseconds(500);
 
 		bool ParseGuid(std::string_view canonical, winrt::guid& out)
@@ -126,12 +125,6 @@ namespace spacecal::basestations {
 			std::deque<BleWriteRequest> writeQueue;
 			std::deque<DiscoveredAdvert> adverts;
 			std::deque<BleWriteResult> writeResults;
-
-			bool ShuttingDown()
-			{
-				std::lock_guard<std::mutex> lock(mutex);
-				return shutdown;
-			}
 		};
 
 		void WorkerMain(const std::shared_ptr<BleShared>& shared)
@@ -150,12 +143,18 @@ namespace spacecal::basestations {
 				BleWriteResult result;
 				result.address = request.address;
 				result.label = request.label;
-				for (int attempt = 0; attempt <= kWriteRetries && !result.ok; ++attempt) {
-					if (attempt > 0) {
-						std::this_thread::sleep_for(kWriteRetryDelay);
-						if (shared->ShuttingDown()) break;
-					}
-					result.ok = PerformWrite(request);
+				const RetryOutcome outcome =
+				    WriteWithRetries([&] { return PerformWrite(request); },
+					                 [&](std::chrono::milliseconds delay) {
+					                     std::unique_lock<std::mutex> lock(shared->mutex);
+					                     return !shared->cv.wait_for(lock, delay, [&] { return shared->shutdown; });
+				                     });
+				result.ok = outcome.ok;
+				if (!outcome.ok) {
+					fprintf(stderr, "basestations: BLE write '%s' gave up after %d attempt(s)\n", request.label.c_str(), outcome.attempts);
+				}
+				else if (outcome.attempts > 1) {
+					fprintf(stderr, "basestations: BLE write '%s' went through on attempt %d\n", request.label.c_str(), outcome.attempts);
 				}
 				{
 					std::lock_guard<std::mutex> lock(shared->mutex);

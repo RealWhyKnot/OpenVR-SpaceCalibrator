@@ -254,6 +254,52 @@ namespace {
 		CHECK(ShouldWakeAtStartup(state, v1, true, 501.0));
 	}
 
+	void TestWriteRetries()
+	{
+		int writes = 0;
+		int waits = 0;
+		std::chrono::milliseconds waited{0};
+		auto wait = [&](std::chrono::milliseconds delay) {
+			++waits;
+			waited += delay;
+			return true;
+		};
+
+		RetryOutcome outcome = WriteWithRetries(
+		    [&] {
+			    ++writes;
+			    return false;
+		    },
+		    wait);
+		CHECK(!outcome.ok);
+		CHECK(outcome.attempts == kWriteRetries + 1);
+		CHECK(writes == kWriteRetries + 1);
+		CHECK(waits == kWriteRetries);
+		CHECK(waited == std::chrono::seconds(8));
+
+		writes = waits = 0;
+		outcome = WriteWithRetries([&] { return ++writes == 3; }, wait);
+		CHECK(outcome.ok && outcome.attempts == 3 && writes == 3 && waits == 2);
+
+		writes = waits = 0;
+		outcome = WriteWithRetries(
+		    [&] {
+			    ++writes;
+			    return true;
+		    },
+		    wait);
+		CHECK(outcome.ok && outcome.attempts == 1 && waits == 0);
+
+		writes = waits = 0;
+		outcome = WriteWithRetries(
+		    [&] {
+			    ++writes;
+			    return false;
+		    },
+		    [&](std::chrono::milliseconds) { return ++waits < 2; });
+		CHECK(!outcome.ok && outcome.attempts == 2 && writes == 2 && waits == 2);
+	}
+
 	void TestSettingsRoundTrip()
 	{
 		BaseStationsSettings settings;
@@ -291,6 +337,7 @@ int main()
 	TestIntents();
 	TestAutomation();
 	TestStartupWake();
+	TestWriteRetries();
 	TestSettingsRoundTrip();
 
 	if (failures == 0) {
