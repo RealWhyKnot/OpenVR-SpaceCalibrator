@@ -68,6 +68,16 @@ struct SolveCall
 	bool ignoreOutliers = false;
 };
 
+enum class SolveRejection
+{
+	None,
+	StaticNotBetter,
+	StaticOverLimit,
+	LowRotation,
+	FailedValidation,
+	NoisierThanCurrent,
+};
+
 class CalibrationObserver
 {
 public:
@@ -116,6 +126,8 @@ public:
 
 	bool isValid() const { return m_isValid; }
 
+	SolveRejection LastRejection() const { return m_lastRejection; }
+
 	const Eigen::AffineCompact3d RelativeTransformation() const { return m_refToTargetPose; }
 
 	bool isRelativeTransformationCalibrated() const { return m_relativePosCalibrated; }
@@ -163,9 +175,11 @@ private:
 	Eigen::AffineCompact3d m_refToTargetPose = Eigen::AffineCompact3d::Identity();
 
 	std::deque<Sample> m_samples;
+	SolveRejection m_lastRejection = SolveRejection::None;
 
 	bool ComputeOneshotImpl(const bool ignoreOutliers);
 	bool ComputeIncrementalImpl(bool& lerp, double threshold, double relPoseMaxError, const bool ignoreOutliers);
+	void NoteRejection(SolveRejection reason, double value, double other);
 
 	std::vector<bool> DetectOutliers() const;
 	Eigen::Vector3d CalibrateRotation(const bool ignoreOutliers) const;

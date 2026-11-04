@@ -20,6 +20,7 @@ void CalibrationCalc::Clear()
 	m_axisVariance = 0.0;
 	m_refToTargetPose = Eigen::AffineCompact3d::Identity();
 	m_relativePosCalibrated = false;
+	m_lastRejection = SolveRejection::None;
 	if (observer) observer->OnClear();
 }
 
@@ -33,8 +34,41 @@ bool CalibrationCalc::ComputeOneshot(const bool ignoreOutliers)
 bool CalibrationCalc::ComputeIncremental(bool& lerp, double threshold, double relPoseMaxError, const bool ignoreOutliers)
 {
 	const bool returned = ComputeIncrementalImpl(lerp, threshold, relPoseMaxError, ignoreOutliers);
+	if (returned) m_lastRejection = SolveRejection::None;
 	if (observer) observer->OnSolve(*this, SolveCall{true, threshold, relPoseMaxError, ignoreOutliers}, returned, lerp);
 	return returned;
+}
+
+void CalibrationCalc::NoteRejection(SolveRejection reason, double value, double other)
+{
+	if (reason == m_lastRejection) return;
+	m_lastRejection = reason;
+
+	char line[200];
+	switch (reason) {
+		case SolveRejection::StaticNotBetter:
+			snprintf(line, sizeof line,
+			         "Rejected solve: static result doesn't beat the current one by the recalibration threshold (%.2f mm vs %.2f mm)",
+			         value * 1000.0, other * 1000.0);
+			break;
+		case SolveRejection::StaticOverLimit:
+			snprintf(line, sizeof line, "Rejected solve: static result is over the max relative error (%.2f mm, max %.2f mm)",
+			         value * 1000.0, other * 1000.0);
+			break;
+		case SolveRejection::LowRotation:
+			snprintf(line, sizeof line, "Rejected solve: not enough rotation in the samples (axis variance %.5f)", value);
+			break;
+		case SolveRejection::FailedValidation:
+			snprintf(line, sizeof line, "Rejected solve: error too high (%.2f mm)", value * 1000.0);
+			break;
+		case SolveRejection::NoisierThanCurrent:
+			snprintf(line, sizeof line,
+			         "Rejected solve: new result doesn't beat the current one by the recalibration threshold (%.2f mm vs %.2f mm)",
+			         value * 1000.0, other * 1000.0);
+			break;
+		default: return;
+	}
+	Metrics::WriteLogAnnotation(line);
 }
 
 namespace {
@@ -326,10 +360,12 @@ bool CalibrationCalc::ComputeIncrementalImpl(bool& lerp, double threshold, doubl
 
 			if (relPoseError < 0.010 || m_relativePosCalibrated && relPoseError < 0.025) {
 				if (relPoseError * threshold >= priorCalibrationError) {
+					NoteRejection(SolveRejection::StaticNotBetter, relPoseError, priorCalibrationError);
 					return false;
 				}
 
 				if (relPoseError > relPoseMaxError) {
+					NoteRejection(SolveRejection::StaticOverLimit, relPoseError, relPoseMaxError);
 					return false;
 				}
 
@@ -343,6 +379,8 @@ bool CalibrationCalc::ComputeIncrementalImpl(bool& lerp, double threshold, doubl
 
 	double newVariance = 0;
 	bool shouldRapidCorrect = true;
+	SolveRejection rejection = SolveRejection::None;
+	double rejectedValue = 0.0;
 	if (!newCalibrationValid) {
 		calibration = ComputeCalibration(ignoreOutliers);
 
@@ -352,10 +390,16 @@ bool CalibrationCalc::ComputeIncrementalImpl(bool& lerp, double threshold, doubl
 		if (newVariance < AxisVarianceThreshold && newVariance < m_axisVariance) {
 			newCalibrationValid = false;
 			shouldRapidCorrect = false;
+			rejection = SolveRejection::LowRotation;
+			rejectedValue = newVariance;
 		}
 		else {
 			newCalibrationValid = ValidateCalibration(calibration, &newError, &m_posOffset);
 			Metrics::posOffset_rawComputed.Push(m_posOffset * 1000);
+			if (!newCalibrationValid) {
+				rejection = SolveRejection::FailedValidation;
+				rejectedValue = newError;
+			}
 		}
 
 		if (m_isValid) {
@@ -363,6 +407,10 @@ bool CalibrationCalc::ComputeIncrementalImpl(bool& lerp, double threshold, doubl
 				// If we have a more noisy calibration than before, avoid updating.
 				newCalibrationValid = false;
 				shouldRapidCorrect = false;
+				if (rejection == SolveRejection::None) {
+					rejection = SolveRejection::NoisierThanCurrent;
+					rejectedValue = newError;
+				}
 			}
 		}
 
@@ -409,6 +457,7 @@ bool CalibrationCalc::ComputeIncrementalImpl(bool& lerp, double threshold, doubl
 		return true;
 	}
 	else {
+		NoteRejection(rejection, rejectedValue, priorCalibrationError);
 		return false;
 	}
 }

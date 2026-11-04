@@ -173,6 +173,77 @@ namespace {
 		if (!finite) std::printf("  continuous step with one NaN sample replaced the calibration with NaN (accepted=%d)\n", (int)accepted);
 	}
 
+	void PushAll(CalibrationCalc& calc, const std::vector<Sample>& samples)
+	{
+		for (const Sample& sample : samples)
+			calc.PushSample(sample);
+	}
+
+	void TestRejectionReasons()
+	{
+		const Scenario s = MakeScenario(100, 41, 0.0005);
+		bool lerp = false;
+
+		CalibrationCalc noisier;
+		noisier.enableStaticRecalibration = false;
+		PushAll(noisier, s.samples);
+		CHECK(noisier.ComputeIncremental(lerp, 1.5, 0.005, false));
+		CHECK(noisier.LastRejection() == SolveRejection::None);
+		CHECK(!noisier.ComputeIncremental(lerp, 1.5, 0.005, false));
+		CHECK(noisier.LastRejection() == SolveRejection::NoisierThanCurrent);
+		noisier.Clear();
+		CHECK(noisier.LastRejection() == SolveRejection::None);
+
+		CalibrationCalc staticPath;
+		staticPath.enableStaticRecalibration = true;
+		PushAll(staticPath, s.samples);
+		CHECK(staticPath.ComputeIncremental(lerp, 1.5, 0.005, false));
+		CHECK(!staticPath.ComputeIncremental(lerp, 1.5, 0.005, false));
+		CHECK(staticPath.LastRejection() == SolveRejection::StaticNotBetter);
+
+		CalibrationCalc overLimit;
+		overLimit.enableStaticRecalibration = true;
+		PushAll(overLimit, s.samples);
+		CHECK(overLimit.ComputeIncremental(lerp, 1.5, 0.005, false));
+		CHECK(!overLimit.ComputeIncremental(lerp, 0.1, 0.00001, false));
+		CHECK(overLimit.LastRejection() == SolveRejection::StaticOverLimit);
+
+		CalibrationCalc still;
+		still.enableStaticRecalibration = false;
+		PushAll(still, s.samples);
+		CHECK(still.ComputeIncremental(lerp, 1.5, 0.005, false));
+		const Eigen::AffineCompact3d ref(Eigen::Translation3d(0.1, 1.6, -0.2));
+		const Eigen::AffineCompact3d target = s.calibration.inverse() * ref * s.mount;
+		for (int i = 0; i < 100; ++i) {
+			still.ShiftSample();
+			still.PushSample(Sample(Pose(ref), Pose(target), 1.0 + i * 0.01));
+		}
+		CHECK(!still.ComputeIncremental(lerp, 1.5, 0.005, false));
+		CHECK(still.LastRejection() == SolveRejection::LowRotation);
+
+		Scenario garbage = MakeScenario(100, 43);
+		std::mt19937 rng(44);
+		std::uniform_real_distribution<double> unit(-2.0, 2.0);
+		for (Sample& sample : garbage.samples)
+			sample.target = Pose(Eigen::AffineCompact3d(Eigen::Translation3d(unit(rng), unit(rng), unit(rng)) * RandomRotation(rng)));
+		CalibrationCalc invalid;
+		invalid.enableStaticRecalibration = false;
+		PushAll(invalid, garbage.samples);
+		CHECK(!invalid.ComputeIncremental(lerp, 1.5, 0.005, false));
+		CHECK(invalid.LastRejection() == SolveRejection::FailedValidation);
+
+		CalibrationCalc recovers;
+		recovers.enableStaticRecalibration = false;
+		PushAll(recovers, garbage.samples);
+		CHECK(!recovers.ComputeIncremental(lerp, 1.5, 0.005, false));
+		for (const Sample& sample : s.samples) {
+			recovers.ShiftSample();
+			recovers.PushSample(sample);
+		}
+		CHECK(recovers.ComputeIncremental(lerp, 1.5, 0.005, false));
+		CHECK(recovers.LastRejection() == SolveRejection::None);
+	}
+
 	void TestJitterIsTheSampleStandardDeviation()
 	{
 		CalibrationCalc calc;
@@ -262,6 +333,7 @@ int main()
 	TestOneshotRejectsAnEmptySampleSet();
 	TestOneshotNeverAcceptsANonFiniteCalibration();
 	TestIncrementalNeverAcceptsANonFiniteCalibration();
+	TestRejectionReasons();
 	TestJitterIsTheSampleStandardDeviation();
 	TestJitterOfStillDevicesIsZero();
 	TestSampleWithNaNPositionIsNotUsed();
