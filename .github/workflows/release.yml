@@ -149,45 +149,27 @@ jobs:
           Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "owned=true"
 
       - name: Publish release
-        shell: pwsh
-        run: |
-          $tag = $env:RELEASE_TAG
-          $extra = @()
-          if ('${{ steps.tag.outputs.prerelease }}' -eq 'true') { $extra = @('--prerelease', '--latest=false') }
-          gh release create $tag '${{ steps.package.outputs.zip }}' '${{ steps.package.outputs.zip }}.sha256' '${{ steps.package.outputs.setup }}' '${{ steps.package.outputs.setup }}.sha256' --repo '${{ github.repository }}' --target '${{ steps.tag.outputs.sha }}' --title $tag --notes-file '${{ steps.notes.outputs.file }}' @extra
-          if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
+        uses: RealWhyKnot/workflows/publish-release@v1
+        with:
+          tag: ${{ env.RELEASE_TAG }}
+          notes-file: ${{ steps.notes.outputs.file }}
+          target: ${{ steps.tag.outputs.sha }}
+          prerelease: ${{ steps.tag.outputs.prerelease }}
+          draft-first: 'true'
+          verify-asset: ${{ steps.package.outputs.setupname }}
+          verify-sha256: ${{ steps.package.outputs.setupsha256 }}
+          assets: |
+            ${{ steps.package.outputs.zip }}
+            ${{ steps.package.outputs.zip }}.sha256
+            ${{ steps.package.outputs.setup }}
+            ${{ steps.package.outputs.setup }}.sha256
 
-      - name: Verify uploaded assets
-        shell: pwsh
-        run: |
-          $tag = $env:RELEASE_TAG
-          $expected = @{
-            (Split-Path -Leaf '${{ steps.package.outputs.zip }}') = 'sha256:${{ steps.package.outputs.sha256 }}'
-            '${{ steps.package.outputs.setupname }}' = 'sha256:${{ steps.package.outputs.setupsha256 }}'
-          }
-          $ok = $false
-          for ($i = 0; $i -lt 6 -and -not $ok; $i++) {
-            Start-Sleep -Seconds 2
-            $json = gh api "repos/${{ github.repository }}/releases/tags/$tag" 2>$null
-            $fetched = $LASTEXITCODE -eq 0
-            $global:LASTEXITCODE = 0
-            if (-not $fetched) { continue }
-            $release = $json | ConvertFrom-Json
-            $matched = 0
-            foreach ($assetName in $expected.Keys) {
-              $asset = $release.assets | Where-Object { $_.name -eq $assetName }
-              if ($asset -and $asset.digest -eq $expected[$assetName]) { $matched++ }
-            }
-            if ($matched -eq $expected.Count) { $ok = $true }
-          }
-          if (-not $ok) { throw "Uploaded asset digests do not match the built files." }
-          Write-Host "Verified $($expected.Count) asset digests"
-
-      - name: Remove partial release on failure
+      - name: Remove partial draft on failure
         if: (failure() || cancelled()) && steps.claim.outputs.owned == 'true'
         shell: pwsh
         run: |
-          gh release delete $env:RELEASE_TAG --repo '${{ github.repository }}' --yes 2>$null
+          $draft = gh release view $env:RELEASE_TAG --repo '${{ github.repository }}' --json isDraft --jq .isDraft 2>$null
+          if ($draft -eq 'true') { gh release delete $env:RELEASE_TAG --repo '${{ github.repository }}' --yes 2>$null }
           $global:LASTEXITCODE = 0
 
       - name: Remove the nightly tag on failure
