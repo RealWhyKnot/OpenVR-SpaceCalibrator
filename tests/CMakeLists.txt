@@ -229,6 +229,13 @@ target_link_libraries(keyboard_text_tests PRIVATE imgui)
 set_target_properties(keyboard_text_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
 add_test(NAME keyboard_text COMMAND keyboard_text_tests)
 
+add_executable(driver_unload_tests driver_unload_tests.cpp)
+target_include_directories(driver_unload_tests PRIVATE ${CMAKE_SOURCE_DIR}/lib/openvr/headers)
+target_compile_definitions(driver_unload_tests PRIVATE NOMINMAX UNICODE)
+set_target_properties(driver_unload_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
+add_dependencies(driver_unload_tests SpaceCalibratorDriver)
+add_test(NAME driver_unload COMMAND driver_unload_tests $<TARGET_FILE:SpaceCalibratorDriver> WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
 foreach(build_id_target perf_driver_tests driver_race_tests blend_tests smoothing_pose_tests perf_overlay_ui_tests)
 	add_dependencies(${build_id_target} spacecal_build_id)
 endforeach()

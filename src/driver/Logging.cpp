@@ -35,6 +35,14 @@ void OpenLogFile()
 	}
 }
 
+void CloseLogFile()
+{
+	if (LogFile != nullptr && LogFile != stderr) {
+		fclose(LogFile);
+	}
+	LogFile = stderr;
+}
+
 tm TimeForLog()
 {
 	auto now = std::chrono::system_clock::now();
