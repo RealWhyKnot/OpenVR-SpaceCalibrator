@@ -80,7 +80,8 @@ namespace {
 		}
 		ui::Note("##staledriver", tone, text);
 		if (ImGui::IsItemHovered(0)) {
-			ImGui::SetTooltip("Loaded driver %s\nInstalled driver %s\nThis app %s", ctx.builds.loaded.empty() ? "unknown" : ctx.builds.loaded.c_str(),
+			ImGui::SetTooltip("Loaded driver %s\nInstalled driver %s\nThis app %s",
+			                  ctx.builds.loaded.empty() ? "unknown" : ctx.builds.loaded.c_str(),
 			                  ctx.builds.onDisk.empty() ? "unknown" : ctx.builds.onDisk.c_str(), ctx.builds.app.c_str());
 		}
 	}

@@ -50,8 +50,8 @@ namespace {
 		BOOL started = CreateProcessW(nullptr, &commandLine[0], nullptr, nullptr, FALSE, CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB,
 		                              nullptr, nullptr, &startup, &process);
 		if (!started) {
-			started = CreateProcessW(nullptr, &commandLine[0], nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup,
-			                         &process);
+			started =
+			    CreateProcessW(nullptr, &commandLine[0], nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process);
 		}
 		if (!started) {
 			error = GetLastError();
