@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "IPCClient.h"
+#include "DriverBuild.h"
 
 #include <string>
 
@@ -37,6 +38,7 @@ void IPCClient::Connect()
 	LPCTSTR pipeName = TEXT(OPENVR_SPACECALIBRATOR_PIPE_NAME);
 
 	lastOutcome = spacecal::HandshakeOutcome::Unavailable;
+	loadedBuildId.clear();
 
 	WaitNamedPipe(pipeName, 1000);
 	pipe = CreateFile(pipeName, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
@@ -71,6 +73,8 @@ void IPCClient::Connect()
 		                         std::to_string(protocol::Version) + " and " + detail + ".");
 	}
 	lastOutcome = spacecal::HandshakeOutcome::Ok;
+	loadedBuildId = spacecal::ReadHandshakeBuildId(response.protocol.buildMagic, protocol::BuildIdMagic, response.protocol.buildId,
+	                                               sizeof response.protocol.buildId);
 }
 
 bool IPCClient::TryConnect(std::string& error)

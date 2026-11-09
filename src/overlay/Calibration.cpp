@@ -210,6 +210,11 @@ spacecal::HandshakeOutcome LastDriverHandshake()
 	return Driver.LastHandshakeOutcome();
 }
 
+std::string LoadedDriverBuildId()
+{
+	return Driver.LoadedBuildId();
+}
+
 void DisconnectDriver()
 {
 	Driver.Disconnect();

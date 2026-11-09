@@ -6,6 +6,7 @@
 #include <thread>
 #include <vector>
 
+#include "DriverBuild.h"
 #include "Protocol.h"
 #include "protocol_layout_fill.h"
 
@@ -36,6 +37,10 @@ namespace {
 	static_assert(protocol::Version != 10 || sizeof(protocol::SmoothingStats) == 32, "SmoothingStats changed size");
 	static_assert(protocol::Version != 10 || sizeof(protocol::DriverPoseShmem::AugmentedPose) == 296, "AugmentedPose changed size");
 	static_assert(protocol::Version != 10 || offsetof(protocol::Request, setDeviceTransform) == 8, "Request payload moved");
+	static_assert(protocol::Version != 10 || offsetof(protocol::Response, protocol.version) == 8, "handshake version moved");
+	static_assert(protocol::Version != 10 || offsetof(protocol::Response, protocol.buildMagic) == 12, "handshake build magic moved");
+	static_assert(protocol::Version != 10 || offsetof(protocol::Response, protocol.buildId) == 16, "handshake build id moved");
+	static_assert(sizeof(protocol::Protocol::buildId) > spacecal::kBuildIdLength, "build id field must hold the id and a terminator");
 	static_assert(protocol::Version != 10 || protocol::RequestSetStickSmoothing == 8, "RequestType values are wire values");
 	static_assert(protocol::Version != 10 || protocol::ResponseSmoothingStats == 3, "ResponseType values are wire values");
 	static_assert(sizeof(protocol::RequestType) == 4 && sizeof(protocol::ResponseType) == 4, "wire enums are 32-bit");

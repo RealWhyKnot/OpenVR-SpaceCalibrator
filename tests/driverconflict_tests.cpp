@@ -1,3 +1,4 @@
+#include "DriverBuild.h"
 #include "DriverConflict.h"
 #include "RegistrationPlan.h"
 #include "UnregisterDriverScript.h"
@@ -310,6 +311,107 @@ namespace {
 		CHECK(regScript.find(std::string("adddriver '") + kOwn + "'") != std::string::npos);
 	}
 
+	void TestBuildId()
+	{
+		using namespace spacecal;
+		const std::string id = "0123456789abcdef";
+		CHECK(IsBuildId(id));
+		CHECK(!IsBuildId(""));
+		CHECK(!IsBuildId("0123456789abcde"));
+		CHECK(!IsBuildId("0123456789abcdef0"));
+		CHECK(!IsBuildId("0123456789ABCDEF"));
+		CHECK(!IsBuildId("0123456789abcdeg"));
+
+		constexpr uint32_t magic = 0x44494253;
+		char field[24];
+		std::memset(field, 'x', sizeof field);
+		CHECK(WriteHandshakeBuildId(id, field, sizeof field));
+		CHECK(field[16] == '\0' && field[23] == '\0');
+		CHECK(ReadHandshakeBuildId(magic, magic, field, sizeof field) == id);
+		CHECK(ReadHandshakeBuildId(0, magic, field, sizeof field).empty());
+
+		char small[16];
+		CHECK(!WriteHandshakeBuildId(id, small, sizeof small));
+		CHECK(!WriteHandshakeBuildId("nothex", field, sizeof field));
+
+		char unterminated[16];
+		std::memcpy(unterminated, id.data(), sizeof unterminated);
+		CHECK(ReadHandshakeBuildId(magic, magic, unterminated, sizeof unterminated).empty());
+
+		char garbage[24] = "zzzzzzzzzzzzzzzz";
+		CHECK(ReadHandshakeBuildId(magic, magic, garbage, sizeof garbage).empty());
+
+		char zeroed[24] = {};
+		CHECK(ReadHandshakeBuildId(magic, magic, zeroed, sizeof zeroed).empty());
+	}
+
+	void TestBuildIdMarker()
+	{
+		using namespace spacecal;
+		const std::string id = "fedcba9876543210";
+		const std::string marker(kBuildIdMarker);
+		CHECK(FindBuildIdMarker("").empty());
+		CHECK(FindBuildIdMarker(marker).empty());
+		CHECK(FindBuildIdMarker(marker + "fedcba987654321").empty());
+		CHECK(FindBuildIdMarker(marker + "FEDCBA9876543210").empty());
+		CHECK(FindBuildIdMarker(marker + id) == id);
+		CHECK(FindBuildIdMarker(marker + id + "0").empty());
+
+		std::string dll("MZ\0\0junk", 8);
+		dll += marker + "not-an-id-at-all";
+		dll.push_back('\0');
+		dll += "more";
+		dll += marker + id;
+		dll.push_back('\0');
+		dll += "tail";
+		CHECK(FindBuildIdMarker(dll) == id);
+	}
+
+	void TestStaleDriver()
+	{
+		using namespace spacecal;
+		DriverBuilds builds;
+		builds.app = "1111111111111111";
+		builds.loaded = builds.app;
+		builds.onDisk = builds.app;
+		builds.driverAnswered = true;
+		CHECK(ClassifyStaleDriver(builds) == StaleDriverFix::None);
+
+		DriverBuilds silent = builds;
+		silent.driverAnswered = false;
+		silent.loaded.clear();
+		CHECK(ClassifyStaleDriver(silent) == StaleDriverFix::None);
+
+		DriverBuilds noApp = builds;
+		noApp.app.clear();
+		noApp.loaded = "2222222222222222";
+		CHECK(ClassifyStaleDriver(noApp) == StaleDriverFix::None);
+
+		DriverBuilds restart = builds;
+		restart.loaded = "2222222222222222";
+		CHECK(ClassifyStaleDriver(restart) == StaleDriverFix::LoadsOnRestart);
+
+		DriverBuilds oldDriver = builds;
+		oldDriver.loaded.clear();
+		CHECK(ClassifyStaleDriver(oldDriver) == StaleDriverFix::LoadsOnRestart);
+
+		DriverBuilds install = restart;
+		install.onDisk = "3333333333333333";
+		CHECK(ClassifyStaleDriver(install) == StaleDriverFix::NeedsInstall);
+		install.onDisk.clear();
+		CHECK(ClassifyStaleDriver(install) == StaleDriverFix::NeedsInstall);
+
+		DriverBuilds pending = install;
+		pending.pendingStaged = true;
+		CHECK(ClassifyStaleDriver(pending) == StaleDriverFix::PendingOnClose);
+		pending = builds;
+		pending.pendingStaged = true;
+		CHECK(ClassifyStaleDriver(pending) == StaleDriverFix::PendingOnClose);
+
+		CHECK(std::string(StaleDriverFixName(StaleDriverFix::None)) == "none");
+		CHECK(std::string(StaleDriverFixName(StaleDriverFix::NeedsInstall)).find("another build") != std::string::npos);
+	}
+
 } // namespace
 
 int main()
@@ -321,6 +423,9 @@ int main()
 	TestRegistrationPlan();
 	TestOwnRegisteredDirs();
 	TestUnregisterScript();
+	TestBuildId();
+	TestBuildIdMarker();
+	TestStaleDriver();
 
 	if (failures == 0) {
 		std::printf("driverconflict tests passed\n");

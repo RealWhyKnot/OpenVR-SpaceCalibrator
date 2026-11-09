@@ -1,4 +1,5 @@
 link_libraries(spacecal_warnings)
+include_directories(${CMAKE_BINARY_DIR}/generated)
 
 add_executable(filter_tests filter_tests.cpp)
 target_include_directories(filter_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/common)
@@ -137,7 +138,7 @@ set(PERF_OVERLAY_UI_SOURCES
 	${CMAKE_SOURCE_DIR}/src/overlay/LegacyInstall.cpp
 	${CMAKE_SOURCE_DIR}/src/overlay/Updater.cpp)
 add_executable(perf_overlay_ui_tests perf_overlay_ui_tests.cpp ${PERF_OVERLAY_UI_SOURCES})
-target_include_directories(perf_overlay_ui_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/overlay ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_BINARY_DIR}/generated ${CMAKE_SOURCE_DIR}/lib ${CMAKE_SOURCE_DIR}/lib/imgui ${CMAKE_SOURCE_DIR}/lib/openvr/headers ${CMAKE_SOURCE_DIR}/lib/minhook/include)
+target_include_directories(perf_overlay_ui_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/overlay ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/lib ${CMAKE_SOURCE_DIR}/lib/imgui ${CMAKE_SOURCE_DIR}/lib/openvr/headers ${CMAKE_SOURCE_DIR}/lib/minhook/include)
 target_link_libraries(perf_overlay_ui_tests PRIVATE minhook shell32 ole32 winhttp)
 target_compile_definitions(perf_overlay_ui_tests PRIVATE NOMINMAX UNICODE _CRT_SECURE_NO_WARNINGS IMGUI_DEFINE_MATH_OPERATORS IMGUI_ENABLE_TEST_ENGINE VR_API_EXPORT)
 if(MSVC)
@@ -227,3 +228,7 @@ target_include_directories(keyboard_text_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/o
 target_link_libraries(keyboard_text_tests PRIVATE imgui)
 set_target_properties(keyboard_text_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON FOLDER "tests")
 add_test(NAME keyboard_text COMMAND keyboard_text_tests)
+
+foreach(build_id_target perf_driver_tests driver_race_tests blend_tests smoothing_pose_tests perf_overlay_ui_tests)
+	add_dependencies(${build_id_target} spacecal_build_id)
+endforeach()

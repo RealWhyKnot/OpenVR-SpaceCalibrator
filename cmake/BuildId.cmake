@@ -1,0 +1,23 @@
+file(GLOB_RECURSE _inputs LIST_DIRECTORIES false
+	"${SRC}/src/driver/*"
+	"${SRC}/src/common/*"
+	"${SRC}/driver_01spacecalibrator/*")
+list(SORT _inputs)
+set(_digest "")
+foreach(_file IN LISTS _inputs)
+	file(RELATIVE_PATH _rel "${SRC}" "${_file}")
+	file(READ "${_file}" _content)
+	string(REPLACE "\r\n" "\n" _content "${_content}")
+	string(SHA256 _hash "${_content}")
+	string(APPEND _digest "${_rel}:${_hash}\n")
+endforeach()
+string(SHA256 _id "${_digest}")
+string(SUBSTRING "${_id}" 0 16 _id)
+set(_header "#pragma once\n\n#define SPACECAL_BUILD_ID \"${_id}\"\n")
+set(_old "")
+if(EXISTS "${OUT}")
+	file(READ "${OUT}" _old)
+endif()
+if(NOT _old STREQUAL _header)
+	file(WRITE "${OUT}" "${_header}")
+endif()

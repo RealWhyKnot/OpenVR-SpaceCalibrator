@@ -126,6 +126,7 @@ target_compile_definitions(SpaceCalibratorDriver
     PRIVATE OPENVRSPACECALIBRATORDRIVER_EXPORTS
 )
 set_target_properties(SpaceCalibratorDriver PROPERTIES OUTPUT_NAME ${DRIVER_NAME})
+add_dependencies(SpaceCalibratorDriver spacecal_build_id)
 
 # Copy driver assets to output folder
 add_custom_command(

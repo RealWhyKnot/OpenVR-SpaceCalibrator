@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "UiCommon.h"
+#include "Widgets.h"
 #include "DriverConflictState.h"
 #include "VRSession.h"
 #include "Version.h"
@@ -60,11 +61,36 @@ namespace {
 		}
 	}
 
+	void DrawStaleDriverNote(const DriverConflictState& ctx)
+	{
+		const char* text = nullptr;
+		ui::NoteTone tone = ui::NoteTone::Pending;
+		switch (ctx.staleFix) {
+			case spacecal::StaleDriverFix::None: return;
+			case spacecal::StaleDriverFix::PendingOnClose: text = "A newer build is staged. It goes in when SteamVR closes."; break;
+			case spacecal::StaleDriverFix::LoadsOnRestart:
+				text = "SteamVR is running a Space Calibrator driver from another build. The matching one is already installed and loads "
+				       "next time SteamVR starts.";
+				break;
+			case spacecal::StaleDriverFix::NeedsInstall:
+				text = "SteamVR is running a Space Calibrator driver from another build, and the installed one doesn't match this app "
+				       "either. Close SteamVR and reinstall Space Calibrator. If you built it from source, run build.ps1 again.";
+				tone = ui::NoteTone::Error;
+				break;
+		}
+		ui::Note("##staledriver", tone, text);
+		if (ImGui::IsItemHovered(0)) {
+			ImGui::SetTooltip("Loaded driver %s\nInstalled driver %s\nThis app %s", ctx.builds.loaded.empty() ? "unknown" : ctx.builds.loaded.c_str(),
+			                  ctx.builds.onDisk.empty() ? "unknown" : ctx.builds.onDisk.c_str(), ctx.builds.app.c_str());
+		}
+	}
+
 } // namespace
 
 void DrawDriverConflictPanel()
 {
 	DriverConflictState& ctx = DriverConflictCtx;
+	DrawStaleDriverNote(ctx);
 	const bool blocking = ctx.report.tier == spacecal::ConflictTier::Blocking;
 	if (ctx.report.tier == spacecal::ConflictTier::None) return;
 	if (!blocking && ctx.dismissed) return;

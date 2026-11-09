@@ -16,6 +16,7 @@ public:
 	bool IsConnected() const { return pipe != nullptr && pipe != INVALID_HANDLE_VALUE; }
 
 	spacecal::HandshakeOutcome LastHandshakeOutcome() const { return lastOutcome; }
+	const std::string& LoadedBuildId() const { return loadedBuildId; }
 
 	protocol::Response SendBlocking(const protocol::Request& request);
 
@@ -27,4 +28,5 @@ private:
 
 	HANDLE pipe = INVALID_HANDLE_VALUE;
 	spacecal::HandshakeOutcome lastOutcome = spacecal::HandshakeOutcome::Unavailable;
+	std::string loadedBuildId;
 };

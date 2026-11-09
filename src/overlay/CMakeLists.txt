@@ -54,6 +54,7 @@ set(IMGUI_FILES
 
 add_executable(SpaceCalibratorOverlay ${SOURCES_API} ${SOURCES_HEADERS} ${IMGUI_FILES} ${WIN32_RESOURCES})
 GroupSourcesByFolder(SpaceCalibratorOverlay)
+add_dependencies(SpaceCalibratorOverlay spacecal_build_id)
 # Disable console window
 set_target_properties(SpaceCalibratorOverlay PROPERTIES
     LINK_FLAGS_DEBUG            "/SUBSYSTEM:CONSOLE /ENTRY:wWinMainCRTStartup /NODEFAULTLIB:library"

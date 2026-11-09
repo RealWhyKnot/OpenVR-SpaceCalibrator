@@ -1,4 +1,6 @@
 #include "IPCServer.h"
+#include "BuildId.h"
+#include "DriverBuild.h"
 #include "Logging.h"
 #include "ServerTrackedDeviceProvider.h"
 #include "StickHook.h"
@@ -12,6 +14,9 @@ void IPCServer::HandleRequest(const protocol::Request& request, protocol::Respon
 			case protocol::RequestHandshake:
 				response.type = protocol::ResponseHandshake;
 				response.protocol.version = protocol::Version;
+				if (spacecal::WriteHandshakeBuildId(SPACECAL_BUILD_ID, response.protocol.buildId, sizeof response.protocol.buildId)) {
+					response.protocol.buildMagic = protocol::BuildIdMagic;
+				}
 				break;
 
 			case protocol::RequestSetDeviceTransform:

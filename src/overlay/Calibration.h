@@ -315,6 +315,7 @@ inline bool CopyLiveChaperoneBounds(vr::IVRChaperoneSetup& setup, CalibrationCon
 
 bool TryConnectDriver(std::string& error);
 spacecal::HandshakeOutcome LastDriverHandshake();
+std::string LoadedDriverBuildId();
 void DisconnectDriver();
 const std::vector<KnownDevice>& GetKnownDevices();
 void CalibrationTick(double time);

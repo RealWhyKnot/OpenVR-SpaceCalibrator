@@ -2252,9 +2252,9 @@ namespace {
 	{
 		const double legacyMs = perf::BestSecondsPerOp(1, 1, [](int) { DetectLegacyInstalls(); }) * 1000.0;
 		const double conflictFirst =
-		    perf::BestSecondsPerOp(1, 1, [](int) { DriverConflictCtx.Refresh(spacecal::HandshakeOutcome::Unavailable); });
+		    perf::BestSecondsPerOp(1, 1, [](int) { DriverConflictCtx.Refresh(spacecal::HandshakeOutcome::Unavailable, {}); });
 		const double conflictBest =
-		    perf::BestSecondsPerOp(3, 1, [](int) { DriverConflictCtx.Refresh(spacecal::HandshakeOutcome::Unavailable); });
+		    perf::BestSecondsPerOp(3, 1, [](int) { DriverConflictCtx.Refresh(spacecal::HandshakeOutcome::Unavailable, {}); });
 		const double noteMs = perf::BestSecondsPerOp(3, 1, [](int) { UpdaterCtx.LoadLastRunNote(); }) * 1000.0;
 		std::printf("INFO startup: DriverConflictCtx.Refresh %.2f ms first, %.2f ms warm (also runs on every driver connect attempt, every "
 		            "2 s while the handshake fails)\n",

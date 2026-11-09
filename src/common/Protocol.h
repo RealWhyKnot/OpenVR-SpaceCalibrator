@@ -164,9 +164,13 @@ namespace protocol {
 		double smoothJitterMm;
 	};
 
+	const uint32_t BuildIdMagic = 0x44494253;
+
 	struct Protocol
 	{
 		uint32_t version = Version;
+		uint32_t buildMagic = 0;
+		char buildId[24] = {};
 	};
 
 	struct AlignmentSpeedParams
@@ -278,6 +282,7 @@ namespace protocol {
 
 	static_assert(sizeof(Response) == 40, "wire size of Response");
 	static_assert(offsetof(Response, protocol.version) == 8, "wire offset of protocol version");
+	static_assert(sizeof(Protocol) <= sizeof(SmoothingStats), "build id must fit the existing Response payload");
 
 	class DriverPoseShmem
 	{

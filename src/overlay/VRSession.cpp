@@ -80,7 +80,7 @@ void VRSessionTick(double time)
 			}
 			std::string driverError;
 			if (!TryConnectDriver(driverError)) {
-				DriverConflictCtx.Refresh(LastDriverHandshake());
+				DriverConflictCtx.Refresh(LastDriverHandshake(), LoadedDriverBuildId());
 				const bool notLoaded = LastDriverHandshake() == spacecal::HandshakeOutcome::Unavailable;
 				if (notLoaded && !VRSess.driverNotLoaded) {
 					std::cerr << "driver not answering: " << driverError << "\n";
@@ -91,7 +91,7 @@ void VRSessionTick(double time)
 				return;
 			}
 			VRSess.driverNotLoaded = false;
-			DriverConflictCtx.Refresh(LastDriverHandshake());
+			DriverConflictCtx.Refresh(LastDriverHandshake(), LoadedDriverBuildId());
 			DriverConflictCtx.QueueRegisterOwn();
 			VRSess.statusText.clear();
 			VRSess.state = VRConnectionState::Connected;

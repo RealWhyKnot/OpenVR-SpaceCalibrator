@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "DriverConflictState.h"
+#include "BuildId.h"
 
 #include <shlobj.h>
 
@@ -35,6 +36,36 @@ namespace {
 	std::filesystem::path DriverDllIn(const std::filesystem::path& driverDir)
 	{
 		return driverDir / "bin" / "win64" / "driver_01spacecalibrator.dll";
+	}
+
+	const wchar_t* const kApplyPendingMutex = L"Local\\SpaceCalibratorApplyPending";
+
+	bool StartHiddenPowerShell(const std::filesystem::path& script, DWORD& error)
+	{
+		std::wstring commandLine =
+		    L"powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script.wstring() + L"\"";
+		STARTUPINFOW startup = {};
+		startup.cb = sizeof(startup);
+		PROCESS_INFORMATION process = {};
+		BOOL started = CreateProcessW(nullptr, &commandLine[0], nullptr, nullptr, FALSE, CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB,
+		                              nullptr, nullptr, &startup, &process);
+		if (!started) {
+			started = CreateProcessW(nullptr, &commandLine[0], nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup,
+			                         &process);
+		}
+		if (!started) {
+			error = GetLastError();
+			return false;
+		}
+		CloseHandle(process.hThread);
+		CloseHandle(process.hProcess);
+		return true;
+	}
+
+	const std::string& OrUnknown(const std::string& id)
+	{
+		static const std::string unknown = "unknown";
+		return id.empty() ? unknown : id;
 	}
 
 	std::filesystem::path Resolve(const std::filesystem::path& path)
@@ -73,11 +104,12 @@ std::filesystem::path FindOwnDriverDir()
 	return {};
 }
 
-void DriverConflictState::Refresh(spacecal::HandshakeOutcome handshake)
+void DriverConflictState::Refresh(spacecal::HandshakeOutcome handshake, const std::string& loadedBuildId)
 {
 	const std::filesystem::path own = FindOwnDriverDir();
 	ownDriverDir = own.empty() ? std::string() : own.string();
 	RefreshOwnDriverDll();
+	RefreshDriverBuilds(handshake, loadedBuildId);
 
 	spacecal::OpenVRPaths paths;
 	const std::filesystem::path localAppData = KnownFolder(FOLDERID_LocalAppData);
@@ -133,6 +165,69 @@ void DriverConflictState::RefreshOwnDriverDll()
 	ownDllStamp = std::format("{:%Y-%m-%d %H:%M}", std::chrono::floor<std::chrono::minutes>(system));
 }
 
+void DriverConflictState::RefreshDriverBuilds(spacecal::HandshakeOutcome handshake, const std::string& loadedBuildId)
+{
+	spacecal::DriverBuilds next;
+	next.app = SPACECAL_BUILD_ID;
+	next.driverAnswered = handshake == spacecal::HandshakeOutcome::Ok;
+	if (next.driverAnswered) next.loaded = loadedBuildId;
+	if (!ownDllPath.empty()) {
+		std::error_code sizeEc;
+		std::error_code timeEc;
+		const std::filesystem::path dll(ownDllPath);
+		const auto size = std::filesystem::file_size(dll, sizeEc);
+		const auto written = std::filesystem::last_write_time(dll, timeEc);
+		const std::string key =
+		    sizeEc || timeEc ? std::string() : std::format("{}|{}|{}", ownDllPath, size, written.time_since_epoch().count());
+		if (key.empty() || key != onDiskScanKey) {
+			onDiskBuildId = spacecal::FindBuildIdMarker(ReadFileText(ownDllPath));
+			onDiskScanKey = key;
+		}
+		next.onDisk = onDiskBuildId;
+	}
+
+	std::filesystem::path pendingDir;
+	if (!ownDriverDir.empty()) {
+		pendingDir = std::filesystem::path(ownDriverDir).parent_path() / "pending";
+		std::error_code ec;
+		next.pendingStaged = std::filesystem::is_regular_file(pendingDir / "pending.json", ec);
+	}
+
+	const spacecal::StaleDriverFix fix = spacecal::ClassifyStaleDriver(next);
+	if (fix != staleFix || next.loaded != builds.loaded || next.onDisk != builds.onDisk) {
+		std::cout << "driver build: app " << next.app << ", loaded " << OrUnknown(next.loaded) << ", on disk " << OrUnknown(next.onDisk)
+		          << ", " << spacecal::StaleDriverFixName(fix) << '\n';
+	}
+	builds = std::move(next);
+	staleFix = fix;
+	if (fix == spacecal::StaleDriverFix::PendingOnClose) StartPendingApplier(pendingDir);
+}
+
+void DriverConflictState::StartPendingApplier(const std::filesystem::path& pendingDir)
+{
+	if (applierStarted) return;
+	applierStarted = true;
+
+	HANDLE running = OpenMutexW(SYNCHRONIZE, FALSE, kApplyPendingMutex);
+	if (running) {
+		CloseHandle(running);
+		return;
+	}
+
+	const std::filesystem::path script = pendingDir / "apply-pending.ps1";
+	std::error_code ec;
+	if (!std::filesystem::is_regular_file(script, ec)) {
+		std::cerr << "driver build: staged build has no " << script.string() << '\n';
+		return;
+	}
+	DWORD error = 0;
+	if (!StartHiddenPowerShell(script, error)) {
+		std::cerr << "driver build: could not start " << script.string() << ": " << error << '\n';
+		return;
+	}
+	std::cout << "driver build: started " << script.string() << '\n';
+}
+
 std::string DriverConflictState::OwnDriverDllPath() const
 {
 	return ownDllPath;
@@ -170,17 +265,11 @@ bool DriverConflictState::StartDriverScript(spacecal::UnregisterDriverParams par
 		script << spacecal::BuildUnregisterDriverScript(params);
 	}
 
-	std::wstring commandLine =
-	    L"powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + scriptPath.wstring() + L"\"";
-	STARTUPINFOW startup = {};
-	startup.cb = sizeof(startup);
-	PROCESS_INFORMATION process = {};
-	if (!CreateProcessW(nullptr, &commandLine[0], nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process)) {
-		fixError = "could not start the helper: " + std::to_string(GetLastError());
+	DWORD error = 0;
+	if (!StartHiddenPowerShell(scriptPath, error)) {
+		fixError = "could not start the helper: " + std::to_string(error);
 		return false;
 	}
-	CloseHandle(process.hThread);
-	CloseHandle(process.hProcess);
 
 	fixQueued = true;
 	std::cout << "driver setup: " << baseName << " helper started, log " << params.logPath << '\n';
