@@ -3,6 +3,7 @@
 #include "Calibration.h"
 #include "CalibrationCalc.h"
 #include "CalibrationMath.h"
+#include "CalibrationMetrics.h"
 #include "IsometryTransform.h"
 #include "calibration_scenario.h"
 #include "PoseHealth.h"
@@ -338,6 +339,8 @@ namespace {
 
 int main()
 {
+	Metrics::enableLogs = false;
+
 	TestIsoTranslationConstructorKeepsTranslation();
 	TestIsoComposeMatchesAffine();
 	TestIsoInterpolateAroundEndpointsAndPivot();

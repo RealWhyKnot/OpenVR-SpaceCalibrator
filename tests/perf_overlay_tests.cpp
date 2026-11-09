@@ -5,6 +5,7 @@
 #include "Calibration.h"
 #include "CalibrationCalc.h"
 #include "CalibrationMath.h"
+#include "CalibrationMetrics.h"
 #include "DriverRequestCache.h"
 #include "LoopPacing.h"
 #include "ProcessWatch.h"
@@ -709,6 +710,7 @@ int main(int argc, char** argv)
 		return 0;
 	}
 
+	Metrics::enableLogs = false;
 	PERF_CHECK(perf::InstallHeapMeter());
 
 	TestSolverAccuracy();

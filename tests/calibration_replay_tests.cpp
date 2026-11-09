@@ -399,6 +399,8 @@ namespace {
 
 int main()
 {
+	Metrics::enableLogs = false;
+
 	TestContinuousSessionReplaysExactly();
 	TestRecordingStartedMidSessionReplaysExactly();
 	TestOneshotReplaysExactly();
