@@ -157,9 +157,14 @@ void CCal_BasicInfo()
 	ui::Tooltip("Also recalibrates from the saved offset between reference and target, which works while you stand still. Uses "
 	            "Recalibration threshold and Max relative error threshold from Settings.");
 	ImGui::SameLine();
+	ui::BeginDisabledLook(Metrics::LogsForcedOn());
 	ImGui::Checkbox("Enable debug logs", &Metrics::enableLogs);
-	ui::Tooltip("Writes calibration data to AppData\\LocalLow\\SpaceCalibrator\\Logs and shows two debug buttons. Logs older than a "
-	            "day are deleted when a new one starts.");
+	ui::EndDisabledLook();
+	ui::Tooltip(Metrics::LogsForcedOn() ? "Always on in dev builds. Writes calibration data to AppData\\LocalLow\\SpaceCalibrator\\Logs "
+	                                      "and shows two debug buttons. Logs older than a day are deleted when a new one starts."
+	                                    : "Writes calibration data to AppData\\LocalLow\\SpaceCalibrator\\Logs and shows two debug buttons. "
+	                                      "Logs older than a day are deleted when a new one starts.",
+	            ImGuiHoveredFlags_AllowWhenDisabled);
 	ImGui::Checkbox("Lock relative transform", &CalCtx.lockRelativePosition);
 	ui::Tooltip("Recalibrates from the saved offset between reference and target. The motion-based solve only runs if that fails.");
 	ImGui::SameLine();

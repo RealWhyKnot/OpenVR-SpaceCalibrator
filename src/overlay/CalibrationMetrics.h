@@ -54,6 +54,7 @@ namespace Metrics {
 	extern TimeSeries<bool> calibrationApplied;
 
 	extern bool enableLogs;
+	bool LogsForcedOn();
 
 	bool OpenLogStream(const wchar_t* prefix, std::ofstream& out);
 	void WriteLogAnnotation(const char* s);

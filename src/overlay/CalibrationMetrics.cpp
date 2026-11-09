@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "CalibrationMetrics.h"
+#include "Version.h"
 #include <shlobj_core.h>
+#include <cstring>
 #include <fstream>
 #include <vector>
 
@@ -76,7 +78,12 @@ namespace Metrics {
 		CurrentTime = timestamp();
 	}
 
-	bool enableLogs = false;
+	bool LogsForcedOn()
+	{
+		return std::strcmp(SPACECAL_CHANNEL, "dev") == 0;
+	}
+
+	bool enableLogs = LogsForcedOn();
 
 	static std::ofstream logFile;
 	static bool logFileIsOpen = false;
