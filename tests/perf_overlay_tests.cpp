@@ -246,6 +246,7 @@ namespace {
 			for (const size_t n : {40u, 100u, 250u}) {
 				const Scenario s = MakeScenario(n, 11u + (unsigned)n, 0.0005, ignoreOutliers ? 25 : 0);
 				CalibrationCalc calc;
+				calc.solveTilt = false;
 				Load(calc, s);
 				PERF_CHECK(calc.ComputeOneshot(ignoreOutliers));
 				const Eigen::AffineCompact3d expected = previous::ComputeCalibration(s.samples, ignoreOutliers);

@@ -162,6 +162,29 @@ Eigen::Vector3d CalibrationCalc::CalibrateRotation(const bool ignoreOutliers) co
 	return euler;
 }
 
+Eigen::Matrix3d CalibrationCalc::CalibrateFullRotation(const bool ignoreOutliers) const
+{
+	std::vector<bool> valids;
+	if (ignoreOutliers) valids = DetectOutliers();
+
+	Eigen::Matrix3d crossCV = Eigen::Matrix3d::Zero();
+	for (size_t i = 0; i < m_samples.size(); i++) {
+		for (size_t j = 0; j < i; j++) {
+			if (ignoreOutliers && (!valids[i] || !valids[j])) {
+				continue;
+			}
+			const auto delta = DeltaRotationSamples(m_samples[i], m_samples[j]);
+			if (!delta.valid) continue;
+			crossCV += delta.target * delta.ref.transpose();
+		}
+	}
+
+	const Eigen::JacobiSVD<Eigen::Matrix3d> svd(crossCV, Eigen::ComputeFullU | Eigen::ComputeFullV);
+	Eigen::Matrix3d flip = Eigen::Matrix3d::Identity();
+	if ((svd.matrixV() * svd.matrixU().transpose()).determinant() < 0) flip(2, 2) = -1;
+	return svd.matrixV() * flip * svd.matrixU().transpose();
+}
+
 Eigen::Vector3d CalibrationCalc::CalibrateTranslation(const Eigen::Matrix3d& rotation) const
 {
 	std::vector<TranslationTerms> terms;
@@ -187,8 +210,8 @@ Eigen::Vector3d CalibrationCalc::CalibrateTranslation(const Eigen::Matrix3d& rot
 
 Eigen::AffineCompact3d CalibrationCalc::ComputeCalibration(const bool ignoreOutliers) const
 {
-	Eigen::Vector3d rotation = CalibrateRotation(ignoreOutliers);
-	Eigen::Matrix3d rotationMat = quaternionRotateMatrix(VRRotationQuat(rotation));
+	Eigen::Matrix3d rotationMat =
+	    solveTilt ? CalibrateFullRotation(ignoreOutliers) : quaternionRotateMatrix(VRRotationQuat(CalibrateRotation(ignoreOutliers)));
 	Eigen::Vector3d translation = CalibrateTranslation(rotationMat);
 
 	Eigen::AffineCompact3d rot(rotationMat);

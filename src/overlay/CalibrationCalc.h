@@ -103,6 +103,7 @@ public:
 
 	bool enableStaticRecalibration;
 	bool lockRelativePosition = false;
+	bool solveTilt = true;
 	CalibrationObserver* observer = nullptr;
 
 	SolveState GetSolveState() const { return {m_isValid, m_estimatedTransformation, m_axisVariance}; }
@@ -121,7 +122,15 @@ public:
 	const Eigen::Vector3d EulerRotation() const
 	{
 		auto rot = m_estimatedTransformation.rotation();
-		return rot.eulerAngles(2, 1, 0) * 180.0 / EIGEN_PI;
+		Eigen::Vector3d euler = rot.eulerAngles(2, 1, 0);
+		if (euler(0) > EIGEN_PI / 2) {
+			euler = Eigen::Vector3d(euler(0) - EIGEN_PI, EIGEN_PI - euler(1), euler(2) - EIGEN_PI);
+			for (int axis = 1; axis < 3; ++axis) {
+				if (euler(axis) > EIGEN_PI) euler(axis) -= 2 * EIGEN_PI;
+				if (euler(axis) <= -EIGEN_PI) euler(axis) += 2 * EIGEN_PI;
+			}
+		}
+		return euler * 180.0 / EIGEN_PI;
 	}
 
 	bool isValid() const { return m_isValid; }
@@ -183,6 +192,7 @@ private:
 
 	std::vector<bool> DetectOutliers() const;
 	Eigen::Vector3d CalibrateRotation(const bool ignoreOutliers) const;
+	Eigen::Matrix3d CalibrateFullRotation(const bool ignoreOutliers) const;
 	Eigen::Vector3d CalibrateTranslation(const Eigen::Matrix3d& rotation) const;
 
 	Eigen::AffineCompact3d ComputeCalibration(const bool ignoreOutliers) const;
