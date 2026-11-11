@@ -3,6 +3,7 @@
 #include "CalibrationCalc.h"
 
 #include <iosfwd>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -40,9 +41,17 @@ namespace calrec {
 	struct ReplayedSolve
 	{
 		size_t line = 0;
+		size_t samplesBefore = 0;
 		SolveCall call;
 		SolveOutcome recorded;
 		SolveOutcome replayed;
+	};
+
+	struct ReplayOptions
+	{
+		std::optional<bool> enableStatic;
+		std::optional<bool> lockRelative;
+		bool keepSamples = false;
 	};
 
 	struct ReplayReport
@@ -51,9 +60,10 @@ namespace calrec {
 		std::string error;
 		size_t samples = 0;
 		std::vector<ReplayedSolve> solves;
+		std::vector<Sample> kept;
 	};
 
-	ReplayReport Replay(std::istream& in, CalibrationCalc& calc);
+	ReplayReport Replay(std::istream& in, CalibrationCalc& calc, const ReplayOptions& options = {});
 
 	bool SameOutcome(const SolveOutcome& a, const SolveOutcome& b);
 	double TranslationGapMm(const Eigen::AffineCompact3d& a, const Eigen::AffineCompact3d& b);

@@ -155,7 +155,8 @@ namespace calrec {
 			return true;
 		}
 
-		std::string ReplayLine(std::string_view line, CalibrationCalc& calc, ReplayReport& report, size_t number)
+		std::string ReplayLine(std::string_view line, CalibrationCalc& calc, ReplayReport& report, size_t number,
+		                       const ReplayOptions& options)
 		{
 			LineReader reader(line);
 			std::string_view kind;
@@ -179,6 +180,7 @@ namespace calrec {
 				}
 				calc.PushSample(sample);
 				++report.samples;
+				if (options.keepSamples) report.kept.push_back(sample);
 				return {};
 			}
 			if (kind == "relative") {
@@ -202,6 +204,7 @@ namespace calrec {
 			if (kind == "solve") {
 				ReplayedSolve solve;
 				solve.line = number;
+				solve.samplesBefore = report.samples;
 				bool enableStatic = false;
 				bool lockRelative = false;
 				if (!reader.Flag(solve.call.incremental) || !reader.Flag(enableStatic) || !reader.Flag(lockRelative) ||
@@ -209,8 +212,8 @@ namespace calrec {
 				    !reader.Flag(solve.call.ignoreOutliers) || !reader.Outcome(solve.recorded) || !reader.AtEnd()) {
 					return "solve needs 6 call values and 28 outcome values";
 				}
-				calc.enableStaticRecalibration = enableStatic;
-				calc.lockRelativePosition = lockRelative;
+				calc.enableStaticRecalibration = options.enableStatic.value_or(enableStatic);
+				calc.lockRelativePosition = options.lockRelative.value_or(lockRelative);
 				bool lerp = false;
 				const bool returned =
 				    solve.call.incremental
@@ -284,7 +287,7 @@ namespace calrec {
 		out_.flush();
 	}
 
-	ReplayReport Replay(std::istream& in, CalibrationCalc& calc)
+	ReplayReport Replay(std::istream& in, CalibrationCalc& calc, const ReplayOptions& options)
 	{
 		ReplayReport report;
 		CalibrationObserver* const observer = calc.observer;
@@ -305,7 +308,7 @@ namespace calrec {
 				sawHeader = true;
 				continue;
 			}
-			const std::string problem = ReplayLine(line, calc, report, number);
+			const std::string problem = ReplayLine(line, calc, report, number, options);
 			if (!problem.empty()) {
 				report.error = "line " + std::to_string(number) + ": " + problem;
 				break;
