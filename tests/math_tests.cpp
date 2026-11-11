@@ -9,8 +9,11 @@
 #include "PoseHealth.h"
 #include "UpdateVersion.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <limits>
 #include <random>
 #include <vector>
@@ -130,6 +133,92 @@ namespace {
 		const double error = MaxAbs(calc.Transformation().matrix() - s.calibration.matrix());
 		CHECK(error < 1e-6);
 		std::printf("  oneshot recovers the synthetic calibration to %.3g\n", error);
+	}
+
+	Eigen::AffineCompact3d ToAffine(const Pose& pose)
+	{
+		Eigen::AffineCompact3d out;
+		out.linear() = pose.rot;
+		out.translation() = pose.trans;
+		return out;
+	}
+
+	void TestEulerRotationDescribesTheSameRotation()
+	{
+		std::mt19937 rng(5);
+		double worst = 0.0, widestRoll = 0.0;
+		for (int round = 0; round < 500; ++round) {
+			CalibrationCalc calc;
+			CalibrationCalc::SolveState state;
+			state.valid = true;
+			state.transformation = Eigen::AffineCompact3d(RandomRotation(rng));
+			calc.SetSolveState(state);
+			const Eigen::Vector3d euler = calc.EulerRotation();
+			worst = std::max(worst, MaxAbs(quaternionRotateMatrix(VRRotationQuat(euler)) - state.transformation.linear()));
+			widestRoll = std::max(widestRoll, std::abs(euler(0)));
+		}
+		CHECK(worst < 1e-9);
+		CHECK(widestRoll <= 90.0 + 1e-9);
+
+		CalibrationCalc calc;
+		CalibrationCalc::SolveState state;
+		state.valid = true;
+		state.transformation = Eigen::AffineCompact3d(Eigen::AngleAxisd(-69.0 * EIGEN_PI / 180.0, Eigen::Vector3d::UnitY()));
+		calc.SetSolveState(state);
+		const Eigen::Vector3d euler = calc.EulerRotation();
+		CHECK(std::abs(euler(0)) < 1e-9 && std::abs(euler(1) + 69.0) < 1e-9 && std::abs(euler(2)) < 1e-9);
+	}
+
+	void TestOneshotRecoversATiltedCalibration()
+	{
+		Scenario s = MakeScenario(100, 21);
+		const Eigen::AffineCompact3d tilted = Eigen::Translation3d(0.5, 0.2, -1.0) *
+		                                      Eigen::AngleAxisd(-69.0 * EIGEN_PI / 180.0, Eigen::Vector3d::UnitY()) *
+		                                      Eigen::AngleAxisd(0.8 * EIGEN_PI / 180.0, Eigen::Vector3d(1, 0, 0.5).normalized());
+		for (Sample& sample : s.samples)
+			sample.target = Pose(Eigen::AffineCompact3d(tilted.inverse() * ToAffine(sample.ref) * s.mount));
+
+		CalibrationCalc calc;
+		for (const Sample& sample : s.samples)
+			calc.PushSample(sample);
+		CHECK(calc.ComputeOneshot(false));
+		const double error = MaxAbs(calc.Transformation().matrix() - tilted.matrix());
+		CHECK(error < 1e-6);
+
+		const Eigen::Vector3d euler = calc.EulerRotation();
+		CHECK(std::abs(euler(1) + 69.0) < 1.0);
+		CHECK(std::abs(euler(0)) < 1.0 && std::abs(euler(2)) < 1.0);
+		CHECK(MaxAbs(quaternionRotateMatrix(VRRotationQuat(euler)) - calc.Transformation().linear()) < 1e-9);
+
+		CalibrationCalc yawOnly;
+		yawOnly.solveTilt = false;
+		for (const Sample& sample : s.samples)
+			yawOnly.PushSample(sample);
+		CHECK(yawOnly.ComputeOneshot(false));
+		const double yawOnlyError = MaxAbs(yawOnly.Transformation().linear() - tilted.linear());
+		CHECK(yawOnlyError > 0.005);
+		std::printf("  0.8 deg tilt: full solve off by %.3g, yaw-only rotation matrix off by %.3g\n", error, yawOnlyError);
+	}
+
+	void TestLockedSolveKeepsABetterCalibration()
+	{
+		const Scenario s = MakeScenario(100, 33);
+		CalibrationCalc calc;
+		calc.enableStaticRecalibration = false;
+		for (const Sample& sample : s.samples)
+			calc.PushSample(sample);
+		bool lerp = false;
+		CHECK(calc.ComputeIncremental(lerp, 1.5, 0.005, false));
+		CHECK(MaxAbs(calc.Transformation().matrix() - s.calibration.matrix()) < 1e-6);
+
+		Eigen::AffineCompact3d wrong = calc.RelativeTransformation();
+		wrong.translation() += Eigen::Vector3d(0.03, 0.0, 0.0);
+		calc.setRelativeTransformation(wrong, true);
+		calc.lockRelativePosition = true;
+		calc.ComputeIncremental(lerp, 1.5, 0.005, false);
+		const double error = MaxAbs(calc.Transformation().matrix() - s.calibration.matrix());
+		CHECK(error < 1e-6);
+		std::printf("  locked solve with a 30 mm wrong mount left the calibration off by %.3g\n", error);
 	}
 
 	void TestOneshotRejectsAnEmptySampleSet()
@@ -306,6 +395,44 @@ namespace {
 		CHECK(!ctx.ReferencePoseIsValidSimple());
 	}
 
+	void TestPruneLogsKeepsRecentFilesUnderTheSizeCap()
+	{
+		namespace fs = std::filesystem;
+		const fs::path dir = fs::temp_directory_path() / ("spacecal_prune_test_" + std::to_string(GetCurrentProcessId()));
+		fs::create_directory(dir);
+		const auto write = [&](const char* name, int hoursOld) {
+			const fs::path path = dir / name;
+			std::ofstream(path, std::ios::binary) << std::string(100, 'x');
+			fs::last_write_time(path, fs::file_time_type::clock::now() - std::chrono::hours(hoursOld));
+			return path;
+		};
+		const fs::path fresh = write("probe.a.txt", 0);
+		const fs::path recent = write("probe.b.txt", 48);
+		const fs::path stale = write("probe.c.txt", 20 * 24);
+		const fs::path unrelated = write("other.x.txt", 20 * 24);
+
+		const uint64_t twoWeeks = 14ULL * 24ULL * 3600ULL;
+		Metrics::PruneLogs(dir.wstring(), L"probe", twoWeeks, 1000);
+		CHECK(fs::exists(fresh));
+		CHECK(fs::exists(recent));
+		CHECK(!fs::exists(stale));
+		CHECK(fs::exists(unrelated));
+
+		Metrics::PruneLogs(dir.wstring(), L"probe", twoWeeks, 150);
+		CHECK(fs::exists(fresh));
+		CHECK(!fs::exists(recent));
+		CHECK(fs::exists(unrelated));
+
+		CHECK(Metrics::kLogKeepSeconds >= twoWeeks);
+
+		std::error_code ignored;
+		fs::remove(fresh, ignored);
+		fs::remove(recent, ignored);
+		fs::remove(stale, ignored);
+		fs::remove(unrelated, ignored);
+		fs::remove(dir, ignored);
+	}
+
 	void TestUpdateVersionEdges()
 	{
 		using namespace spacecal;
@@ -347,6 +474,9 @@ int main()
 	TestQuaternionProductMatchesEigen();
 	TestEulerQuatIsZyxDegrees();
 	TestOneshotRecoversAKnownCalibration();
+	TestEulerRotationDescribesTheSameRotation();
+	TestOneshotRecoversATiltedCalibration();
+	TestLockedSolveKeepsABetterCalibration();
 	TestOneshotRejectsAnEmptySampleSet();
 	TestOneshotNeverAcceptsANonFiniteCalibration();
 	TestIncrementalNeverAcceptsANonFiniteCalibration();
@@ -355,6 +485,7 @@ int main()
 	TestJitterOfStillDevicesIsZero();
 	TestSampleWithNaNPositionIsNotUsed();
 	TestPoseChecksStayInsideDeviceArray();
+	TestPruneLogsKeepsRecentFilesUnderTheSizeCap();
 	TestUpdateVersionEdges();
 
 	if (failures == 0) {

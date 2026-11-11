@@ -347,6 +347,13 @@ bool CalibrationCalc::ComputeIncrementalImpl(bool& lerp, double threshold, doubl
 {
 	Metrics::RecordTimestamp();
 
+	double priorCalibrationError = INFINITY;
+	Eigen::Vector3d priorPosOffset;
+	if (m_isValid && ValidateCalibration(m_estimatedTransformation, &priorCalibrationError, &priorPosOffset)) {
+		Metrics::posOffset_currentCal.Push(priorPosOffset * 1000);
+		Metrics::error_currentCal.Push(priorCalibrationError * 1000);
+	}
+
 	if (lockRelativePosition) {
 		Eigen::AffineCompact3d byRelPose;
 		double relPoseError = INFINITY;
@@ -355,17 +362,13 @@ bool CalibrationCalc::ComputeIncrementalImpl(bool& lerp, double threshold, doubl
 			Metrics::posOffset_byRelPose.Push(relPosOffset * 1000);
 			Metrics::error_byRelPose.Push(relPoseError * 1000);
 
-			m_isValid = true;
-			m_estimatedTransformation = byRelPose;
-			return true;
+			if (relPoseError * threshold < priorCalibrationError) {
+				lerp = m_isValid;
+				m_isValid = true;
+				m_estimatedTransformation = byRelPose;
+				return true;
+			}
 		}
-	}
-
-	double priorCalibrationError = INFINITY;
-	Eigen::Vector3d priorPosOffset;
-	if (m_isValid && ValidateCalibration(m_estimatedTransformation, &priorCalibrationError, &priorPosOffset)) {
-		Metrics::posOffset_currentCal.Push(priorPosOffset * 1000);
-		Metrics::error_currentCal.Push(priorCalibrationError * 1000);
 	}
 
 	double newError = INFINITY;
