@@ -386,6 +386,16 @@ void ServerTrackedDeviceProvider::ApplySmoothing(DeviceTransform& device, vr::Dr
 		devicePose.vecVelocity[i] *= scale;
 		devicePose.vecAcceleration[i] *= scale;
 	}
+
+	const double rawRot[4] = {devicePose.qRotation.w, devicePose.qRotation.x, devicePose.qRotation.y, devicePose.qRotation.z};
+	const bool reseed = result != spacecal::StepResult::Ok;
+	if (spacecal::StepRotation(device.rotationFilter, device.settings.filter, rawRot, devicePose.vecAngularVelocity, dt, reseed)) {
+		const double* rot = device.rotationFilter.rot;
+		devicePose.qRotation = {rot[0], rot[1], rot[2], rot[3]};
+		for (int i = 0; i < 3; ++i) {
+			devicePose.vecAngularVelocity[i] = device.rotationFilter.angVel[i];
+		}
+	}
 }
 
 void ServerTrackedDeviceProvider::SyncDeviceState(uint32_t openVRID, DeviceTransform& tf)

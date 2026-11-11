@@ -93,7 +93,7 @@ namespace {
 		CHECK(Near(after.poseTimeOffset, before.poseTimeOffset));
 	}
 
-	void TestHalfStrengthKeepsRotationPrediction()
+	void TestHalfStrengthFirstFrameKeepsRotation()
 	{
 		UseSmoothing(50);
 		const vr::DriverPose_t raw = MovingTrackerPose(0.0);
@@ -107,7 +107,7 @@ namespace {
 		}
 	}
 
-	void TestFullStrengthKeepsRotationPrediction()
+	void TestFullStrengthFirstFrameKeepsRotation()
 	{
 		UseSmoothing(100);
 		const vr::DriverPose_t raw = MovingTrackerPose(0.0);
@@ -119,6 +119,38 @@ namespace {
 			CHECK(Near(pose.vecVelocity[i], 0.0));
 			CHECK(Near(pose.vecAcceleration[i], 0.0));
 		}
+	}
+
+	double TurnBetween(const vr::HmdQuaternion_t& a, const vr::HmdQuaternion_t& b)
+	{
+		const double dot = std::fabs(a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z);
+		return 2.0 * std::acos(dot > 1.0 ? 1.0 : dot);
+	}
+
+	void TestRotationWobbleIsSmoothed()
+	{
+		UseSmoothing(100);
+		double rawTurned = 0.0, smoothTurned = 0.0;
+		vr::DriverPose_t previousRaw = MovingTrackerPose(0.0), previousOut = previousRaw;
+		for (int frame = 0; frame < 60; ++frame) {
+			const double wobble = (frame % 2 == 0 ? 1.0 : -1.0) * 0.004;
+			vr::DriverPose_t raw = MovingTrackerPose(0.0);
+			raw.qRotation = {std::cos(0.2 + wobble), 0.0, std::sin(0.2 + wobble), 0.0};
+			vr::DriverPose_t pose = raw;
+			g_provider.HandleDevicePoseUpdated(kTracker, pose);
+			CHECK(Near(pose.poseTimeOffset, raw.poseTimeOffset));
+			const double norm = pose.qRotation.w * pose.qRotation.w + pose.qRotation.x * pose.qRotation.x +
+			                    pose.qRotation.y * pose.qRotation.y + pose.qRotation.z * pose.qRotation.z;
+			CHECK(std::fabs(norm - 1.0) < 1e-9);
+			if (frame > 0) {
+				rawTurned += TurnBetween(raw.qRotation, previousRaw.qRotation);
+				smoothTurned += TurnBetween(pose.qRotation, previousOut.qRotation);
+			}
+			previousRaw = raw;
+			previousOut = pose;
+		}
+		CHECK(smoothTurned < rawTurned);
+		std::printf("  rotation wobble: raw turned %.4f rad in total, smoothed %.4f rad\n", rawTurned, smoothTurned);
 	}
 
 	void TestCalibrationReadsRawPoses()
@@ -170,8 +202,9 @@ int main()
 {
 	LogFile = stdout;
 
-	TestHalfStrengthKeepsRotationPrediction();
-	TestFullStrengthKeepsRotationPrediction();
+	TestHalfStrengthFirstFrameKeepsRotation();
+	TestFullStrengthFirstFrameKeepsRotation();
+	TestRotationWobbleIsSmoothed();
 	TestCalibrationReadsRawPoses();
 	TestDeviceWithoutSmoothFlagPassesThrough();
 

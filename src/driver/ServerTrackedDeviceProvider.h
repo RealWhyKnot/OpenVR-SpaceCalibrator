@@ -106,6 +106,7 @@ private:
 		DeltaSize currentRate = DeltaSize::TINY;
 		bool smooth = false;
 		spacecal::PoseFilter filter;
+		spacecal::RotationFilter rotationFilter;
 		LARGE_INTEGER lastPoseQpc;
 		uint32_t reseeds = 0;
 		uint8_t lastResult = 0;

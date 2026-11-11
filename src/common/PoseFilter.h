@@ -127,4 +127,84 @@ namespace spacecal {
 		return StepResult::Ok;
 	}
 
+	inline constexpr double kRotationLeverM = 0.10;
+
+	struct RotationFilter
+	{
+		bool initialized = false;
+		double prevRawRot[4] = {1.0, 0.0, 0.0, 0.0};
+		double rot[4] = {1.0, 0.0, 0.0, 0.0};
+		double speedHat = 0.0;
+		double angVel[3] = {0.0, 0.0, 0.0};
+	};
+
+	inline double Dot4(const double a[4], const double b[4])
+	{
+		return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+	}
+
+	inline bool Normalize4(double q[4])
+	{
+		const double norm = std::sqrt(Dot4(q, q));
+		if (!std::isfinite(norm) || norm < 1e-9) return false;
+		for (int i = 0; i < 4; ++i) {
+			q[i] /= norm;
+		}
+		return true;
+	}
+
+	inline bool StepRotation(RotationFilter& s, const OneEuroParams& p, const double rawRot[4], const double rawAngVel[3], double dtSeconds,
+	                         bool reseed)
+	{
+		double raw[4] = {rawRot[0], rawRot[1], rawRot[2], rawRot[3]};
+		if (!Normalize4(raw) || !IsFinite3(rawAngVel)) {
+			s.initialized = false;
+			return false;
+		}
+		if (!s.initialized || reseed) {
+			for (int i = 0; i < 4; ++i) {
+				s.prevRawRot[i] = s.rot[i] = raw[i];
+			}
+			for (int i = 0; i < 3; ++i) {
+				s.angVel[i] = rawAngVel[i];
+			}
+			s.speedHat = 0.0;
+			s.initialized = true;
+			return true;
+		}
+
+		const double dt = Clamp(dtSeconds, 0.001, 0.050);
+		if (Dot4(raw, s.prevRawRot) < 0.0) {
+			for (int i = 0; i < 4; ++i) {
+				raw[i] = -raw[i];
+			}
+		}
+		const double turned = 2.0 * std::acos(Clamp(Dot4(raw, s.prevRawRot), -1.0, 1.0));
+		s.speedHat += AlphaFromCutoffHz(p.dCutoffHz, dt) * (turned / dt - s.speedHat);
+		const double a = AlphaFromCutoffHz(p.minCutoffHz + p.beta * kRotationLeverM * s.speedHat, dt);
+
+		double toRaw = Dot4(s.rot, raw);
+		const double sign = toRaw < 0.0 ? -1.0 : 1.0;
+		toRaw = Clamp(toRaw * sign, 0.0, 1.0);
+		const double gap = std::acos(toRaw);
+		double keep = 1.0 - a;
+		double take = a;
+		if (gap > 1e-6) {
+			keep = std::sin((1.0 - a) * gap) / std::sin(gap);
+			take = std::sin(a * gap) / std::sin(gap);
+		}
+		for (int i = 0; i < 4; ++i) {
+			s.rot[i] = keep * s.rot[i] + sign * take * raw[i];
+			s.prevRawRot[i] = raw[i];
+		}
+		if (!Normalize4(s.rot)) {
+			s.initialized = false;
+			return false;
+		}
+		for (int i = 0; i < 3; ++i) {
+			s.angVel[i] += a * (rawAngVel[i] - s.angVel[i]);
+		}
+		return true;
+	}
+
 }
