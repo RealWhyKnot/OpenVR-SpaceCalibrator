@@ -2,6 +2,7 @@
 #include "CalibrationMetrics.h"
 #include "Version.h"
 #include <shlobj_core.h>
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <vector>
@@ -133,33 +134,48 @@ namespace Metrics {
 	                                   }}};
 
 
-	static void ClearOldLogs(const std::wstring& path, const wchar_t* prefix)
+	void PruneLogs(const std::wstring& folder, const wchar_t* prefix, uint64_t maxAgeSeconds, uint64_t maxBytes)
 	{
-		std::wstring search_path = path + L"\\" + prefix + L".*.txt";
-		WIN32_FIND_DATA find_data;
+		struct Entry
+		{
+			std::wstring name;
+			uint64_t written = 0;
+			uint64_t bytes = 0;
+		};
+		std::vector<Entry> entries;
 
-		SYSTEMTIME st_now;
-		FILETIME ft_now;
-		GetSystemTime(&st_now);
-		SystemTimeToFileTime(&st_now, &ft_now);
+		const std::wstring searchPath = folder + L"\\" + prefix + L".*.txt";
+		WIN32_FIND_DATAW found;
+		HANDLE handle = FindFirstFileW(searchPath.c_str(), &found);
+		if (handle == INVALID_HANDLE_VALUE) return;
+		do {
+			ULARGE_INTEGER written, bytes;
+			written.HighPart = found.ftLastWriteTime.dwHighDateTime;
+			written.LowPart = found.ftLastWriteTime.dwLowDateTime;
+			bytes.HighPart = found.nFileSizeHigh;
+			bytes.LowPart = found.nFileSizeLow;
+			entries.push_back({found.cFileName, written.QuadPart, bytes.QuadPart});
+		} while (FindNextFileW(handle, &found));
+		FindClose(handle);
 
-		ULARGE_INTEGER ft_tmp;
-		ft_tmp.HighPart = ft_now.dwHighDateTime;
-		ft_tmp.LowPart = ft_now.dwLowDateTime;
-		// one day ago
-		uint64_t limit = ft_tmp.QuadPart - (uint64_t)(24LL * 3600LL * 10LL * 1000LL * 1000LL);
+		FILETIME nowFile;
+		GetSystemTimeAsFileTime(&nowFile);
+		ULARGE_INTEGER now;
+		now.HighPart = nowFile.dwHighDateTime;
+		now.LowPart = nowFile.dwLowDateTime;
+		const uint64_t maxAgeTicks = maxAgeSeconds * 10ULL * 1000ULL * 1000ULL;
+		const uint64_t oldest = now.QuadPart > maxAgeTicks ? now.QuadPart - maxAgeTicks : 0;
 
-		HANDLE find_handle = FindFirstFile(search_path.c_str(), &find_data);
-		if (find_handle != INVALID_HANDLE_VALUE) {
-			do {
-				ft_tmp.HighPart = find_data.ftLastWriteTime.dwHighDateTime;
-				ft_tmp.LowPart = find_data.ftLastWriteTime.dwLowDateTime;
-				if (ft_tmp.QuadPart < limit) {
-					std::wstring file_path = path + L"\\" + find_data.cFileName;
-					DeleteFile(file_path.c_str());
-				}
-			} while (FindNextFile(find_handle, &find_data));
-			FindClose(find_handle);
+		std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) { return a.written > b.written; });
+
+		uint64_t kept = 0;
+		for (const Entry& entry : entries) {
+			if (entry.written >= oldest && kept + entry.bytes <= maxBytes) {
+				kept += entry.bytes;
+				continue;
+			}
+			const std::wstring filePath = folder + L"\\" + entry.name;
+			DeleteFileW(filePath.c_str());
 		}
 	}
 
@@ -184,7 +200,7 @@ namespace Metrics {
 			return false;
 		}
 
-		ClearOldLogs(path, prefix);
+		PruneLogs(path, prefix, kLogKeepSeconds, kLogKeepBytes);
 
 		SYSTEMTIME now{};
 		GetSystemTime(&now);

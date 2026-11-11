@@ -1,7 +1,9 @@
 #pragma once
 
+#include <cstdint>
 #include <deque>
 #include <iosfwd>
+#include <string>
 #include <utility>
 #include <Eigen/Dense>
 
@@ -56,6 +58,10 @@ namespace Metrics {
 	extern bool enableLogs;
 	bool LogsForcedOn();
 
+	inline constexpr uint64_t kLogKeepSeconds = 14ULL * 24ULL * 3600ULL;
+	inline constexpr uint64_t kLogKeepBytes = 4ULL * 1024ULL * 1024ULL * 1024ULL;
+
+	void PruneLogs(const std::wstring& folder, const wchar_t* prefix, uint64_t maxAgeSeconds, uint64_t maxBytes);
 	bool OpenLogStream(const wchar_t* prefix, std::ofstream& out);
 	void WriteLogAnnotation(const char* s);
 	void WriteLogEntry();
