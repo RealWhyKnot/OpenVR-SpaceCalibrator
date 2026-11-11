@@ -166,10 +166,13 @@ namespace {
 		int published = 0;
 		for (int frame = 0; frame < 40; ++frame) {
 			const double wobble = (frame % 2 == 0 ? 1.0 : -1.0) * 0.0004;
-			const vr::DriverPose_t raw = MovingTrackerPose(wobble);
+			vr::DriverPose_t raw = MovingTrackerPose(wobble);
+			raw.qRotation = {std::cos(0.2 + wobble * 10.0), 0.0, std::sin(0.2 + wobble * 10.0), 0.0};
+			raw.vecAngularVelocity[1] = wobble * 1000.0;
 			vr::DriverPose_t pose = raw;
 			g_provider.HandleDevicePoseUpdated(kTracker, pose);
 			CHECK(Near(pose.vecVelocity[0], 0.0));
+			if (frame > 0) CHECK(!Near(pose.qRotation.w, raw.qRotation.w));
 
 			reader.ReadNewPoses([&](const protocol::DriverPoseShmem::AugmentedPose& sample) {
 				if (sample.deviceId != (int)kTracker) return;
@@ -179,6 +182,8 @@ namespace {
 					CHECK(Near(sample.pose.vecVelocity[i], raw.vecVelocity[i]));
 					CHECK(Near(sample.pose.vecAngularVelocity[i], raw.vecAngularVelocity[i]));
 				}
+				CHECK(Near(sample.pose.qRotation.w, raw.qRotation.w));
+				CHECK(Near(sample.pose.qRotation.y, raw.qRotation.y));
 				CHECK(Near(sample.pose.poseTimeOffset, raw.poseTimeOffset));
 			});
 		}

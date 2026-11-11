@@ -128,6 +128,8 @@ namespace {
 		YawQuat(20.0 * kDegrees, target);
 		const double spin[3] = {0.0, 0.3, 0.0};
 		CHECK(spacecal::StepRotation(f, p, start, kStill, 0.004, false));
+		CHECK(spacecal::StepRotation(f, p, target, spin, 0.004, false));
+		CHECK(YawOf(f.rot) > 0.0 && YawOf(f.rot) < 10.0 * kDegrees);
 		for (int i = 0; i < 5000; ++i) {
 			CHECK(spacecal::StepRotation(f, p, target, spin, 0.004, false));
 		}
