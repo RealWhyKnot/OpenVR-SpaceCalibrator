@@ -209,7 +209,9 @@ namespace calref {
 		if (rows.empty()) return fits;
 		Eigen::Matrix3d rotation = start;
 		size_t begin = 0, end = 0;
-		for (double centre = rows.front().time; centre <= rows.back().time; centre += strideSeconds) {
+		const size_t strides = static_cast<size_t>(std::floor((rows.back().time - rows.front().time) / strideSeconds + 1e-9));
+		for (size_t i = 0; i <= strides; ++i) {
+			const double centre = rows.front().time + static_cast<double>(i) * strideSeconds;
 			while (begin < rows.size() && rows[begin].time < centre - halfWidthSeconds)
 				++begin;
 			while (end < rows.size() && rows[end].time <= centre + halfWidthSeconds)
