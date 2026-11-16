@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           submodules: recursive
@@ -55,7 +55,7 @@ jobs:
           Add-Content -LiteralPath $env:GITHUB_PATH -Value $llvmBin
 
       - name: Enable MSVC for the clang-tidy compile database
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
         with:
           arch: x64
 
@@ -63,8 +63,7 @@ jobs:
         shell: pwsh
         run: |
           $env:PATH = 'C:\Program Files\LLVM\bin;' + $env:PATH
-          $base = if ('${{ github.event_name }}' -eq 'pull_request') { '${{ github.event.pull_request.base.sha }}' } elseif ('${{ github.event.before }}' -match '^0+$' -or -not '${{ github.event.before }}') { 'origin/main' } else { '${{ github.event.before }}' }
-          ./.github/lint/lint.ps1 -Check -ChangedOnly -ChangedBase $base
+          ./.github/lint/lint.ps1 -Check
 
   build:
     name: Build ${{ matrix.channel }}
@@ -76,7 +75,7 @@ jobs:
         channel: [dev, release]
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           submodules: recursive
@@ -135,7 +134,7 @@ jobs:
           ./.github/scripts/Test-Installer.ps1 -Setup build/OpenVR-SpaceCalibrator-Setup-0.0.0.0-CI.exe -Version 0.0.0.0-CI
 
       - name: Upload package
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: spacecalibrator-${{ matrix.channel }}-${{ github.sha }}
           path: build/package

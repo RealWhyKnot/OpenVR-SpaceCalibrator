@@ -2,9 +2,7 @@
 [CmdletBinding()]
 param(
 	[switch]$Check,
-	[switch]$FormatOnly,
-	[switch]$ChangedOnly,
-	[string]$ChangedBase = "origin/main"
+	[switch]$FormatOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -46,39 +44,10 @@ function Invoke-NativeQuiet {
 function Get-ProjectCppFiles {
 	$files = @(& git ls-files -co --exclude-standard -- "src/*.cpp" "src/*.h" "tests/*.cpp" "tests/*.h")
 	if ($LASTEXITCODE -ne 0) { throw "Unable to list repository files." }
-	return @($files | ForEach-Object { $_ -replace "\\", "/" } | Where-Object { $_ -ne "src/overlay/Resource.h" -and (Test-Path -LiteralPath $_) })
+	return @($files | ForEach-Object { $_ -replace "\\", "/" } | Where-Object { Test-Path -LiteralPath $_ })
 }
 
-function Get-ChangedRepoFiles {
-	param([string]$BaseRef)
-	$paths = New-Object System.Collections.Generic.List[string]
-	$mergeBase = & git merge-base HEAD $BaseRef 2>$null
-	$haveBase = $LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($mergeBase)
-	$global:LASTEXITCODE = 0
-	$sources = @()
-	if ($haveBase) { $sources += @($mergeBase.Trim() + "...HEAD") } else { Write-Host "changed-only: no merge-base with $BaseRef; using index and working tree." }
-	$sources += @("--cached", "")
-	foreach ($source in $sources) {
-		$gitArgs = @("diff", "--name-only", "--diff-filter=ACMRTUXB")
-		if (-not [string]::IsNullOrWhiteSpace($source)) { $gitArgs += $source }
-		foreach ($path in @(& git @gitArgs)) {
-			if (-not [string]::IsNullOrWhiteSpace($path)) { $paths.Add(($path -replace "\\", "/")) }
-		}
-	}
-	foreach ($path in @(& git ls-files --others --exclude-standard)) {
-		if (-not [string]::IsNullOrWhiteSpace($path)) { $paths.Add(($path -replace "\\", "/")) }
-	}
-	return @($paths | Sort-Object -Unique)
-}
-
-$changedLookup = $null
-if ($ChangedOnly) {
-	$changedLookup = @{}
-	foreach ($path in (Get-ChangedRepoFiles -BaseRef $ChangedBase)) { $changedLookup[$path] = $true }
-	Write-Host "changed-only: considering $($changedLookup.Count) changed file(s)."
-}
-
-$files = @(Get-ProjectCppFiles | Where-Object { $null -eq $changedLookup -or $changedLookup.ContainsKey($_) })
+$files = @(Get-ProjectCppFiles)
 $clangFormat = Resolve-RequiredCommand "clang-format" "Install LLVM and put clang-format on PATH."
 
 if ($files.Count -eq 0) {
@@ -100,32 +69,22 @@ if ($files.Count -eq 0) {
 if ($FormatOnly) {
 	Write-Host "format-only: skipped clang-tidy."
 } else {
-	$sources = @($files | Where-Object { $_ -match "\.cpp$" })
-	$headersChanged = @($files | Where-Object { $_ -match "\.h$" }).Count -gt 0
-	if ($ChangedOnly -and $sources.Count -eq 0 -and -not $headersChanged) {
-		Write-Host "clang-tidy: no changed C++ files."
-	} else {
-		$clangTidy = Resolve-RequiredCommand "clang-tidy" "Install LLVM and put clang-tidy on PATH."
-		$cmake = Resolve-RequiredCommand "cmake" "Install CMake."
-		$ninja = Resolve-RequiredCommand "ninja" "Install Ninja."
-		$python = Resolve-RequiredCommand "python" "Install Python."
-		$runClangTidy = Resolve-RunClangTidy -ClangTidy $clangTidy
-		$buildDir = Join-Path $RepoRoot "build\lint-tidy"
-		Write-Host "clang-tidy: configuring compile database in $buildDir"
-		Invoke-NativeQuiet -Command { & $cmake "-G" "Ninja" "-B" $buildDir "-S" $RepoRoot "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON" "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DSPACECAL_BUILD_TESTS=ON" "-Wno-dev" } -FailureMessage "clang-tidy compile database configure failed"
-		$tidyArgs = @($runClangTidy, "-p", $buildDir, "-config-file", (Join-Path $RepoRoot ".clang-tidy"),
-			"-header-filter", ".*OpenVR-SpaceCalibrator[/\\](src|tests)[/\\].*",
-			"-clang-tidy-binary", $clangTidy, "-quiet", "-hide-progress",
-			"-j", [string][Math]::Max(1, [Math]::Min([Environment]::ProcessorCount, 8)))
-		if ($ChangedOnly -and -not $headersChanged) {
-			foreach ($source in $sources) { $tidyArgs += (".*" + ([regex]::Escape($source) -replace "/", "[/\\]") + "$") }
-		} else {
-			$tidyArgs += ".*OpenVR-SpaceCalibrator[/\\](src|tests)[/\\].*\.cpp$"
-		}
-		if (-not $Check) { $tidyArgs += @("-fix", "-format", "-style=file") }
-		Write-Host "clang-tidy: checking project translation units."
-		Invoke-NativeQuiet -Command { & $python @tidyArgs } -FailureMessage "clang-tidy found diagnostics"
-	}
+	$clangTidy = Resolve-RequiredCommand "clang-tidy" "Install LLVM and put clang-tidy on PATH."
+	$cmake = Resolve-RequiredCommand "cmake" "Install CMake."
+	$ninja = Resolve-RequiredCommand "ninja" "Install Ninja."
+	$python = Resolve-RequiredCommand "python" "Install Python."
+	$runClangTidy = Resolve-RunClangTidy -ClangTidy $clangTidy
+	$buildDir = Join-Path $RepoRoot "build\lint-tidy"
+	Write-Host "clang-tidy: configuring compile database in $buildDir"
+	Invoke-NativeQuiet -Command { & $cmake "-G" "Ninja" "-B" $buildDir "-S" $RepoRoot "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON" "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DSPACECAL_BUILD_TESTS=ON" "-Wno-dev" } -FailureMessage "clang-tidy compile database configure failed"
+	$tidyArgs = @($runClangTidy, "-p", $buildDir, "-config-file", (Join-Path $RepoRoot ".clang-tidy"),
+		"-header-filter", ".*OpenVR-SpaceCalibrator[/\\](src|tests)[/\\].*",
+		"-clang-tidy-binary", $clangTidy, "-quiet", "-hide-progress",
+		"-j", [string][Math]::Max(1, [Math]::Min([Environment]::ProcessorCount, 8)),
+		".*OpenVR-SpaceCalibrator[/\\](src|tests)[/\\].*\.cpp$")
+	if (-not $Check) { $tidyArgs += @("-fix", "-format", "-style=file") }
+	Write-Host "clang-tidy: checking project translation units."
+	Invoke-NativeQuiet -Command { & $python @tidyArgs } -FailureMessage "clang-tidy found diagnostics"
 }
 
 if ($Check) { Write-Host "Lint check passed." } else { Write-Host "Lint cleanup complete." }
